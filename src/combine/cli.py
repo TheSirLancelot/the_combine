@@ -18,17 +18,20 @@ def doctor() -> int:
     lg = config.leagues()
     print(f"leagues   {len(lg)} configured")
     for slug, cfg in lg.items():
-        print(f"          {slug:10s} {cfg.platform:6s} id={cfg.league_id}")
+        print(f"          {slug:6s} {cfg.platform:6s} id={cfg.league_id:12s} {cfg.name}")
 
     if "--live" in sys.argv:
         from .platforms import client_for
 
         print("live      probing platforms")
-        for slug in lg:
+        for slug, cfg in lg.items():
+            if not config.platform_ready(cfg.platform):
+                print(f"          {slug:6s} SKIP {cfg.platform} credentials not set yet")
+                continue
             try:
-                print(f"          {slug:10s} OK  {client_for(slug).ping()}")
+                print(f"          {slug:6s} OK   {client_for(slug).ping()}")
             except Exception as exc:
-                print(f"          {slug:10s} FAIL {type(exc).__name__}: {exc}")
+                print(f"          {slug:6s} FAIL {type(exc).__name__}: {exc}")
     return 1 if missing else 0
 
 

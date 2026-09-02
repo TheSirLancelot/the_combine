@@ -11,3 +11,5 @@ __pycache__/
 *.pyc
 .DS_Store
 .pytest_cache/
+probe_espn_output.txt
+probe_*_output.txt

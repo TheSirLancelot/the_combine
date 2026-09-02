@@ -44,16 +44,18 @@ PATH = env("COMBINE_PATH", "/mcp")
 @dataclass(frozen=True)
 class LeagueConfig:
     slug: str
+    name: str
     platform: str  # "espn" | "yahoo"
     league_id: str
     team_id: str
 
 
-# (slug, platform, league-id env var, team-id env var)
+# (slug, full name, platform, league-id env var, team-id env var)
+# Slugs are what you type in Claude, so they stay short.
 _SPECS = [
-    ("dynasty", "espn", "ESPN_LEAGUE_1_ID", "ESPN_LEAGUE_1_TEAM_ID"),
-    ("work", "espn", "ESPN_LEAGUE_2_ID", "ESPN_LEAGUE_2_TEAM_ID"),
-    ("college", "yahoo", "YAHOO_LEAGUE_ID", "YAHOO_TEAM_KEY"),
+    ("rcl", "The REAL Champions League", "espn", "ESPN_RCL_ID", "ESPN_RCL_TEAM_ID"),
+    ("dmwd", "Dont Mess With Dexas", "espn", "ESPN_DMWD_ID", "ESPN_DMWD_TEAM_ID"),
+    ("work", "Work league", "yahoo", "YAHOO_LEAGUE_ID", "YAHOO_TEAM_KEY"),
 ]
 
 
@@ -61,10 +63,10 @@ def leagues() -> dict[str, LeagueConfig]:
     """Configured leagues only. A league with missing env is skipped, not fatal,
     so one dead credential does not take the whole server down."""
     out: dict[str, LeagueConfig] = {}
-    for slug, platform, id_key, team_key in _SPECS:
+    for slug, name, platform, id_key, team_key in _SPECS:
         league_id, team_id = os.environ.get(id_key), os.environ.get(team_key)
         if league_id and team_id:
-            out[slug] = LeagueConfig(slug, platform, league_id, team_id)
+            out[slug] = LeagueConfig(slug, name, platform, league_id, team_id)
     return out
 
 
@@ -79,10 +81,18 @@ def get_league(slug: str) -> LeagueConfig:
 def missing_env() -> list[str]:
     """Env vars referenced by _SPECS or required for auth that are unset."""
     keys = ["COMBINE_BEARER_TOKEN"]
-    for _, platform, id_key, team_key in _SPECS:
+    for _, _name, platform, id_key, team_key in _SPECS:
         keys += [id_key, team_key]
         keys += ["ESPN_S2", "ESPN_SWID"] if platform == "espn" else [
             "YAHOO_CONSUMER_KEY",
             "YAHOO_CONSUMER_SECRET",
         ]
     return sorted({k for k in keys if not os.environ.get(k)})
+
+
+def platform_ready(platform: str) -> bool:
+    """Whether the shared credentials for a platform are present at all.
+    Lets doctor distinguish 'not set up yet' from 'broken'."""
+    need = ("ESPN_S2", "ESPN_SWID") if platform == "espn" else (
+        "YAHOO_CONSUMER_KEY", "YAHOO_CONSUMER_SECRET")
+    return all(os.environ.get(k) for k in need)

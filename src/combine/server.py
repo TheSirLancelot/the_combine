@@ -128,6 +128,33 @@ def get_my_roster(league: str) -> str:
 
 
 @mcp.tool
+def get_player_notes(league: str, name: str) -> str:
+    """What ESPN's analysts said about one player on the 2026 cheat sheet, plus
+    his board numbers. Use when a board row shows SPLIT or a surprising BUZZ,
+    or before spending an early pick on someone. This is opinion, deliberately
+    kept out of the projection blend."""
+    c = client_for(league)
+    rows, _ = build_board(league, c.free_agents(position=None, limit=250))
+    want = name.strip().lower()
+    hit = next((r for r in rows if want in r.state.name.lower()), None)
+    if hit is None:
+        return f"'{name}' is not in the available pool for {league} (already drafted, or not found)"
+
+    out = [f"{hit.state.name} ({hit.state.pos} {hit.state.team})",
+           f"  overall #{hit.overall_rank}  espn {hit.espn_pts:.1f}  "
+           f"pff {hit.pff_pts if hit.pff_pts is None else round(hit.pff_pts, 1)}  "
+           f"cons {hit.consensus:.1f}",
+           f"  adp {hit.adp}  val {hit.value}  {hit.flag or ''}".rstrip()]
+    if hit.buzz is None:
+        out.append("  ESPN cheat sheet: not mentioned")
+    else:
+        out.append(f"  ESPN cheat sheet ({hit.buzz.up} positive, {hit.buzz.down} negative"
+                   f"{', THEY DISAGREE' if hit.buzz.split else ''}):")
+        out.append(f"    {hit.buzz.describe()}")
+    return "\n".join(out)
+
+
+@mcp.tool
 def health_check() -> str:
     """Per-league connection status. Use when a tool errors, or to check
     whether the ESPN cookies have expired."""

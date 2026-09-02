@@ -22,10 +22,19 @@ from dataclasses import dataclass
 from ..format import tiers
 from ..platforms import PlayerState
 from .crosswalk import build_index, load_overrides, match
-from .providers import pff_csv, pff_rankings
+from .providers import espn_cheatsheet, pff_csv, pff_rankings
 
 DISAGREE_AT = 10   # positional rank gap between sources worth flagging
 VALUE_AT = 12      # ADP vs consensus gap worth flagging
+
+
+@dataclass(frozen=True)
+class _NameOnly:
+    """The crosswalk matches on objects with name/team/pos. The cheat sheet has
+    only names, so team and pos stay empty and matching falls back to name."""
+    name: str
+    team: str = ""
+    pos: str = ""
 
 
 @dataclass
@@ -40,6 +49,7 @@ class BoardRow:
     adp: float | None = None
     rank_proj: float | None = None   # PFF rankings' own points, for the zero check
     pff_rank_pos: int | None = None  # PFF analysts' positional rank, not their model's
+    buzz: object | None = None       # ESPN cheat sheet sentiment, never blended
     consensus: float = 0.0
     overall_rank: int = 0
     value: int | None = None
@@ -57,6 +67,10 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
     rank_rows = pff_rankings.load(league)
     rank_idx = build_index(rank_rows) if rank_rows else {}
 
+    # ESPN cheat sheet. Opinion, kept beside the numbers and never inside them.
+    sentiment = espn_cheatsheet.load()
+    buzz_idx = build_index([_NameOnly(n) for n in sentiment]) if sentiment else {}
+
     counts: dict[str, int] = {}
     for s in states:
         hit, how = (None, "no-source")
@@ -67,6 +81,11 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
         rank_hit = None
         if rank_idx:
             rank_hit, _ = match(s.name, s.team, s.pos, rank_idx, overrides)
+
+        buzz_hit = None
+        if buzz_idx:
+            shim, _ = match(s.name, s.team, s.pos, buzz_idx, overrides)
+            buzz_hit = sentiment.get(shim.name) if shim else None
 
         rows.append(
             BoardRow(
@@ -80,6 +99,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
                 adp=rank_hit.adp if rank_hit else None,
                 rank_proj=rank_hit.proj_points if rank_hit else None,
                 pff_rank_pos=rank_hit.pos_rank if rank_hit else None,
+                buzz=buzz_hit,
             )
         )
 
@@ -144,7 +164,7 @@ def render(rows: list[BoardRow], header: str) -> str:
     tier_of = tiers([r.consensus for r in rows])
     out = [header,
            f"{'#':>3} {'POS':<4} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
-           f"{'CONS':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER FLAG"]
+           f"{'CONS':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
     for i, r in enumerate(rows):
         s = r.state
         pff = f"{r.pff_pts:>6.1f}" if r.pff_pts is not None else "     -"
@@ -154,6 +174,10 @@ def render(rows: list[BoardRow], header: str) -> str:
         line = (f"{i+1:>3} {s.pos:<4} {s.name[:21]:<21} {(s.team or '--'):<3} "
                 f"{r.espn_pts:>6.1f} {pff} {r.consensus:>6.1f} {adp} {val} {bye} "
                 f"T{tier_of[i]:<3}")
+        if r.buzz is not None:
+            line += f" {('SPLIT' if r.buzz.split else f'{r.buzz.net:+d}'):>5}"
+        else:
+            line += "      "
         extras = [x for x in (r.flag, s.status if s.status != "OK" else "") if x]
         return_line = line + (" " + " ".join(extras) if extras else "")
         out.append(return_line)

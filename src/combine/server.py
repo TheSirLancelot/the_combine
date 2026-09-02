@@ -12,7 +12,7 @@ from fastmcp import FastMCP
 
 from .config import BEARER_TOKEN, HOST, PATH, PORT, get_league, leagues
 from .format import ranked_table, roster_table
-from .pipeline.board import build as build_board, render as render_board
+from .pipeline.board import build as build_board, filter_pos, render as render_board
 from .platforms import client_for
 
 mcp = FastMCP("combine")
@@ -60,18 +60,22 @@ def get_draft_pool(league: str, position: str = "", limit: int = 15) -> str:
 def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
     """Best available players for one league with BOTH projection sources side
     by side: ESPN's and PFF's, each already scored under this league's rules,
-    plus a consensus and tiers. The FLAG column is the point of this tool.
-    'PFF+14' means PFF ranks him 14 positional spots higher than ESPN does,
-    which is where draft value actually lives. Use this over get_draft_pool
-    when drafting. Optional position filter."""
+    plus consensus, tiers, ADP and VAL. Use this over get_draft_pool when
+    drafting. VAL is ADP minus our overall rank: positive means the room is
+    letting him fall past where the numbers put him. FLAG calls out OUT?
+    (ranked and drafted early but projected zero, so something happened),
+    no-pff, VALUE/REACH, and source disagreement. Optional position filter."""
     limit = max(1, min(limit, MAX_LIMIT))
     c = client_for(league)
-    pool = c.free_agents(position=position or None, limit=limit * 4)
+    # Unfiltered pool: overall_rank and the ADP comparison are only meaningful
+    # against the whole board, so filter for display, not at the source.
+    pool = c.free_agents(position=None, limit=250)
     rows, counts = build_board(league, pool)
+    shown = filter_pos(rows, position)[:limit]
     label = f"{get_league(league).name} board{f' at {position}' if position else ''}"
     unmatched = counts.get("unmatched", 0) + counts.get("ambiguous", 0)
     note = f"\n({unmatched} of {len(pool)} had no PFF match)" if unmatched else ""
-    return render_board(rows[:limit], label) + note
+    return render_board(shown, label) + note
 
 
 @mcp.tool

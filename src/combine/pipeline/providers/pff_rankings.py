@@ -23,8 +23,13 @@ from dataclasses import dataclass
 
 from ...config import DATA_DIR
 
-RANKINGS = DATA_DIR / "pff" / "draft_rankings.csv"
-RANKINGS_IDP = DATA_DIR / "pff" / "draft_rankings_idp.csv"
+PFF_DIR = DATA_DIR / "pff"
+
+# Rankings are PER LEAGUE, because ADP is scoring-format specific and the gap
+# is large: Josh Jacobs is ADP 64.1 in the full-PPR export and 39.9 in the
+# half-PPR one. Feeding full-PPR ADP to a half-PPR league skews every VAL.
+#   dmwd -> dmwd_rankings.csv      (full PPR)
+#   rcl  -> rcl_rankings.csv       (half PPR) + rcl_rankings_idp.csv
 
 ADP_SATURATION = 168.0  # at or beyond this, ADP carries no information
 
@@ -49,11 +54,15 @@ def _num(v: str) -> float | None:
         return None
 
 
-def available() -> bool:
-    return RANKINGS.exists() or RANKINGS_IDP.exists()
+def paths_for(league: str) -> list:
+    return [PFF_DIR / f"{league}_rankings.csv", PFF_DIR / f"{league}_rankings_idp.csv"]
 
 
-def load() -> list[RankRow]:
+def available(league: str) -> bool:
+    return any(p.exists() for p in paths_for(league))
+
+
+def load(league: str) -> list[RankRow]:
     """Both exports, merged. The IDP file has no ADP and no Projected Points
     columns at all, so those come back None/0 for defenders. That is a real
     limitation, not a parsing bug: PFF does not publish IDP draft position, so
@@ -62,7 +71,10 @@ def load() -> list[RankRow]:
     The IDP file uses ED for edge rushers where the per-league projections
     export uses de. Positions are only ever a tiebreaker in matching, so this
     costs nothing today, but do not treat the two vocabularies as one."""
-    return _read(RANKINGS) + _read(RANKINGS_IDP)
+    rows = []
+    for p in paths_for(league):
+        rows += _read(p)
+    return rows
 
 
 def _read(path) -> list[RankRow]:

@@ -54,7 +54,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
     idx = build_index(pff_csv.load(league)) if have_pff else {}
     overrides = load_overrides()
 
-    rank_rows = pff_rankings.load()
+    rank_rows = pff_rankings.load(league)
     rank_idx = build_index(rank_rows) if rank_rows else {}
 
     counts: dict[str, int] = {}

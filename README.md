@@ -50,7 +50,8 @@ league's rules**, so they are directly comparable. `CONS` is their mean and sets
 the ordering. `TIER` breaks where the drop to the next player is unusually
 large, so a tier edge is a "reach now or wait" boundary.
 
-`ADP` is PFF's average draft position, and `VAL` is ADP minus our overall rank.
+`ADP` is PFF's average draft position **for that league's scoring format**, and
+`VAL` is ADP minus our overall rank.
 **Positive means value**: the room is letting him fall past where the numbers
 put him. Negative means the room likes him more than the projections do.
 
@@ -106,16 +107,23 @@ uv run combine serve           # MCP server on 127.0.0.1:8787/mcp
 **PFF data** is a manual export until their API ships. Three files, all in
 `data/pff/`, all picked up on the next command with no rebuild step:
 
-| file | source | gives |
-|------|--------|-------|
-| `rcl_projections.csv` | per-league projections export | stat lines + RCL-scored points |
-| `dmwd_projections.csv` | per-league projections export | stat lines + DMWD-scored points |
-| `draft_rankings.csv` | draft rankings export | ADP, overall/position rank, bye |
+| file | export to pull | gives |
+|------|----------------|-------|
+| `rcl_projections.csv` | projections, RCL scoring synced | stat lines + RCL-scored points |
+| `dmwd_projections.csv` | projections, DMWD scoring synced | stat lines + DMWD-scored points |
+| `rcl_rankings.csv` | draft rankings, **half PPR** | ADP, rank, bye |
+| `rcl_rankings_idp.csv` | draft rankings, **IDP** | rank, bye (no ADP exists) |
+| `dmwd_rankings.csv` | draft rankings, **full PPR** | ADP, rank, bye |
 
-The rankings export ships with a title line above the header. Strip it, the
-header must be line 1. Re-export all three when PFF updates for injuries or
-depth chart moves; none of them have a freshness check, so an August file will
-serve October numbers without complaint.
+**Pull the rankings export matching each league's scoring.** ADP is
+format-specific and the gap is real: Josh Jacobs is ADP 64.1 in the full-PPR
+export and 39.9 in the half-PPR one. Using the wrong file skews every VAL on
+that board.
+
+Every rankings export ships with a title line above the header. Strip it, the
+header must be line 1. Re-export when PFF updates for injuries or depth chart
+moves; nothing has a freshness check, so an August file will serve October
+numbers without complaint.
 
 **ESPN cookies** expire mid-season and fail as a 401 or an empty league.
 
@@ -132,7 +140,7 @@ python scripts/refresh_espn_cookies.py   # paste espn_s2 and SWID, rewrites .env
 - The board blends already-scored point totals rather than rescoring PFF's stat
   lines through your league rules. Deliberate shortcut. The stat lines are
   parsed and kept, so fixing it later changes the blend, not the ingest.
-- `draft_rankings.csv` has a Projected Points column that is deliberately
+- The rankings exports have a Projected Points column that is deliberately
   ignored. It uses PFF's default scoring, not either league's, and mixing it
   into the consensus would quietly corrupt it. Only ADP and rank are used.
 

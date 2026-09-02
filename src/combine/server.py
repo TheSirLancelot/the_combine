@@ -1,6 +1,7 @@
 """FastMCP server. Streamable HTTP, bearer-authenticated, bound to loopback.
 
-Phase 0 ships health_check only. Phase 1.3 adds the league tools.
+Tool design rules, from the brief:
+  one league per call, every list capped server-side, compact text out.
 """
 
 from __future__ import annotations
@@ -9,16 +10,62 @@ import hmac
 
 from fastmcp import FastMCP
 
-from .config import BEARER_TOKEN, HOST, PATH, PORT, leagues
+from .config import BEARER_TOKEN, HOST, PATH, PORT, get_league, leagues
+from .format import ranked_table, roster_table
 from .platforms import client_for
 
 mcp = FastMCP("combine")
 
+MAX_LIMIT = 40
+
+
+@mcp.tool
+def list_leagues() -> str:
+    """The league slugs every other tool takes. Call this first if unsure."""
+    return "\n".join(
+        f"{slug:6s} {c.platform:6s} {c.name}" for slug, c in leagues().items()
+    ) or "none configured"
+
+
+@mcp.tool
+def get_league_settings(league: str) -> str:
+    """Scoring rules and starting lineup slots for one league. Needed before
+    giving positional advice, since these leagues differ a lot (one is IDP with
+    no kicker, the other is full PPR with K and D/ST)."""
+    c = client_for(league)
+    cfg = get_league(league)
+    labels = c.scoring_labels()
+    slots = ", ".join(f"{k} x{v}" for k, v in c.roster_slots().items())
+    scoring = ", ".join(
+        f"{labels[i]}={p:g}" for i, p in sorted(c.scoring_rules().items()) if p
+    )
+    return f"{cfg.name} ({league})\nstarters: {slots}\nscoring: {scoring}"
+
+
+@mcp.tool
+def get_draft_pool(league: str, position: str = "", limit: int = 15) -> str:
+    """Best available undrafted players for one league, ranked by that league's
+    own scoring and grouped into tiers. This is the draft-day tool: during a
+    draft it reflects who is still on the board. Optional position filter
+    (QB, RB, WR, TE, K, D/ST, LB, DL, DB)."""
+    limit = max(1, min(limit, MAX_LIMIT))
+    c = client_for(league)
+    states = c.free_agents(position=position or None, limit=limit)
+    label = f"{get_league(league).name} available{f' at {position}' if position else ''}"
+    return ranked_table(states, label)
+
+
+@mcp.tool
+def get_my_roster(league: str) -> str:
+    """My current roster in one league. Empty until the draft happens."""
+    c = client_for(league)
+    return roster_table(c.my_roster(), f"{get_league(league).name} roster")
+
 
 @mcp.tool
 def health_check() -> str:
-    """Per-league connection status. Use this when a league tool errors, or to
-    check whether the ESPN cookies have expired."""
+    """Per-league connection status. Use when a tool errors, or to check
+    whether the ESPN cookies have expired."""
     lines = []
     for slug, cfg in leagues().items():
         try:

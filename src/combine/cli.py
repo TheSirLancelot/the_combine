@@ -45,18 +45,51 @@ def init() -> int:
     return 0
 
 
+def try_tools() -> int:
+    """Exercise the MCP tools locally, exactly as Claude would see them.
+      combine try                 -> list leagues
+      combine try settings rcl
+      combine try pool rcl RB 15
+      combine try roster dmwd
+    """
+    from . import server
+
+    args = sys.argv[2:]
+    what = args[0] if args else "leagues"
+    rest = args[1:]
+    if what == "leagues":
+        print(server.list_leagues.fn())
+    elif what == "settings":
+        print(server.get_league_settings.fn(rest[0]))
+    elif what == "roster":
+        print(server.get_my_roster.fn(rest[0]))
+    elif what == "pool":
+        league = rest[0]
+        pos = rest[1] if len(rest) > 1 else ""
+        limit = int(rest[2]) if len(rest) > 2 else 15
+        print(server.get_draft_pool.fn(league, pos, limit))
+    elif what == "health":
+        print(server.health_check.fn())
+    else:
+        print(f"unknown: {what}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "doctor"
     if cmd == "doctor":
         return doctor()
     if cmd == "init":
         return init()
+    if cmd == "try":
+        return try_tools()
     if cmd == "serve":
         from .server import main as serve
 
         serve()
         return 0
-    print("usage: combine [doctor [--live] | init | serve]", file=sys.stderr)
+    print("usage: combine [doctor [--live] | init | try ... | serve]", file=sys.stderr)
     return 2
 
 

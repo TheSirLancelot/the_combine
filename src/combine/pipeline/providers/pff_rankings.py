@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from ...config import DATA_DIR
 
 RANKINGS = DATA_DIR / "pff" / "draft_rankings.csv"
+RANKINGS_IDP = DATA_DIR / "pff" / "draft_rankings_idp.csv"
 
 ADP_SATURATION = 168.0  # at or beyond this, ADP carries no information
 
@@ -49,14 +50,26 @@ def _num(v: str) -> float | None:
 
 
 def available() -> bool:
-    return RANKINGS.exists()
+    return RANKINGS.exists() or RANKINGS_IDP.exists()
 
 
 def load() -> list[RankRow]:
-    if not RANKINGS.exists():
+    """Both exports, merged. The IDP file has no ADP and no Projected Points
+    columns at all, so those come back None/0 for defenders. That is a real
+    limitation, not a parsing bug: PFF does not publish IDP draft position, so
+    VAL is permanently unavailable on the defensive half of an IDP league.
+
+    The IDP file uses ED for edge rushers where the per-league projections
+    export uses de. Positions are only ever a tiebreaker in matching, so this
+    costs nothing today, but do not treat the two vocabularies as one."""
+    return _read(RANKINGS) + _read(RANKINGS_IDP)
+
+
+def _read(path) -> list[RankRow]:
+    if not path.exists():
         return []
     out = []
-    with RANKINGS.open(newline="") as fh:
+    with path.open(newline="") as fh:
         for r in csv.DictReader(fh):
             adp = _num(r.get("ADP", ""))
             if adp is not None and adp >= ADP_SATURATION:

@@ -39,6 +39,7 @@ class BoardRow:
     how: str
     adp: float | None = None
     rank_proj: float | None = None   # PFF rankings' own points, for the zero check
+    pff_rank_pos: int | None = None  # PFF analysts' positional rank, not their model's
     consensus: float = 0.0
     overall_rank: int = 0
     value: int | None = None
@@ -78,6 +79,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
                 how=how,
                 adp=rank_hit.adp if rank_hit else None,
                 rank_proj=rank_hit.proj_points if rank_hit else None,
+                pff_rank_pos=rank_hit.pos_rank if rank_hit else None,
             )
         )
 
@@ -89,6 +91,14 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
         r.overall_rank = i + 1
         if r.adp is not None:
             r.value = int(round(r.adp - r.overall_rank))
+
+    # our own consensus positional rank, for comparison against PFF's ranking
+    by_pos_cons: dict[str, list[BoardRow]] = {}
+    for r in rows:
+        by_pos_cons.setdefault(r.state.pos, []).append(r)
+    for group in by_pos_cons.values():
+        for i, r in enumerate(group):
+            r._cons_pos_rank = i + 1
 
     # positional rank within each source, to surface disagreement
     for src in ("espn_pts", "pff_pts"):
@@ -111,8 +121,13 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
             r.flag = f"{'VALUE' if r.value > 0 else 'REACH'}{r.value:+d}"
         else:
             e, p = getattr(r, "_espn_pts_rank", None), getattr(r, "_pff_pts_rank", None)
+            cons, pffrk = getattr(r, "_cons_pos_rank", None), r.pff_rank_pos
             if e and p and abs(e - p) >= DISAGREE_AT:
                 r.flag = f"{'PFF' if p < e else 'ESPN'}+{abs(e - p)}"
+            elif cons and pffrk and abs(cons - pffrk) >= DISAGREE_AT:
+                # PFF's analysts ranking a player against PFF's own projections.
+                # The only signal available on the IDP side, where there is no ADP.
+                r.flag = f"PFFRK{pffrk - cons:+d}"
 
     rows.sort(key=lambda r: r.consensus, reverse=True)
     return rows, counts

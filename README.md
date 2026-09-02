@@ -45,31 +45,46 @@ as players come off the board. No refresh step, just run it again.
  14  RB  Another Guy           NYG 240.1      -  240.1  64.1  +50  11 T3   OUT?
 ```
 
-`ESPN` and `PFF` are each source's season projection **already scored under this
-league's rules**, so they are directly comparable. `CONS` is their mean and sets
-the ordering. `TIER` breaks where the drop to the next player is unusually
-large, so a tier edge is a "reach now or wait" boundary.
+| col | what it is | how to use it |
+|-----|-----------|---------------|
+| `#` | Row number in what you asked for. Filter by position and it renumbers. **Not** an overall rank. | Ignore it. It is a line number. |
+| `POS` | ESPN's position for that player. | RCL uses `LB DL DB DP` slots, DMWD uses `K D/ST`. |
+| `PLAYER` | ESPN's name, truncated at 21 chars. | The PFF row it matched may be spelled differently; `try crosswalk` shows pairs. |
+| `TM` | NFL team, ESPN's spelling. | PFF writes some differently (`HST`, `ARZ`, `LA`). Handled internally. |
+| `ESPN` | ESPN's projected season points, **scored under this league's rules**. | One opinion. Do not read alone. |
+| `PFF` | PFF's projected season points, also scored under this league's rules. Dash means no match. | Second opinion. Two sources agreeing is weak evidence; disagreeing is the useful part. |
+| `CONS` | Mean of `ESPN` and `PFF`. Falls back to ESPN alone when PFF is missing. | This sets the sort order. It is the board's opinion of who is best. |
+| `ADP` | PFF's average draft position, from the rankings export **matching this league's scoring format**. Dash means unknown. | Where the room takes him. Also tells you roughly whether he survives to your next pick. |
+| `VAL` | `ADP` minus overall consensus rank. Positive = falls later than he should. | The buy signal. `+34` means the 7th best player going around pick 41. |
+| `BYE` | Bye week. | Late rounds, avoid stacking your starters on one week. |
+| `TIER` | Groups players where the drop to the next is unusually steep. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. |
+| `FLAG` | The single most important thing about the row. See below. | Read this before the numbers. |
 
-`ADP` is PFF's average draft position **for that league's scoring format**, and
-`VAL` is ADP minus our overall rank.
-**Positive means value**: the room is letting him fall past where the numbers
-put him. Negative means the room likes him more than the projections do.
+**Two things `#` and `VAL` do not mean.** `#` renumbers per query, so the
+5th row of `board rcl WR` is not the 5th best player available. `VAL` is
+computed against the whole 250-player pool regardless of your filter, so it
+stays comparable across positions. And `VAL` says nothing about whether a
+player is good, only whether he is cheap. A 180th-ranked player with `VAL+40`
+is still the 180th best player.
 
-`FLAG` shows the single most important thing about that row, in priority order:
+**`FLAG` values,** in the priority order the code emits them (a row shows one):
 
-- `OUT?` — ranked with an early ADP but projected zero points. Something
-  happened to him and the market has not caught up. Josh Jacobs presents this
-  way. **Check before drafting.**
-- `no-pff` — no PFF projection at all. On a deep bench guy, usually just a gap.
-  On a highly ranked player, treat like `OUT?` and find out why.
-- `VALUE+18` / `REACH-15` — ADP disagrees with the projections by 12+ spots.
-- `PFF+14` / `ESPN+14` — the two projection sources disagree by 10+ positional
-  spots on a player the market has priced normally.
-- `Q` / `D` / `O` / `IR` — injury status, appended after any of the above.
+| flag | means | do |
+|------|-------|-----|
+| `OUT?` | Ranked with a real ADP but projected **zero** points. Something happened and the market has not caught up. | Look him up before spending a pick. Josh Jacobs presents this way. |
+| `no-pff` | No PFF projection at all. `CONS` is ESPN alone, undiluted. | Deep bench guy, usually a gap. Highly ranked, treat like `OUT?`. |
+| `VALUE+n` / `REACH-n` | ADP disagrees with the projections by 12+ spots. | `VALUE` is the pick to make. `REACH` means you can probably wait. |
+| `PFF+n` / `ESPN+n` | The two projection sources disagree by 10+ positional spots on a normally-priced player. | Coin flip the numbers can't settle. Use your own read. |
+| `PFFRK+n` | PFF's analysts rank him n spots away from where PFF's own projections put him. Humans overriding the model. | The only market-ish signal on the IDP side, where no ADP exists. |
+| `Q` `D` `O` `IR` | Injury status, appended after any of the above. | |
 
-A dash in `ADP` or `VAL` means PFF had no usable draft position. Their export
-saturates around 170, so anything that deep carries no information and is
-treated as unknown rather than as enormous fake value.
+**Where columns go blank, and why.** `ADP` and `VAL` are always dashes for
+RCL defenders, because PFF publishes no IDP draft position anywhere. RCL is
+also a keeper league, so two players per team are gone in ways public ADP
+cannot know; treat RCL `VAL` as a hint, not a number. The half-PPR export
+also drops to null past about ADP 130, so RCL shows dashes earlier down the
+board than DMWD does.
+
 
 **Sanity check the sources.** Run once before the draft, not during.
 

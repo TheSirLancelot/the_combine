@@ -1,4 +1,5 @@
-"""ESPN's 2026 Ultimate Cheat Sheet: nine analysts' opinion lists.
+"""Analyst opinion lists. Currently ESPN's Ultimate Cheat Sheet and NFL.com's
+late-round sleepers, but the loader takes any CSV dropped in data/opinion/.
 
 Explicitly NOT part of the projection blend. Opinion has no scale and no
 scoring format, so folding it into CONS would corrupt a number that currently
@@ -10,10 +11,13 @@ AND Field's favorites. Tucker Kraft is a do-draft and a fewer-TDs. When ESPN's
 own people disagree that hard, the projections are not going to settle it and
 you are on your own read.
 
-Hand-transcribed from the PDF (data/espn/cheatsheet_2026.csv). The PDF is a
-four-column magazine layout that does not parse reliably, so this is typed,
-not extracted. Two entries were dropped as not being players: "Jaguars
-receivers" and "Rookie receivers".
+Every file is hand-transcribed, so treat it as a curated set rather than a
+feed. The ESPN sheet is a four-column magazine PDF that does not parse
+reliably; two of its entries were dropped as not being players ("Jaguars
+receivers" and "Rookie receivers").
+
+Format: player,list,polarity  where polarity is 1 / 0 / -1.
+Add a source by dropping in a CSV and, optionally, a LABELS entry.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from collections import defaultdict
 
 from ...config import DATA_DIR
 
-SHEET = DATA_DIR / "espn" / "cheatsheet_2026.csv"
+OPINION_DIR = DATA_DIR / "opinion"
 
 # Human-readable, and short enough to print on one line.
 LABELS = {
@@ -36,7 +40,12 @@ LABELS = {
     "moody_insurance_rb": "Moody insurance RB",
     "moody_value": "Moody value",
     "field_favorite": "Field favorite",
+    "nfl_sleeper": "NFL.com late-round sleeper",
 }
+
+
+def label(key: str) -> str:
+    return LABELS.get(key, key.replace("_", " "))
 
 
 class Sentiment:
@@ -55,22 +64,24 @@ class Sentiment:
         return self.up > 0 and self.down > 0
 
     def describe(self) -> str:
-        return ", ".join(LABELS.get(x, x) for x in self.lists)
+        return ", ".join(label(x) for x in self.lists)
 
 
 def available() -> bool:
-    return SHEET.exists()
+    return OPINION_DIR.exists() and any(OPINION_DIR.glob("*.csv"))
 
 
 def load() -> dict[str, Sentiment]:
-    """name -> Sentiment. Keyed on the verbatim name; the caller crosswalks."""
-    if not SHEET.exists():
+    """name -> Sentiment, merged across every CSV in data/opinion/.
+    Keyed on the verbatim name; the caller crosswalks."""
+    if not OPINION_DIR.exists():
         return {}
     lists: dict[str, list[str]] = defaultdict(list)
     pol: dict[str, list[int]] = defaultdict(list)
-    with SHEET.open(newline="") as fh:
-        for r in csv.DictReader(fh):
-            name = r["player"].strip()
-            lists[name].append(r["list"].strip())
-            pol[name].append(int(r["polarity"]))
+    for path in sorted(OPINION_DIR.glob("*.csv")):
+        with path.open(newline="") as fh:
+            for r in csv.DictReader(fh):
+                name = r["player"].strip()
+                lists[name].append(r["list"].strip())
+                pol[name].append(int(r["polarity"]))
     return {n: Sentiment(lists[n], pol[n]) for n in lists}

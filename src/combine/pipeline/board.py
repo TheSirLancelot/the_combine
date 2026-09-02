@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from ..format import tiers
 from ..platforms import PlayerState
 from .crosswalk import build_index, load_overrides, match
-from .providers import espn_cheatsheet, pff_csv, pff_rankings
+from .providers import news as news_src, opinion, pff_csv, pff_rankings
 
 DISAGREE_AT = 10   # positional rank gap between sources worth flagging
 VALUE_AT = 12      # ADP vs consensus gap worth flagging
@@ -49,7 +49,8 @@ class BoardRow:
     adp: float | None = None
     rank_proj: float | None = None   # PFF rankings' own points, for the zero check
     pff_rank_pos: int | None = None  # PFF analysts' positional rank, not their model's
-    buzz: object | None = None       # ESPN cheat sheet sentiment, never blended
+    buzz: object | None = None       # analyst sentiment, never blended
+    news: object | None = None       # late-breaking status, never blended
     consensus: float = 0.0
     overall_rank: int = 0
     value: int | None = None
@@ -68,7 +69,9 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
     rank_idx = build_index(rank_rows) if rank_rows else {}
 
     # ESPN cheat sheet. Opinion, kept beside the numbers and never inside them.
-    sentiment = espn_cheatsheet.load()
+    sentiment = opinion.load()
+    news_items = news_src.load()
+    news_idx = build_index([_NameOnly(n) for n in news_items]) if news_items else {}
     buzz_idx = build_index([_NameOnly(n) for n in sentiment]) if sentiment else {}
 
     counts: dict[str, int] = {}
@@ -81,6 +84,11 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
         rank_hit = None
         if rank_idx:
             rank_hit, _ = match(s.name, s.team, s.pos, rank_idx, overrides)
+
+        news_hit = None
+        if news_idx:
+            shim, _ = match(s.name, s.team, s.pos, news_idx, overrides)
+            news_hit = news_items.get(shim.name) if shim else None
 
         buzz_hit = None
         if buzz_idx:
@@ -100,6 +108,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
                 rank_proj=rank_hit.proj_points if rank_hit else None,
                 pff_rank_pos=rank_hit.pos_rank if rank_hit else None,
                 buzz=buzz_hit,
+                news=news_hit,
             )
         )
 
@@ -135,6 +144,8 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
         # Ordered by how much it should change your pick.
         if r.rank_proj == 0 and r.adp is not None:
             r.flag = "OUT?"          # ranked, drafted early, projected zero
+        elif r.news is not None and r.news.severity == "high":
+            r.flag = "NEWS!"         # reporting the projections have not absorbed
         elif r.pff_pts is None:
             r.flag = "no-pff"
         elif r.value is not None and abs(r.value) >= VALUE_AT:

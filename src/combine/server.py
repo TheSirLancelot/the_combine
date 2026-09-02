@@ -129,10 +129,10 @@ def get_my_roster(league: str) -> str:
 
 @mcp.tool
 def get_player_notes(league: str, name: str) -> str:
-    """What ESPN's analysts said about one player on the 2026 cheat sheet, plus
-    his board numbers. Use when a board row shows SPLIT or a surprising BUZZ,
-    or before spending an early pick on someone. This is opinion, deliberately
-    kept out of the projection blend."""
+    """Everything known about one player: board numbers, late-breaking injury or
+    legal news, and which analysts listed him. Use when a row shows NEWS!,
+    OUT?, SPLIT, or before spending an early pick. News and opinion are both
+    deliberately kept out of the projection blend."""
     c = client_for(league)
     rows, _ = build_board(league, c.free_agents(position=None, limit=250))
     want = name.strip().lower()
@@ -145,10 +145,12 @@ def get_player_notes(league: str, name: str) -> str:
            f"pff {hit.pff_pts if hit.pff_pts is None else round(hit.pff_pts, 1)}  "
            f"cons {hit.consensus:.1f}",
            f"  adp {hit.adp}  val {hit.value}  {hit.flag or ''}".rstrip()]
+    if hit.news is not None:
+        out.append(f"  NEWS {hit.news.describe()}")
     if hit.buzz is None:
-        out.append("  ESPN cheat sheet: not mentioned")
+        out.append("  analysts: not mentioned")
     else:
-        out.append(f"  ESPN cheat sheet ({hit.buzz.up} positive, {hit.buzz.down} negative"
+        out.append(f"  analysts ({hit.buzz.up} positive, {hit.buzz.down} negative"
                    f"{', THEY DISAGREE' if hit.buzz.split else ''}):")
         out.append(f"    {hit.buzz.describe()}")
     return "\n".join(out)

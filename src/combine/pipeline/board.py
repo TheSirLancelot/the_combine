@@ -27,6 +27,7 @@ class BoardRow:
     state: PlayerState
     espn_pts: float
     pff_pts: float | None
+    pff_name: str | None
     pff_auction: float | None
     bye: int | None
     how: str
@@ -55,6 +56,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
                 state=s,
                 espn_pts=s.platform_proj or 0.0,
                 pff_pts=hit.fantasy_points if hit else None,
+                pff_name=hit.name if hit else None,
                 pff_auction=hit.auction_value if hit else None,
                 bye=hit.bye if hit else None,
                 how=how,

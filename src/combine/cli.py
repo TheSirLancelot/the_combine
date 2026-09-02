@@ -87,6 +87,12 @@ def try_tools() -> int:
         print(f"{league}: {len(pool)} espn players")
         for k, v in sorted(counts.items(), key=lambda kv: -kv[1]):
             print(f"  {k:12s} {v}")
+        fuzzy = [r for r in rows if r.how in ("fuzzy", "pos", "team", "nickname")]
+        if fuzzy:
+            print("  --- non-exact matches, eyeball these ---")
+            for r in fuzzy:
+                print(f"  {r.how:6s} {r.state.name:24s} ({r.state.pos:<4} {r.state.team or '--'})"
+                      f" -> {r.pff_name}")
         bad = [{"espn_name": r.state.name, "espn_pos": r.state.pos,
                 "espn_team": r.state.team or "", "reason": r.how, "pff_name": ""}
                for r in rows if r.how in ("unmatched", "ambiguous")]

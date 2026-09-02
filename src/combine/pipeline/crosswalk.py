@@ -19,8 +19,31 @@ from ..config import CONFIG_DIR
 OVERRIDES = CONFIG_DIR / "crosswalk_overrides.csv"
 
 _SUFFIX = re.compile(r"\b(jr|sr|ii|iii|iv|v)\b")
+# ESPN writes "Texans D/ST", PFF writes "Texans DST". Same thing, and there are
+# 32 of them, so collapse to one token rather than leaving it to fuzzy matching.
+_DST = re.compile(r"\b(d\s*st|dst|def|defense|special teams)\b")
 _PUNCT = re.compile(r"[^a-z0-9 ]")
 _WS = re.compile(r"\s+")
+
+# PFF and ESPN disagree on several team codes. Canonicalize before comparing.
+_TEAM_ALIAS = {
+    "HST": "HOU", "ARZ": "ARI", "BLT": "BAL", "CLV": "CLE",
+    "WAS": "WSH", "LA": "LAR", "SD": "LAC", "OAK": "LV", "STL": "LAR",
+}
+
+
+def team_key(team: str | None) -> str:
+    t = (team or "").strip().upper()
+    return _TEAM_ALIAS.get(t, t)
+
+
+def name_parts(name: str) -> tuple[str, str]:
+    """(first initial, surname) off a normalized name."""
+    bits = norm(name).split()
+    if not bits:
+        return "", ""
+    return bits[0][:1], bits[-1]
+
 
 FUZZ_MIN = 92      # rapidfuzz score to accept
 FUZZ_MARGIN = 4    # best must beat runner-up by this much
@@ -30,6 +53,7 @@ def norm(name: str) -> str:
     s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
     s = _PUNCT.sub(" ", s.lower())
     s = _SUFFIX.sub(" ", s)
+    s = _DST.sub(" dst", s)
     return _WS.sub(" ", s).strip()
 
 
@@ -72,13 +96,30 @@ def match(espn_name: str, espn_team: str | None, espn_pos: str | None,
     if len(cands) == 1:
         return cands[0], "exact"
     if len(cands) > 1:
-        by_team = [c for c in cands if espn_team and c.team.upper() == espn_team.upper()]
+        by_team = [c for c in cands if espn_team and team_key(c.team) == team_key(espn_team)]
         if len(by_team) == 1:
             return by_team[0], "team"
         by_pos = [c for c in cands if espn_pos and c.pos.upper() == espn_pos.upper()]
         if len(by_pos) == 1:
             return by_pos[0], "pos"
         return None, "ambiguous"
+
+    # PFF uses formal first names where ESPN uses nicknames (Kenneth/Kenny,
+    # Chigoziem/Chig, Camryn/Cam). Surname + first initial + same NFL team is
+    # deterministic and safe, where loosening the fuzzy threshold would not be.
+    init, surname = name_parts(espn_name)
+    if surname:
+        near = [
+            r for rows in idx.values() for r in rows
+            if name_parts(r.name) == (init, surname)
+            and team_key(r.team) == team_key(espn_team)
+        ]
+        if len(near) == 1:
+            return near[0], "nickname"
+        if len(near) > 1 and espn_pos:
+            same_pos = [r for r in near if r.pos.upper() == espn_pos.upper()]
+            if len(same_pos) == 1:
+                return same_pos[0], "nickname"
 
     try:
         from rapidfuzz import process, fuzz

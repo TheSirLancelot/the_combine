@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 
 from .config import BEARER_TOKEN, HOST, PATH, PORT, get_league, leagues
 from .format import ranked_table, roster_table
+from .pipeline.board import build as build_board, render as render_board
 from .platforms import client_for
 
 mcp = FastMCP("combine")
@@ -53,6 +54,24 @@ def get_draft_pool(league: str, position: str = "", limit: int = 15) -> str:
     states = c.free_agents(position=position or None, limit=limit)
     label = f"{get_league(league).name} available{f' at {position}' if position else ''}"
     return ranked_table(states, label)
+
+
+@mcp.tool
+def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
+    """Best available players for one league with BOTH projection sources side
+    by side: ESPN's and PFF's, each already scored under this league's rules,
+    plus a consensus and tiers. The FLAG column is the point of this tool.
+    'PFF+14' means PFF ranks him 14 positional spots higher than ESPN does,
+    which is where draft value actually lives. Use this over get_draft_pool
+    when drafting. Optional position filter."""
+    limit = max(1, min(limit, MAX_LIMIT))
+    c = client_for(league)
+    pool = c.free_agents(position=position or None, limit=limit * 4)
+    rows, counts = build_board(league, pool)
+    label = f"{get_league(league).name} board{f' at {position}' if position else ''}"
+    unmatched = counts.get("unmatched", 0) + counts.get("ambiguous", 0)
+    note = f"\n({unmatched} of {len(pool)} had no PFF match)" if unmatched else ""
+    return render_board(rows[:limit], label) + note
 
 
 @mcp.tool

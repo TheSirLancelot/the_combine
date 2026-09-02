@@ -73,6 +73,28 @@ def try_tools() -> int:
         pos = rest[1] if len(rest) > 1 else ""
         limit = int(rest[2]) if len(rest) > 2 else 15
         print(fn(server.get_draft_pool)(league, pos, limit))
+    elif what == "board":
+        league = rest[0]
+        pos = rest[1] if len(rest) > 1 else ""
+        limit = int(rest[2]) if len(rest) > 2 else 20
+        print(fn(server.get_draft_board)(league, pos, limit))
+    elif what == "crosswalk":
+        from .pipeline.board import build as build_board
+        from .platforms import client_for
+        league = rest[0]
+        pool = client_for(league).free_agents(limit=int(rest[1]) if len(rest) > 1 else 300)
+        rows, counts = build_board(league, pool)
+        print(f"{league}: {len(pool)} espn players")
+        for k, v in sorted(counts.items(), key=lambda kv: -kv[1]):
+            print(f"  {k:12s} {v}")
+        bad = [{"espn_name": r.state.name, "espn_pos": r.state.pos,
+                "espn_team": r.state.team or "", "reason": r.how, "pff_name": ""}
+               for r in rows if r.how in ("unmatched", "ambiguous")]
+        if bad:
+            from .pipeline.crosswalk import write_unmatched
+            out = config.DATA_DIR / f"unmatched_{league}.csv"
+            write_unmatched(bad, out)
+            print(f"  wrote {out}")
     elif what == "health":
         print(fn(server.health_check)())
     else:

@@ -55,10 +55,25 @@ as players come off the board. No refresh step, just run it again.
 | `PFF` | PFF's projected season points, also scored under this league's rules. Dash means no match. | Second opinion. Two sources agreeing is weak evidence; disagreeing is the useful part. |
 | `CONS` | Mean of `ESPN` and `PFF`. Falls back to ESPN alone when PFF is missing. | This sets the sort order. It is the board's opinion of who is best. |
 | `ADP` | PFF's average draft position, from the rankings export **matching this league's scoring format**. Dash means unknown. | Where the room takes him. Also tells you roughly whether he survives to your next pick. |
-| `VAL` | `ADP` minus overall consensus rank. Positive = falls later than he should. | The buy signal. `+34` means the 7th best player going around pick 41. |
+| `VAL` | `ADP` minus overall consensus rank. Positive = the room takes him later than the numbers say he is worth. | **Who** is underpriced, never **when** to take him. A big `+` often means you can wait, see below. |
 | `BYE` | Bye week. | Late rounds, avoid stacking your starters on one week. |
 | `TIER` | Groups players where the drop to the next is unusually steep. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. |
 | `FLAG` | The single most important thing about the row. See below. | Read this before the numbers. |
+
+**A high VAL is not "take him now."** It is closer to the opposite. `VAL+34`
+on the 7th best available player means the room usually takes him around pick
+41. That says two things at once: he is underrated, *and* he will probably
+still be sitting there at your next pick. Taking him early wastes the gap.
+
+The number that decides **when** is `ADP` compared to **your next pick**, not
+the size of `VAL`. Pick 12th with your next turn at 36? A player with ADP 41
+is very likely still there at 36, so spend pick 12 on someone who will not be.
+A player with ADP 22 is gone, so it is now or never.
+
+The rule: **`ADP` decides when, `VAL` decides who.** Of the players who will
+not survive to your next turn, take the biggest `VAL`. That is the pick where
+you paid less than the player is worth and genuinely could not have waited.
+`combine try plan` does this comparison for you.
 
 **Two things `#` and `VAL` do not mean.** `#` renumbers per query, so the
 5th row of `board rcl WR` is not the 5th best player available. `VAL` is
@@ -73,7 +88,7 @@ is still the 180th best player.
 |------|-------|-----|
 | `OUT?` | Ranked with a real ADP but projected **zero** points. Something happened and the market has not caught up. | Look him up before spending a pick. Josh Jacobs presents this way. |
 | `no-pff` | No PFF projection at all. `CONS` is ESPN alone, undiluted. | Deep bench guy, usually a gap. Highly ranked, treat like `OUT?`. |
-| `VALUE+n` / `REACH-n` | ADP disagrees with the projections by 12+ spots. | `VALUE` is the pick to make. `REACH` means you can probably wait. |
+| `VALUE+n` / `REACH-n` | ADP disagrees with the projections by 12+ spots. | `VALUE` = underpriced, but check `plan` before taking him; he may last. `REACH` = the room likes him more than the numbers do. |
 | `PFF+n` / `ESPN+n` | The two projection sources disagree by 10+ positional spots on a normally-priced player. | Coin flip the numbers can't settle. Use your own read. |
 | `PFFRK+n` | PFF's analysts rank him n spots away from where PFF's own projections put him. Humans overriding the model. | The only market-ish signal on the IDP side, where no ADP exists. |
 | `Q` `D` `O` `IR` | Injury status, appended after any of the above. | |
@@ -85,6 +100,31 @@ cannot know; treat RCL `VAL` as a hint, not a number. The half-PPR export
 also drops to null past about ADP 130, so RCL shows dashes earlier down the
 board than DMWD does.
 
+
+**When to take him.** The board says who is worth what. This says who survives
+to your next pick.
+
+```bash
+uv run combine try plan rcl 1 1       # league, your draft slot, pick on the clock
+uv run combine try plan rcl 1 24
+uv run combine try plan dmwd 7 15
+```
+
+Splits the best available into three groups against your next snake pick:
+
+- **GONE** — ADP says he is off the board before your next turn. Your real
+  choices. Take the best `VAL` here.
+- **COIN FLIP** — within 8 picks of your next turn either way. ADP is an
+  average, not a deadline, so this bucket exists on purpose.
+- **STILL THERE** — he lasts. Even a huge `VAL` here can wait; spend the pick
+  on someone from GONE and come back for him.
+- **NO ADP** — timing unknown. In RCL that is every defender.
+
+Team count and round count come from ESPN. You only supply the slot. Picking
+first in a 12-team league your picks are 1, 24, 25, 48, 49, so 22 players go
+off the board between your first and second turn; almost nothing you want at
+pick 1 survives it. Picks 24 and 25 back to back are the one place you can be
+greedy, since nothing moves in between.
 
 **Sanity check the sources.** Run once before the draft, not during.
 
@@ -112,6 +152,7 @@ uv run combine doctor          # env + league registry
 uv run combine doctor --live   # actually hit the platforms
 uv run combine try health      # same check, as Claude sees it
 uv run combine try leagues     # slugs
+uv run combine try plan rcl 1 1 # league, slot, pick on the clock
 uv run combine try roster dmwd # empty until the draft happens
 uv run combine try pool rcl RB # ESPN only, no PFF column
 uv run combine serve           # MCP server on 127.0.0.1:8787/mcp

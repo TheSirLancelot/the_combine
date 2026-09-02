@@ -73,6 +73,14 @@ class EspnClient:
         counts = self.league.settings.position_slot_counts
         return {k: v for k, v in counts.items() if v and k not in ("BE", "IR", "")}
 
+    def team_count(self) -> int:
+        return len(self.league.teams)
+
+    def roster_size(self) -> int:
+        """Startable slots plus bench. IR does not get drafted."""
+        counts = self.league.settings.position_slot_counts
+        return sum(v for k, v in counts.items() if v and k != "IR")
+
     def _my_team(self):
         team = next(
             (t for t in self.league.teams if str(t.team_id) == str(self.cfg.team_id)), None

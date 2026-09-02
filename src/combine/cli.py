@@ -78,6 +78,12 @@ def try_tools() -> int:
         pos = rest[1] if len(rest) > 1 else ""
         limit = int(rest[2]) if len(rest) > 2 else 20
         print(fn(server.get_draft_board)(league, pos, limit))
+    elif what == "plan":
+        league = rest[0]
+        slot = int(rest[1])
+        on_clock = int(rest[2])
+        limit = int(rest[3]) if len(rest) > 3 else 12
+        print(fn(server.get_draft_plan)(league, slot, on_clock, limit))
     elif what == "crosswalk":
         from .pipeline.board import build as build_board
         from .platforms import client_for

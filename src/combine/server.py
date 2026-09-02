@@ -13,6 +13,7 @@ from fastmcp import FastMCP
 from .config import BEARER_TOKEN, HOST, PATH, PORT, get_league, leagues
 from .format import ranked_table, roster_table
 from .pipeline.board import build as build_board, filter_pos, render as render_board
+from .pipeline.draftplan import next_pick, partition, snake_picks
 from .platforms import client_for
 
 mcp = FastMCP("combine")
@@ -76,6 +77,47 @@ def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
     unmatched = counts.get("unmatched", 0) + counts.get("ambiguous", 0)
     note = f"\n({unmatched} of {len(pool)} had no PFF match)" if unmatched else ""
     return render_board(shown, label) + note
+
+
+@mcp.tool
+def get_draft_plan(league: str, slot: int, on_clock: int, limit: int = 12) -> str:
+    """Snake-draft timing. Given your draft slot and the pick number currently
+    on the clock, splits the best available players into who will be GONE
+    before your next turn, who is a COIN FLIP, and who will still be THERE.
+
+    Use this to decide WHEN. Take the best VAL among the GONE group, because
+    those are the players you genuinely cannot wait on. A high VAL in the
+    THERE group means you can spend this pick elsewhere and come back for him.
+    Defenders in an IDP league land in NO ADP, where timing is unknown."""
+    limit = max(1, min(limit, MAX_LIMIT))
+    c = client_for(league)
+    teams, rounds = c.team_count(), c.roster_size()
+    picks = snake_picks(slot, teams, rounds)
+    nxt = next_pick(on_clock, picks)
+
+    rows, _ = build_board(league, c.free_agents(position=None, limit=250))
+    gone, contested, safe, unknown = partition(rows, nxt)
+
+    mine = ", ".join(str(p) for p in picks[:6])
+    head = (f"{get_league(league).name}: slot {slot} of {teams}, {rounds} rounds\n"
+            f"your picks: {mine}...\n"
+            f"on the clock: {on_clock}, your next pick: {nxt or 'none left'}\n")
+
+    def block(title, group, n):
+        if not group:
+            return f"\n{title}\n  (none)"
+        best = sorted(group, key=lambda r: (-(r.value or 0), r.overall_rank))[:n]
+        lines = [f"  {r.state.pos:<4} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
+                 f"cons {r.consensus:>6.1f}  adp {r.adp:>5.1f}  val {r.value:>+4d}"
+                 f"{'  ' + r.flag if r.flag else ''}" for r in best]
+        return f"\n{title}\n" + "\n".join(lines)
+
+    return (head
+            + block(f"GONE before pick {nxt} -- take one of these now", gone, limit)
+            + block(f"COIN FLIP around pick {nxt}", contested, max(4, limit // 2))
+            + block(f"STILL THERE at {nxt} -- you can wait", safe, max(4, limit // 2))
+            + (f"\n\nNO ADP (timing unknown): {len(unknown)} players, mostly IDP"
+               if unknown else ""))
 
 
 @mcp.tool

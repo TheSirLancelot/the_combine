@@ -82,8 +82,10 @@ def try_tools() -> int:
         league = rest[0]
         slot = int(rest[1])
         on_clock = int(rest[2])
-        limit = int(rest[3]) if len(rest) > 3 else 12
-        print(fn(server.get_draft_plan)(league, slot, on_clock, limit))
+        extra = rest[3:]
+        pos = next((a for a in extra if not a.isdigit()), "")
+        limit = next((int(a) for a in extra if a.isdigit()), 12)
+        print(fn(server.get_draft_plan)(league, slot, on_clock, pos, limit))
     elif what == "crosswalk":
         from .pipeline.board import build as build_board
         from .platforms import client_for

@@ -80,7 +80,8 @@ def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
 
 
 @mcp.tool
-def get_draft_plan(league: str, slot: int, on_clock: int, limit: int = 12) -> str:
+def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
+                   limit: int = 12) -> str:
     """Snake-draft timing. Given your draft slot and the pick number currently
     on the clock, splits the best available players into who will be GONE
     before your next turn, who is a COIN FLIP, and who will still be THERE.
@@ -88,20 +89,44 @@ def get_draft_plan(league: str, slot: int, on_clock: int, limit: int = 12) -> st
     Use this to decide WHEN. Take the best VAL among the GONE group, because
     those are the players you genuinely cannot wait on. A high VAL in the
     THERE group means you can spend this pick elsewhere and come back for him.
-    Defenders in an IDP league land in NO ADP, where timing is unknown."""
+    With no position, it also prints a scarcity line per position: how many
+    survive to your next turn. That is the run-detection view. A position with
+    almost nothing left in STILL THERE is one to take now even if a player at
+    another position grades higher.
+
+    Pass a position to see only that one. Defenders in an IDP league land in
+    NO ADP, where timing is unknown."""
     limit = max(1, min(limit, MAX_LIMIT))
     c = client_for(league)
     teams, rounds = c.team_count(), c.roster_size()
     picks = snake_picks(slot, teams, rounds)
     nxt = next_pick(on_clock, picks)
 
-    rows, _ = build_board(league, c.free_agents(position=None, limit=250))
+    all_rows, _ = build_board(league, c.free_agents(position=None, limit=250))
+    rows = filter_pos(all_rows, position)
     gone, contested, safe, unknown = partition(rows, nxt)
 
     mine = ", ".join(str(p) for p in picks[:6])
-    head = (f"{get_league(league).name}: slot {slot} of {teams}, {rounds} rounds\n"
+    head = (f"{get_league(league).name}{f' [{position}]' if position else ''}: "
+            f"slot {slot} of {teams}, {rounds} rounds\n"
             f"your picks: {mine}...\n"
             f"on the clock: {on_clock}, your next pick: {nxt or 'none left'}\n")
+
+    def scarcity() -> str:
+        """How each position depletes before your next turn. Reads across the
+        whole pool regardless of the position filter, since the point is
+        comparing positions."""
+        by_pos: dict[str, list[int]] = {}
+        for r in all_rows:
+            g, c_, s, u = partition([r], nxt)
+            slot_i = 0 if g else 1 if c_ else 2 if s else 3
+            counts = by_pos.setdefault(r.state.pos, [0, 0, 0, 0])
+            counts[slot_i] += 1
+        lines = ["\nSCARCITY: how many survive to your next pick",
+                 f"  {'POS':<5} {'gone':>5} {'flip':>5} {'left':>5} {'noadp':>6}"]
+        for pos, (g, c_, s, u) in sorted(by_pos.items(), key=lambda kv: -kv[1][2]):
+            lines.append(f"  {pos:<5} {g:>5} {c_:>5} {s:>5} {u:>6}")
+        return "\n".join(lines)
 
     def block(title, group, n):
         # Sort by CONS (board order), NOT by VAL. Every player in GONE is
@@ -123,7 +148,8 @@ def get_draft_plan(league: str, slot: int, on_clock: int, limit: int = 12) -> st
             + block(f"COIN FLIP around pick {nxt}", contested, max(4, limit // 2))
             + block(f"STILL THERE at {nxt} -- you can wait", safe, max(4, limit // 2))
             + (f"\n\nNO ADP (timing unknown): {len(unknown)} players, mostly IDP"
-               if unknown else ""))
+               if unknown else "")
+            + (scarcity() if not position else ""))
 
 
 @mcp.tool

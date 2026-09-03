@@ -23,6 +23,7 @@ from ..format import tiers
 from ..platforms import PlayerState
 from .crosswalk import build_index, load_overrides, match
 from .providers import news as news_src, opinion, pff_csv, pff_rankings
+from .vorp import replacement_points
 
 DISAGREE_AT = 10   # positional rank gap between sources worth flagging
 VALUE_AT = 12      # ADP vs consensus gap worth flagging
@@ -52,15 +53,22 @@ class BoardRow:
     buzz: object | None = None       # analyst sentiment, never blended
     news: object | None = None       # late-breaking status, never blended
     consensus: float = 0.0
+    vorp: float = 0.0        # consensus minus replacement level at his position
     overall_rank: int = 0
     cons_pos_rank: int = 0   # rank at his position by consensus, whole pool
     value: int | None = None
     flag: str = ""
 
 
-def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]:
+def build(league: str, states: list[PlayerState], slots: dict | None = None,
+          teams: int = 12) -> tuple[list[BoardRow], dict]:
     """states should be the UNFILTERED available pool, so overall_rank and the
-    ADP comparison are meaningful. Filter for display afterwards."""
+    ADP comparison are meaningful. Filter for display afterwards.
+
+    Ordering is by VORP, not raw points. ADP is a draft-order number, so
+    comparing it against a points-rank compares two different scales and made
+    every VAL systematically negative. Pass the league's slot counts to get
+    this right; without them it falls back to points order."""
     rows: list[BoardRow] = []
     have_pff = pff_csv.available(league)
     idx = build_index(pff_csv.load(league)) if have_pff else {}
@@ -116,7 +124,15 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
     for r in rows:
         r.consensus = (r.espn_pts + r.pff_pts) / 2 if r.pff_pts is not None else r.espn_pts
 
-    rows.sort(key=lambda r: r.consensus, reverse=True)
+    if slots:
+        repl = replacement_points(rows, slots, teams)
+        for r in rows:
+            r.vorp = r.consensus - repl.get(r.state.pos, 0.0)
+    else:
+        for r in rows:
+            r.vorp = r.consensus
+
+    rows.sort(key=lambda r: r.vorp, reverse=True)
     for i, r in enumerate(rows):
         r.overall_rank = i + 1
         if r.adp is not None:
@@ -161,7 +177,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
                 # The only signal available on the IDP side, where there is no ADP.
                 r.flag = f"PFFRK{pffrk - cons:+d}"
 
-    rows.sort(key=lambda r: r.consensus, reverse=True)
+    rows.sort(key=lambda r: r.vorp, reverse=True)
     return rows, counts
 
 
@@ -173,10 +189,10 @@ def filter_pos(rows: list[BoardRow], position: str) -> list[BoardRow]:
 
 
 def render(rows: list[BoardRow], header: str) -> str:
-    tier_of = tiers([r.consensus for r in rows])
+    tier_of = tiers([r.vorp for r in rows])
     out = [header,
            f"{'#':>3} {'POS':<4} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
-           f"{'CONS':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
+           f"{'CONS':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
     for i, r in enumerate(rows):
         s = r.state
         pff = f"{r.pff_pts:>6.1f}" if r.pff_pts is not None else "     -"
@@ -184,7 +200,7 @@ def render(rows: list[BoardRow], header: str) -> str:
         val = f"{r.value:>+4d}" if r.value is not None else "   -"
         bye = f"{r.bye:>3}" if r.bye else "  -"
         line = (f"{i+1:>3} {s.pos:<4} {s.name[:21]:<21} {(s.team or '--'):<3} "
-                f"{r.espn_pts:>6.1f} {pff} {r.consensus:>6.1f} {adp} {val} {bye} "
+                f"{r.espn_pts:>6.1f} {pff} {r.consensus:>6.1f} {r.vorp:>6.1f} {adp} {val} {bye} "
                 f"T{tier_of[i]:<3}")
         if r.buzz is not None:
             line += f" {('SPLIT' if r.buzz.split else f'{r.buzz.net:+d}'):>5}"

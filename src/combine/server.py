@@ -71,7 +71,7 @@ def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
     # Unfiltered pool: overall_rank and the ADP comparison are only meaningful
     # against the whole board, so filter for display, not at the source.
     pool = c.free_agents(position=None, limit=250)
-    rows, counts = build_board(league, pool)
+    rows, counts = build_board(league, pool, c.roster_slots(), c.team_count())
     shown = filter_pos(rows, position)[:limit]
     label = f"{get_league(league).name} board{f' at {position}' if position else ''}"
     unmatched = counts.get("unmatched", 0) + counts.get("ambiguous", 0)
@@ -102,7 +102,8 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
     picks = snake_picks(slot, teams, rounds)
     nxt = next_pick(on_clock, picks)
 
-    all_rows, _ = build_board(league, c.free_agents(position=None, limit=250))
+    all_rows, _ = build_board(league, c.free_agents(position=None, limit=250),
+                              c.roster_slots(), c.team_count())
     rows = filter_pos(all_rows, position)
     gone, contested, safe, unknown = partition(rows, nxt)
 
@@ -141,7 +142,7 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
         # Both ranks: overall for comparing across positions, positional
         # because "#12" is ambiguous the moment you filter to one position.
         lines = [f"  #{r.overall_rank:<3} {r.state.pos}{r.cons_pos_rank:<3} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
-                 f"cons {r.consensus:>6.1f}  adp {r.adp:>5.1f}  val {r.value:>+4d}"
+                 f"vor {r.vorp:>6.1f}  adp {r.adp:>5.1f}  val {r.value:>+4d}"
                  f"{'  ' + r.flag if r.flag else ''}" for r in best]
         return f"\n{title}\n" + "\n".join(lines)
 
@@ -168,7 +169,8 @@ def get_player_notes(league: str, name: str) -> str:
     OUT?, SPLIT, or before spending an early pick. News and opinion are both
     deliberately kept out of the projection blend."""
     c = client_for(league)
-    rows, _ = build_board(league, c.free_agents(position=None, limit=250))
+    rows, _ = build_board(league, c.free_agents(position=None, limit=250),
+                          c.roster_slots(), c.team_count())
     want = name.strip().lower()
     hit = next((r for r in rows if want in r.state.name.lower()), None)
     if hit is None:

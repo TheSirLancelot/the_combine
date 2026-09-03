@@ -18,7 +18,9 @@ def doctor() -> int:
     lg = config.leagues()
     print(f"leagues   {len(lg)} configured")
     for slug, cfg in lg.items():
-        print(f"          {slug:6s} {cfg.platform:6s} id={cfg.league_id:12s} {cfg.name}")
+        pick = f"pick {cfg.draft_slot}" if cfg.draft_slot else "pick ?"
+        print(f"          {slug:6s} {cfg.platform:6s} id={cfg.league_id:12s} "
+              f"{pick:8s} {cfg.name}")
 
     if "--live" in sys.argv:
         from .platforms import client_for
@@ -74,13 +76,19 @@ def try_tools() -> int:
         limit = int(rest[2]) if len(rest) > 2 else 20
         print(fn(server.get_draft_board)(league, pos, limit))
     elif what == "plan":
+        # combine try plan <league> <pick-on-clock> [POS] [limit] [--slot=N]
         league = rest[0]
-        slot = int(rest[1])
-        on_clock = int(rest[2])
-        extra = rest[3:]
-        pos = next((a for a in extra if not a.isdigit()), "")
-        limit = next((int(a) for a in extra if a.isdigit()), 12)
-        print(fn(server.get_draft_plan)(league, slot, on_clock, pos, limit))
+        args = rest[1:]
+        slot = 0
+        for a in list(args):
+            if a.startswith("--slot="):
+                slot = int(a.split("=", 1)[1])
+                args.remove(a)
+        nums = [int(a) for a in args if a.isdigit()]
+        pos = next((a for a in args if not a.isdigit()), "")
+        on_clock = nums[0] if nums else 1
+        limit = nums[1] if len(nums) > 1 else 12
+        print(fn(server.get_draft_plan)(league, on_clock, slot, pos, limit))
     elif what == "crosswalk":
         from .pipeline.board import build as build_board
         from .platforms import client_for

@@ -124,10 +124,11 @@ board than DMWD does.
 to your next pick.
 
 ```bash
-uv run combine try plan rcl 1 1        # league, your draft slot, pick on the clock
-uv run combine try plan rcl 1 24
-uv run combine try plan rcl 1 1 RB     # one position
-uv run combine try plan dmwd 7 15 20   # trailing number = how many rows
+uv run combine try plan rcl 1          # league, pick currently on the clock
+uv run combine try plan rcl 24
+uv run combine try plan rcl 1 RB       # one position
+uv run combine try plan dmwd 15 20     # second number = how many rows
+uv run combine try plan dmwd 15 --slot=9   # override the configured slot
 ```
 
 ```
@@ -139,6 +140,10 @@ GONE before pick 24 -- take one of these now
 
 `#1` is overall rank, `RB1` is his rank at the position. Both are computed
 against the whole pool, so they do not shift when you filter.
+
+Your draft slot comes from `<SLUG>_DRAFT_POS` in `.env` (`RCL_DRAFT_POS=1`),
+so the only thing you type mid-draft is the pick on the clock. `combine doctor`
+prints the configured slot per league; `--slot=N` overrides it for one run.
 
 Splits the best available into three groups against your next snake pick:
 

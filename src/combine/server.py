@@ -66,7 +66,7 @@ def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
 
 
 @mcp.tool
-def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
+def get_draft_plan(league: str, on_clock: int, slot: int = 0, position: str = "",
                    limit: int = 12) -> str:
     """Snake-draft timing. Given your draft slot and the pick number currently
     on the clock, splits the best available players into who will be GONE
@@ -81,8 +81,14 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
     another position grades higher.
 
     Pass a position to see only that one. Defenders in an IDP league land in
-    NO ADP, where timing is unknown."""
+    NO ADP, where timing is unknown. The draft slot comes from <SLUG>_DRAFT_POS
+    in the environment; pass slot only to override it."""
     limit = max(1, min(limit, MAX_LIMIT))
+    cfg = get_league(league)
+    slot = slot or cfg.draft_slot
+    if not slot:
+        return (f"no draft slot for '{league}'. set {league.upper()}_DRAFT_POS in .env, "
+                f"or pass one explicitly")
     c = client_for(league)
     teams, rounds = c.team_count(), c.roster_size()
     picks = snake_picks(slot, teams, rounds)
@@ -94,7 +100,7 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
     gone, contested, safe, unknown = partition(rows, nxt)
 
     mine = ", ".join(str(p) for p in picks[:6])
-    head = (f"{get_league(league).name}{f' [{position}]' if position else ''}: "
+    head = (f"{cfg.name}{f' [{position}]' if position else ''}: "
             f"slot {slot} of {teams}, {rounds} rounds\n"
             f"your picks: {mine}...\n"
             f"on the clock: {on_clock}, your next pick: {nxt or 'none left'}\n")

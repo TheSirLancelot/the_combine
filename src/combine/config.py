@@ -48,6 +48,7 @@ class LeagueConfig:
     platform: str  # "espn" | "yahoo"
     league_id: str
     team_id: str
+    draft_slot: int = 0  # <SLUG>_DRAFT_POS, 0 = unknown
 
 
 # (slug, full name, platform, league-id env var, team-id env var)
@@ -66,7 +67,9 @@ def leagues() -> dict[str, LeagueConfig]:
     for slug, name, platform, id_key, team_key in _SPECS:
         league_id, team_id = os.environ.get(id_key), os.environ.get(team_key)
         if league_id and team_id:
-            out[slug] = LeagueConfig(slug, name, platform, league_id, team_id)
+            slot = os.environ.get(f"{slug.upper()}_DRAFT_POS", "")
+            out[slug] = LeagueConfig(slug, name, platform, league_id, team_id,
+                                     int(slot) if slot.strip().isdigit() else 0)
     return out
 
 

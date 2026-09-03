@@ -53,6 +53,7 @@ class BoardRow:
     news: object | None = None       # late-breaking status, never blended
     consensus: float = 0.0
     overall_rank: int = 0
+    cons_pos_rank: int = 0   # rank at his position by consensus, whole pool
     value: int | None = None
     flag: str = ""
 
@@ -127,7 +128,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
         by_pos_cons.setdefault(r.state.pos, []).append(r)
     for group in by_pos_cons.values():
         for i, r in enumerate(group):
-            r._cons_pos_rank = i + 1
+            r.cons_pos_rank = i + 1
 
     # positional rank within each source, to surface disagreement
     for src in ("espn_pts", "pff_pts"):
@@ -152,7 +153,7 @@ def build(league: str, states: list[PlayerState]) -> tuple[list[BoardRow], dict]
             r.flag = f"{'VALUE' if r.value > 0 else 'REACH'}{r.value:+d}"
         else:
             e, p = getattr(r, "_espn_pts_rank", None), getattr(r, "_pff_pts_rank", None)
-            cons, pffrk = getattr(r, "_cons_pos_rank", None), r.pff_rank_pos
+            cons, pffrk = r.cons_pos_rank, r.pff_rank_pos
             if e and p and abs(e - p) >= DISAGREE_AT:
                 r.flag = f"{'PFF' if p < e else 'ESPN'}+{abs(e - p)}"
             elif cons and pffrk and abs(cons - pffrk) >= DISAGREE_AT:

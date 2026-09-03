@@ -138,7 +138,9 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
         if not group:
             return f"\n{title}\n  (none)"
         best = sorted(group, key=lambda r: r.overall_rank)[:n]
-        lines = [f"  #{r.overall_rank:<3} {r.state.pos:<4} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
+        # Both ranks: overall for comparing across positions, positional
+        # because "#12" is ambiguous the moment you filter to one position.
+        lines = [f"  #{r.overall_rank:<3} {r.state.pos}{r.cons_pos_rank:<3} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
                  f"cons {r.consensus:>6.1f}  adp {r.adp:>5.1f}  val {r.value:>+4d}"
                  f"{'  ' + r.flag if r.flag else ''}" for r in best]
         return f"\n{title}\n" + "\n".join(lines)
@@ -173,7 +175,8 @@ def get_player_notes(league: str, name: str) -> str:
         return f"'{name}' is not in the available pool for {league} (already drafted, or not found)"
 
     out = [f"{hit.state.name} ({hit.state.pos} {hit.state.team})",
-           f"  overall #{hit.overall_rank}  espn {hit.espn_pts:.1f}  "
+           f"  overall #{hit.overall_rank}  {hit.state.pos}{hit.cons_pos_rank}  "
+           f"espn {hit.espn_pts:.1f}  "
            f"pff {hit.pff_pts if hit.pff_pts is None else round(hit.pff_pts, 1)}  "
            f"cons {hit.consensus:.1f}",
            f"  adp {hit.adp}  val {hit.value}  {hit.flag or ''}".rstrip()]

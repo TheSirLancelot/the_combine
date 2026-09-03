@@ -48,8 +48,7 @@ def get_league_settings(league: str) -> str:
 def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
     """Best available players for one league with BOTH projection sources side
     by side: ESPN's and PFF's, each already scored under this league's rules,
-    plus consensus, tiers, ADP and VAL. Use this over get_draft_pool when
-    drafting. VAL is ADP minus our overall rank: positive means the room is
+    plus AVG, VOR, tiers, ADP and VAL. This is the drafting tool. VAL is ADP minus our overall rank: positive means the room is
     letting him fall past where the numbers put him. FLAG calls out OUT?
     (ranked and drafted early but projected zero, so something happened),
     no-pff, VALUE/REACH, and source disagreement. Optional position filter."""
@@ -117,10 +116,10 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
         return "\n".join(lines)
 
     def block(title, group, n):
-        # Sort by VORP (board order), NOT by VAL. Every player in GONE is
+        # Sort by VOR (board order), NOT by VAL. Every player in GONE is
         # someone you cannot wait on, so the cost of waiting is already zero
         # for all of them and the only question left is who is best. Sorting
-        # these by VAL buries the consensus #1 under a mid-round bargain,
+        # these by VAL buries the top-ranked player under a mid-round bargain,
         # which is nonsense at the top of a draft. VAL chooses between
         # buckets; VORP orders within them.
         if not group:
@@ -132,7 +131,7 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
         for r in best:
             lines.append(
                 f"  {'#' + str(r.overall_rank):>4} "
-                f"{r.state.pos + str(r.cons_pos_rank):<5} "
+                f"{r.state.pos + str(r.avg_pos_rank):<5} "
                 f"{r.state.name[:20]:<20} {r.state.team or '--':<3} "
                 f"{r.vorp:>6.1f} {r.adp:>5.1f} {r.value:>+4d}"
                 f"{'  ' + r.flag if r.flag else ''}")
@@ -169,10 +168,10 @@ def get_player_notes(league: str, name: str) -> str:
         return f"'{name}' is not in the available pool for {league} (already drafted, or not found)"
 
     out = [f"{hit.state.name} ({hit.state.pos} {hit.state.team})",
-           f"  overall #{hit.overall_rank}  {hit.state.pos}{hit.cons_pos_rank}  "
+           f"  overall #{hit.overall_rank}  {hit.state.pos}{hit.avg_pos_rank}  "
            f"espn {hit.espn_pts:.1f}  "
            f"pff {hit.pff_pts if hit.pff_pts is None else round(hit.pff_pts, 1)}  "
-           f"cons {hit.consensus:.1f}",
+           f"cons {hit.avg:.1f}",
            f"  adp {hit.adp}  val {hit.value}  {hit.flag or ''}".rstrip()]
     if hit.news is not None:
         out.append(f"  NEWS {hit.news.describe()}")

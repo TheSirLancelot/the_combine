@@ -52,13 +52,13 @@ def demand(slots: dict[str, int], teams: int) -> dict[str, float]:
 def replacement_points(rows, slots: dict[str, int], teams: int) -> dict[str, float]:
     """Points of the last startable player at each position.
 
-    rows need .state.pos and .consensus. Positions with no demand (a kicker in
+    rows need .state.pos and .avg. Positions with no demand (a kicker in
     a league with no K slot) get 0, which correctly makes them worthless.
     """
     need = demand(slots, teams)
     by_pos: dict[str, list[float]] = {}
     for r in rows:
-        by_pos.setdefault(r.state.pos, []).append(r.consensus)
+        by_pos.setdefault(r.state.pos, []).append(r.avg)
 
     out: dict[str, float] = {}
     for pos, points in by_pos.items():

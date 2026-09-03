@@ -3,10 +3,13 @@
 Sources:
   ESPN   season projection, already scored under this league's rules
   PFF    season projection, already scored under this league's rules
-  ADP    PFF's draft rankings export, league-agnostic
+  ADP    PFF's draft rankings export, per league scoring format
 
-CONS is the mean of the two projections. VAL is the interesting number: ADP
-minus our overall consensus rank. Positive means the room is letting him fall
+AVG is the plain mean of the projection sources, so adding a third (Yahoo, or
+PFF's API when it ships) changes the number of terms and nothing else.
+
+AVG is the mean of the two projections. VAL is the interesting number: ADP
+minus our overall VOR rank. Positive means the room is letting him fall
 past where the numbers say he belongs, which is the only edge a draft offers.
 
 Deliberate shortcut for the 2026 draft: this blends finished point totals
@@ -26,7 +29,7 @@ from .providers import news as news_src, opinion, pff_csv, pff_rankings
 from .vorp import replacement_points
 
 DISAGREE_AT = 10   # positional rank gap between sources worth flagging
-VALUE_AT = 12      # ADP vs consensus gap worth flagging
+VALUE_AT = 12      # ADP vs VOR-rank gap worth flagging
 
 
 @dataclass(frozen=True)
@@ -52,10 +55,10 @@ class BoardRow:
     pff_rank_pos: int | None = None  # PFF analysts' positional rank, not their model's
     buzz: object | None = None       # analyst sentiment, never blended
     news: object | None = None       # late-breaking status, never blended
-    consensus: float = 0.0
-    vorp: float = 0.0        # consensus minus replacement level at his position
+    avg: float = 0.0
+    vorp: float = 0.0        # AVG minus replacement level at his position
     overall_rank: int = 0
-    cons_pos_rank: int = 0   # rank at his position by consensus, whole pool
+    avg_pos_rank: int = 0   # rank at his position by AVG, whole pool
     value: int | None = None
     flag: str = ""
 
@@ -122,15 +125,15 @@ def build(league: str, states: list[PlayerState], slots: dict | None = None,
         )
 
     for r in rows:
-        r.consensus = (r.espn_pts + r.pff_pts) / 2 if r.pff_pts is not None else r.espn_pts
+        r.avg = (r.espn_pts + r.pff_pts) / 2 if r.pff_pts is not None else r.espn_pts
 
     if slots:
         repl = replacement_points(rows, slots, teams)
         for r in rows:
-            r.vorp = r.consensus - repl.get(r.state.pos, 0.0)
+            r.vorp = r.avg - repl.get(r.state.pos, 0.0)
     else:
         for r in rows:
-            r.vorp = r.consensus
+            r.vorp = r.avg
 
     rows.sort(key=lambda r: r.vorp, reverse=True)
     for i, r in enumerate(rows):
@@ -138,13 +141,13 @@ def build(league: str, states: list[PlayerState], slots: dict | None = None,
         if r.adp is not None:
             r.value = int(round(r.adp - r.overall_rank))
 
-    # our own consensus positional rank, for comparison against PFF's ranking
-    by_pos_cons: dict[str, list[BoardRow]] = {}
+    # our own average positional rank, for comparison against PFF's ranking
+    by_pos_avg: dict[str, list[BoardRow]] = {}
     for r in rows:
-        by_pos_cons.setdefault(r.state.pos, []).append(r)
-    for group in by_pos_cons.values():
+        by_pos_avg.setdefault(r.state.pos, []).append(r)
+    for group in by_pos_avg.values():
         for i, r in enumerate(group):
-            r.cons_pos_rank = i + 1
+            r.avg_pos_rank = i + 1
 
     # positional rank within each source, to surface disagreement
     for src in ("espn_pts", "pff_pts"):
@@ -169,7 +172,7 @@ def build(league: str, states: list[PlayerState], slots: dict | None = None,
             r.flag = f"{'VALUE' if r.value > 0 else 'REACH'}{r.value:+d}"
         else:
             e, p = getattr(r, "_espn_pts_rank", None), getattr(r, "_pff_pts_rank", None)
-            cons, pffrk = r.cons_pos_rank, r.pff_rank_pos
+            cons, pffrk = r.avg_pos_rank, r.pff_rank_pos
             if e and p and abs(e - p) >= DISAGREE_AT:
                 r.flag = f"{'PFF' if p < e else 'ESPN'}+{abs(e - p)}"
             elif cons and pffrk and abs(cons - pffrk) >= DISAGREE_AT:
@@ -194,16 +197,16 @@ def render(rows: list[BoardRow], header: str) -> str:
     # the caller filters by position. A bare line number is misleading here.
     out = [header,
            f"{'#':>4} {'POS':<5} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
-           f"{'CONS':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
+           f"{'AVG':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
     for i, r in enumerate(rows):
         s = r.state
         pff = f"{r.pff_pts:>6.1f}" if r.pff_pts is not None else "     -"
         adp = f"{r.adp:>5.1f}" if r.adp is not None else "    -"
         val = f"{r.value:>+4d}" if r.value is not None else "   -"
         bye = f"{r.bye:>3}" if r.bye else "  -"
-        line = (f"{'#' + str(r.overall_rank):>4} {s.pos + str(r.cons_pos_rank):<5} "
+        line = (f"{'#' + str(r.overall_rank):>4} {s.pos + str(r.avg_pos_rank):<5} "
                 f"{s.name[:21]:<21} {(s.team or '--'):<3} "
-                f"{r.espn_pts:>6.1f} {pff} {r.consensus:>6.1f} {r.vorp:>6.1f} {adp} {val} {bye} "
+                f"{r.espn_pts:>6.1f} {pff} {r.avg:>6.1f} {r.vorp:>6.1f} {adp} {val} {bye} "
                 f"T{tier_of[i]:<3}")
         if r.buzz is not None:
             line += f" {('SPLIT' if r.buzz.split else f'{r.buzz.net:+d}'):>5}"

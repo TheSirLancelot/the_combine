@@ -39,7 +39,7 @@ as players come off the board. No refresh step, just run it again.
 **Reading a row:**
 
 ```
-  #  POS PLAYER                TM   ESPN    PFF   CONS    VOR   ADP  VAL BYE TIER  BUZZ FLAG
+  #  POS PLAYER                TM   ESPN    PFF    AVG    VOR   ADP  VAL BYE TIER  BUZZ FLAG
   1  RB  Jahmyr Gibbs          DET 365.7  342.9  354.3  185.2   1.3   +0   6 T1      +2
   7  WR  Some Guy              MIA 210.4  248.1  229.2   96.4  41.2  +34   9 T3   SPLIT VALUE+34
  14  RB  Another Guy           NYG 240.1      -  240.1   71.0  64.1  +50  11 T3      -1 NEWS!
@@ -53,8 +53,8 @@ as players come off the board. No refresh step, just run it again.
 | `TM` | NFL team, ESPN's spelling. | PFF writes some differently (`HST`, `ARZ`, `LA`). Handled internally. |
 | `ESPN` | ESPN's projected season points, **scored under this league's rules**. | One opinion. Do not read alone. |
 | `PFF` | PFF's projected season points, also scored under this league's rules. Dash means no match. | Second opinion. Two sources agreeing is weak evidence; disagreeing is the useful part. |
-| `CONS` | Mean of `ESPN` and `PFF`. Falls back to ESPN alone when PFF is missing. | Raw projected points. Comparable *within* a position, misleading across them. Does **not** set the order. |
-| `VOR` | `CONS` minus replacement level at his position, where replacement is the last player who starts somewhere in a 12-team league. | **This sets the order.** It is what makes a QB and an RB comparable. See below. |
+| `AVG` | Plain mean of the projection sources (`ESPN`, `PFF`, and whatever gets added later). Falls back to whichever exist. | Raw projected points. Comparable *within* a position, misleading across them. Does **not** set the order. |
+| `VOR` | `AVG` minus replacement level at his position, where replacement is the last player who starts somewhere in a 12-team league. | **This sets the order.** It is what makes a QB and an RB comparable. See below. |
 | `ADP` | PFF's average draft position, from the rankings export **matching this league's scoring format**. Dash means unknown. | Where the room takes him. Also tells you roughly whether he survives to your next pick. |
 | `VAL` | `ADP` minus his overall `VOR` rank. Positive = the room takes him later than the numbers say he is worth. | **Who** is underpriced, never **when** to take him. A big `+` often means you can wait, see below. |
 | `BYE` | Bye week. | Late rounds, avoid stacking your starters on one week. |
@@ -62,20 +62,20 @@ as players come off the board. No refresh step, just run it again.
 | `BUZZ` | Net analyst sentiment from the opinion lists, or `SPLIT` when they contradict each other. Blank = nobody mentioned him. | Never in the blend. `SPLIT` is the interesting one; `try notes` gives the detail. |
 | `FLAG` | The single most important thing about the row. See below. | Read this before the numbers. |
 
-**Why `VOR` and not `CONS`.** Raw points do not decide when a player is
+**Why `VOR` and not `AVG`.** Raw points do not decide when a player is
 drafted. A QB projected for 300 when the 12th best QB gets 280 gives you 20
 points of edge over what you could have had anyway. An RB projected for 250
 when RB24 gets 130 gives you 120. The RB goes far earlier despite scoring
 fewer points.
 
 This bit hard in RCL, where the pool is full of linebackers projected for 230
-and quarterbacks over 300 that nobody drafts early. Ordering on `CONS` pushed
+and quarterbacks over 300 that nobody drafts early. Ordering on `AVG` pushed
 every running back down the board and made **every** `VAL` negative, because
-`ADP` is a draft-order number and `CONS` rank is not. Replacement level is
+`ADP` is a draft-order number and `AVG` rank is not. Replacement level is
 computed from your league's own slot counts times 12 teams, with flex slots
 split across the positions eligible for them.
 
-Practical upshot: read `CONS` to compare two RBs, read `VOR` to compare an RB
+Practical upshot: read `AVG` to compare two RBs, read `VOR` to compare an RB
 against a QB. If `VAL` ever goes systematically negative again, that is the
 symptom of this same class of bug.
 
@@ -105,7 +105,7 @@ by position never changes them.
 | flag | means | do |
 |------|-------|-----|
 | `OUT?` | Ranked with a real ADP but projected **zero** points. Something happened and the market has not caught up. | Look him up before spending a pick. Josh Jacobs presents this way. |
-| `no-pff` | No PFF projection at all. `CONS` is ESPN alone, undiluted. | Deep bench guy, usually a gap. Highly ranked, treat like `OUT?`. |
+| `no-pff` | No PFF projection at all. `AVG` is ESPN alone, undiluted. | Deep bench guy, usually a gap. Highly ranked, treat like `OUT?`. |
 | `NEWS!` | Reporting the projections have not absorbed: out, IR, week-to-week, suspension risk. | `try notes` for the detail, source and date. Re-check these the morning of the draft. |
 | `VALUE+n` / `REACH-n` | ADP disagrees with the projections by 12+ spots. | `VALUE` = underpriced, but check `plan` before taking him; he may last. `REACH` = the room likes him more than the numbers do. |
 | `PFF+n` / `ESPN+n` | The two projection sources disagree by 10+ positional spots on a normally-priced player. | Coin flip the numbers can't settle. Use your own read. |

@@ -60,12 +60,41 @@ class BoardRow:
     overall_rank: int = 0
     avg_pos_rank: int = 0   # rank at his position by AVG, whole pool
     tier: int = 0           # tier WITHIN his position, whole pool
+    td_share: float | None = None    # fraction of the PFF projection that is TDs
+    games: float | None = None       # PFF projected games; <17 means an absence is priced in
     value: int | None = None
     flag: str = ""
 
 
+# ESPN scoring stat ids for the three touchdown types, paired with the PFF
+# column that projects them. Everything else in a stat line is volume.
+_TD_COLUMNS = {"passTd": 4, "rushTd": 25, "recvTd": 43}
+
+
+def _td_share(row, scoring: dict[int, float] | None) -> float | None:
+    """What fraction of a player's projected points comes from touchdowns.
+
+    Volume projects far more reliably than touchdowns do. Two backs at 250
+    points are not the same bet if one gets there on 300 carries and the other
+    needs 14 scores. High share = volatile, and the first candidate for
+    negative regression.
+
+    Uses the league's own points-per-TD, so a 4-point-passing-TD league and a
+    6-point one give different answers for the same quarterback.
+    """
+    if not scoring or not row.fantasy_points:
+        return None
+    td_points = sum(
+        row.stats.get(col, 0.0) * scoring.get(stat_id, 0.0)
+        for col, stat_id in _TD_COLUMNS.items()
+    )
+    if td_points <= 0:
+        return None
+    return min(td_points / row.fantasy_points, 1.0)
+
+
 def build(league: str, states: list[PlayerState], slots: dict | None = None,
-          teams: int = 12) -> tuple[list[BoardRow], dict]:
+          teams: int = 12, scoring: dict[int, float] | None = None) -> tuple[list[BoardRow], dict]:
     """states should be the UNFILTERED available pool, so overall_rank and the
     ADP comparison are meaningful. Filter for display afterwards.
 
@@ -115,6 +144,8 @@ def build(league: str, states: list[PlayerState], slots: dict | None = None,
                 pff_pts=hit.fantasy_points if hit else None,
                 pff_name=hit.name if hit else None,
                 pff_auction=hit.auction_value if hit else None,
+                td_share=_td_share(hit, scoring) if hit else None,
+                games=hit.games if hit else None,
                 bye=(hit.bye if hit else None) or (rank_hit.bye if rank_hit else None),
                 how=how,
                 adp=rank_hit.adp if rank_hit else None,
@@ -202,22 +233,24 @@ def render(rows: list[BoardRow], header: str) -> str:
     # the caller filters by position. A bare line number is misleading here.
     out = [header,
            f"{'#':>4} {'POS':<5} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
-           f"{'AVG':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
+           f"{'AVG':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'TD%':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
     for i, r in enumerate(rows):
         s = r.state
         pff = f"{r.pff_pts:>6.1f}" if r.pff_pts is not None else "     -"
         adp = f"{r.adp:>5.1f}" if r.adp is not None else "    -"
         val = f"{r.value:>+4d}" if r.value is not None else "   -"
         bye = f"{r.bye:>3}" if r.bye else "  -"
+        tdp = f"{r.td_share * 100:>3.0f}%" if r.td_share is not None else "   -"
         line = (f"{'#' + str(r.overall_rank):>4} {s.pos + str(r.avg_pos_rank):<5} "
                 f"{s.name[:21]:<21} {(s.team or '--'):<3} "
-                f"{r.espn_pts:>6.1f} {pff} {r.avg:>6.1f} {r.vorp:>6.1f} {adp} {val} {bye} "
+                f"{r.espn_pts:>6.1f} {pff} {r.avg:>6.1f} {r.vorp:>6.1f} {adp} {val} {tdp} {bye} "
                 f"T{r.tier:<3}")
         if r.buzz is not None:
             line += f" {('SPLIT' if r.buzz.split else f'{r.buzz.net:+d}'):>5}"
         else:
             line += "      "
-        extras = [x for x in (r.flag, s.status if s.status != "OK" else "") if x]
+        games_note = f"{r.games:.0f}g" if r.games and r.games < 17 else ""
+        extras = [x for x in (r.flag, games_note, s.status if s.status != "OK" else "") if x]
         return_line = line + (" " + " ".join(extras) if extras else "")
         out.append(return_line)
     return "\n".join(out)

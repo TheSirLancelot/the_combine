@@ -14,6 +14,7 @@ from .config import BEARER_TOKEN, HOST, PATH, PORT, get_league, leagues
 from .format import ranked_table, roster_table
 from .pipeline.board import build as build_board, filter_pos, render as render_board
 from .pipeline.draftplan import next_pick, partition, snake_picks
+from .pipeline.needs import compute as compute_needs, render as render_needs
 from .platforms import client_for
 
 mcp = FastMCP("combine")
@@ -57,7 +58,7 @@ def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
     # Unfiltered pool: overall_rank and the ADP comparison are only meaningful
     # against the whole board, so filter for display, not at the source.
     pool = c.free_agents(position=None, limit=250)
-    rows, counts = build_board(league, pool, c.roster_slots(), c.team_count())
+    rows, counts = build_board(league, pool, c.roster_slots(), c.team_count(), c.scoring_rules())
     shown = filter_pos(rows, position)[:limit]
     label = f"{get_league(league).name} board{f' at {position}' if position else ''}"
     unmatched = counts.get("unmatched", 0) + counts.get("ambiguous", 0)
@@ -95,7 +96,7 @@ def get_draft_plan(league: str, on_clock: int, slot: int = 0, position: str = ""
     nxt = next_pick(on_clock, picks)
 
     all_rows, _ = build_board(league, c.free_agents(position=None, limit=250),
-                              c.roster_slots(), c.team_count())
+                              c.roster_slots(), c.team_count(), c.scoring_rules())
     rows = filter_pos(all_rows, position)
     gone, contested, safe, unknown = partition(rows, nxt)
 
@@ -160,6 +161,50 @@ def get_my_roster(league: str) -> str:
 
 
 @mcp.tool
+def get_needs(league: str, limit: int = 10) -> str:
+    """What your roster still needs, mid-draft. Reads your live ESPN roster,
+    shows which starting slots are still empty, which positions fill them,
+    warns about bye-week pileups, then lists the best available players at the
+    positions you actually need.
+
+    Rounds 1-3 are best-player-available; use get_draft_board for those. From
+    round 4 on, a fourth RB is worth less than a first TE no matter what the
+    projections say, and this is the tool for that decision."""
+    limit = max(1, min(limit, MAX_LIMIT))
+    c = client_for(league)
+    slots = c.roster_slots()
+    roster = c.my_roster()
+
+    rows, _ = build_board(league, c.free_agents(position=None, limit=250),
+                          slots, c.team_count(), c.scoring_rules())
+    byes = {r.state.name: r.bye for r in rows if r.bye}
+
+    needs = compute_needs(roster, slots, byes)
+    head = render_needs(needs, c.roster_size(), len(roster))
+
+    if not roster:
+        return head + "\n\n(nothing drafted yet, so every slot reads empty. " \
+                      "use get_draft_board until you have picks.)"
+
+    wanted = needs.open_positions
+    if not wanted:
+        return head
+    best = [r for r in rows if r.state.pos in wanted][:limit]
+    lines = ["\nBEST AVAILABLE AT POSITIONS YOU NEED",
+             f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VOR':>6} "
+             f"{'ADP':>5} {'TD%':>4} {'BYE':>3} {'TIER':>4}  FLAG"]
+    for r in best:
+        tdp = f"{r.td_share * 100:>3.0f}%" if r.td_share is not None else "   -"
+        lines.append(
+            f"  {'#' + str(r.overall_rank):>4} {r.state.pos + str(r.avg_pos_rank):<5} "
+            f"{r.state.name[:20]:<20} {r.state.team or '--':<3} {r.vorp:>6.1f} "
+            f"{(f'{r.adp:>5.1f}' if r.adp is not None else '    -')} {tdp} "
+            f"{(f'{r.bye:>3}' if r.bye else '  -')} {'T' + str(r.tier):>4}"
+            f"{'  ' + r.flag if r.flag else ''}")
+    return head + "\n" + "\n".join(lines)
+
+
+@mcp.tool
 def get_player_notes(league: str, name: str) -> str:
     """Everything known about one player: board numbers, late-breaking injury or
     legal news, and which analysts listed him. Use when a row shows NEWS!,
@@ -167,7 +212,7 @@ def get_player_notes(league: str, name: str) -> str:
     deliberately kept out of the projection blend."""
     c = client_for(league)
     rows, _ = build_board(league, c.free_agents(position=None, limit=250),
-                          c.roster_slots(), c.team_count())
+                          c.roster_slots(), c.team_count(), c.scoring_rules())
     want = name.strip().lower()
     hit = next((r for r in rows if want in r.state.name.lower()), None)
     if hit is None:
@@ -180,6 +225,11 @@ def get_player_notes(league: str, name: str) -> str:
            f"pff {hit.pff_pts if hit.pff_pts is None else round(hit.pff_pts, 1)}  "
            f"cons {hit.avg:.1f}",
            f"  adp {hit.adp}  val {hit.value}  {hit.flag or ''}".rstrip()]
+    if hit.td_share is not None:
+        out.append(f"  {hit.td_share * 100:.0f}% of his projection is touchdowns"
+                   f"{'  (volatile)' if hit.td_share > 0.35 else ''}")
+    if hit.games and hit.games < 17:
+        out.append(f"  projected for only {hit.games:.0f} games")
     if hit.news is not None:
         out.append(f"  NEWS {hit.news.describe()}")
     if hit.buzz is None:

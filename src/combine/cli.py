@@ -112,6 +112,8 @@ def try_tools() -> int:
             out = config.DATA_DIR / f"unmatched_{league}.csv"
             write_unmatched(bad, out)
             print(f"  wrote {out}")
+    elif what == "needs":
+        print(fn(server.get_needs)(rest[0], int(rest[1]) if len(rest) > 1 else 10))
     elif what == "notes":
         print(fn(server.get_player_notes)(rest[0], " ".join(rest[1:])))
     elif what == "health":

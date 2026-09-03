@@ -172,8 +172,13 @@ formula to copy.
 
 **RCL's ADP is soft.** It is a keeper league, so 24 players are gone in ways
 public ADP cannot know, and PFF publishes no IDP draft position at all, so
-every defender has no ADP and no VAL. Whether ESPN's free-agent pool correctly
-excludes kept players has not been verified.
+every defender has no ADP and no VAL.
+
+Keepers themselves are fine: verified 2026-09-03 that ESPN has already
+rostered them and they do not appear in the free-agent pool. That also means
+the pool reflects roster state rather than a static player list, which is
+indirect evidence it will shed players as they are drafted. Still worth
+confirming live after the first couple of picks.
 
 **Everything hand-curated is a snapshot.** The PFF exports, the opinion lists
 and the news file have no freshness check. An August export will serve October

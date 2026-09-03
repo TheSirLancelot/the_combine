@@ -151,7 +151,9 @@ by position never changes them.
 **Where columns go blank, and why.** `ADP` and `VAL` are always dashes for
 RCL defenders, because PFF publishes no IDP draft position anywhere. RCL is
 also a keeper league, so two players per team are gone in ways public ADP
-cannot know; treat RCL `VAL` as a hint, not a number. The half-PPR export
+cannot know; treat RCL `VAL` as a hint, not a number. The kept players
+themselves are correctly excluded from the pool by ESPN, so the board is not
+offering you undraftable people. The half-PPR export
 also drops to null past about ADP 130, so RCL shows dashes earlier down the
 board than DMWD does.
 

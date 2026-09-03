@@ -62,22 +62,56 @@ as players come off the board. No refresh step, just run it again.
 | `BUZZ` | Net analyst sentiment from the opinion lists, or `SPLIT` when they contradict each other. Blank = nobody mentioned him. | Never in the blend. `SPLIT` is the interesting one; `try notes` gives the detail. |
 | `FLAG` | The single most important thing about the row. See below. | Read this before the numbers. |
 
-**Why `VOR` and not `AVG`.** Raw points do not decide when a player is
-drafted. A QB projected for 300 when the 12th best QB gets 280 gives you 20
-points of edge over what you could have had anyway. An RB projected for 250
-when RB24 gets 130 gives you 120. The RB goes far earlier despite scoring
-fewer points.
+**How `VOR` works.** It answers one question: *how much better is this player
+than what I could get at his position anyway?*
 
-This bit hard in RCL, where the pool is full of linebackers projected for 230
-and quarterbacks over 300 that nobody drafts early. Ordering on `AVG` pushed
-every running back down the board and made **every** `VAL` negative, because
-`ADP` is a draft-order number and `AVG` rank is not. Replacement level is
-computed from your league's own slot counts times 12 teams, with flex slots
-split across the positions eligible for them.
+Twelve teams start one QB each. There are far more than twelve usable QBs, so
+if you skip the best one you still end up with a fine one. Twelve teams start
+two RBs plus a flex, and backs run out fast, so skipping the best one leaves
+you somewhere much worse. Raw points cannot see that difference. `VOR` is
+built to.
 
-Practical upshot: read `AVG` to compare two RBs, read `VOR` to compare an RB
-against a QB. If `VAL` ever goes systematically negative again, that is the
+**Replacement level** is the last player at a position who still starts
+somewhere in the league. It comes from your league's own settings: slot count
+times team count, with flex slots split across the positions eligible for
+them. DMWD has one RB/WR/TE flex, which adds 12 jobs spread three ways, so RB
+replacement sits at 24 + 4 = **28th best RB**, not 24th.
+
+`VOR` = `AVG` minus that replacement player's points.
+
+Worked, from DMWD's real numbers:
+
+| pos | replacement is | best player | his `AVG` | his `VOR` |
+|-----|----------------|-------------|-----------|-----------|
+| QB  | 12th best, ~301 | Josh Allen  | 348.0 | **47** |
+| RB  | 28th best, ~181 | Jahmyr Gibbs | 342.9 | **161** |
+| WR  | 28th best, ~213 | Puka Nacua  | 323.6 | **111** |
+| TE  | 16th best, ~154 | Trey McBride | 245.9 | **92** |
+| K   | 12th best, ~119 | best kicker | 123.5 | **5** |
+
+Josh Allen outscores Gibbs on raw points and is worth about a third as much,
+because skipping Allen costs you 47 points and skipping Gibbs costs you 161.
+The kicker row is the same logic at its limit: the best kicker alive is worth
+five points more than one you can take in the last round. That is why nobody
+drafts a kicker early, and `VOR` says it as a number instead of as folklore.
+
+**Why this had to exist.** `VAL` compares `ADP`, a draft-order number, against
+our rank. Ranking on `AVG` meant ranking on raw points, and in RCL the pool is
+full of linebackers projected for 230 and quarterbacks over 300 that nobody
+drafts early. They pushed every running back down the board and made **every**
+`VAL` negative. If `VAL` ever goes systematically negative again, that is the
 symptom of this same class of bug.
+
+**Reading it.** Use `AVG` to compare two players at the same position, since
+they share a replacement level and the subtraction cancels. Use `VOR` the
+moment you compare across positions. Within one position the two give
+identical orderings, which is also why positional tiers are unaffected by the
+choice.
+
+**What it assumes.** That every team fills every starting slot, that starters
+are what matter (bench depth is not counted), and that flex demand splits
+evenly across eligible positions. All three are standard simplifications and
+all three are approximations.
 
 **A high VAL is not "take him now."** It is closer to the opposite. `VAL+34`
 on the 7th best available player means the room usually takes him around pick

@@ -39,7 +39,7 @@ as players come off the board. No refresh step, just run it again.
 **Reading a row:**
 
 ```
-  #  POS PLAYER                TM   ESPN    PFF    AVG    VOR   ADP  VAL BYE TIER  BUZZ FLAG
+  #  POS PLAYER                TM   ESPN    PFF    AVG   VORP   ADP  VAL BYE TIER  BUZZ FLAG
   1  RB  Jahmyr Gibbs          DET 365.7  342.9  354.3  185.2   1.3   +0   6 T1      +2
   7  WR  Some Guy              MIA 210.4  248.1  229.2   96.4  41.2  +34   9 T3   SPLIT VALUE+34
  14  RB  Another Guy           NYG 240.1      -  240.1   71.0  64.1  +50  11 T3      -1 NEWS!
@@ -47,28 +47,28 @@ as players come off the board. No refresh step, just run it again.
 
 | col | what it is | how to use it |
 |-----|-----------|---------------|
-| `#` | Overall rank by `VOR` across the whole pool. Does not shift when you filter. | Compare across positions. |
+| `#` | Overall rank by `VORP` across the whole pool. Does not shift when you filter. | Compare across positions. |
 | `POS` | Position plus his rank at it, e.g. `RB4` = fourth best RB available. Also whole-pool. | Compare within a position. |
 | `PLAYER` | ESPN's name, truncated at 21 chars. | The PFF row it matched may be spelled differently; `try crosswalk` shows pairs. |
 | `TM` | NFL team, ESPN's spelling. | PFF writes some differently (`HST`, `ARZ`, `LA`). Handled internally. |
 | `ESPN` | ESPN's projected season points, **scored under this league's rules**. | One opinion. Do not read alone. |
 | `PFF` | PFF's projected season points, also scored under this league's rules. Dash means no match. | Second opinion. Two sources agreeing is weak evidence; disagreeing is the useful part. |
 | `AVG` | Plain mean of the projection sources (`ESPN`, `PFF`, and whatever gets added later). Falls back to whichever exist. | Raw projected points. Comparable *within* a position, misleading across them. Does **not** set the order. |
-| `VOR` | `AVG` minus replacement level at his position, where replacement is the last player who starts somewhere in a 12-team league. | **This sets the order.** It is what makes a QB and an RB comparable. See below. |
+| `VORP` | Value over replacement. `AVG` minus replacement level at his position, where replacement is the last player who starts somewhere in a 12-team league. | **This sets the order.** It is what makes a QB and an RB comparable. See below. |
 | `ADP` | PFF's average draft position, from the rankings export **matching this league's scoring format**. Dash means unknown. | Where the room takes him. Also tells you roughly whether he survives to your next pick. |
-| `VAL` | `ADP` minus his overall `VOR` rank. Positive = the room takes him later than the numbers say he is worth. | **Who** is underpriced, never **when** to take him. A big `+` often means you can wait, see below. |
+| `VAL` | `ADP` minus his overall `VORP` rank. Positive = the room takes him later than the numbers say he is worth. | **Who** is underpriced, never **when** to take him. A big `+` often means you can wait, see below. |
 | `BYE` | Bye week. | Late rounds, avoid stacking your starters on one week. |
-| `TIER` | Tier **within his position**, computed by me, not by PFF. Breaks where the drop in `VOR` to the next player at that position is more than 1.6x the typical drop. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. Whole-pool, so it does not change when you filter. |
+| `TIER` | Tier **within his position**, computed by me, not by PFF. Breaks where the drop in `VORP` to the next player at that position is more than 1.6x the typical drop. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. Whole-pool, so it does not change when you filter. |
 | `BUZZ` | Net analyst sentiment from the opinion lists, or `SPLIT` when they contradict each other. Blank = nobody mentioned him. | Never in the blend. `SPLIT` is the interesting one; `try notes` gives the detail. |
 | `FLAG` | The single most important thing about the row. See below. | Read this before the numbers. |
 
-**How `VOR` works.** It answers one question: *how much better is this player
+**How `VORP` works.** *Value Over Replacement Player*, borrowed from baseball. It answers one question: *how much better is this player
 than what I could get at his position anyway?*
 
 Twelve teams start one QB each. There are far more than twelve usable QBs, so
 if you skip the best one you still end up with a fine one. Twelve teams start
 two RBs plus a flex, and backs run out fast, so skipping the best one leaves
-you somewhere much worse. Raw points cannot see that difference. `VOR` is
+you somewhere much worse. Raw points cannot see that difference. `VORP` is
 built to.
 
 **Replacement level** is the last player at a position who still starts
@@ -77,11 +77,11 @@ times team count, with flex slots split across the positions eligible for
 them. DMWD has one RB/WR/TE flex, which adds 12 jobs spread three ways, so RB
 replacement sits at 24 + 4 = **28th best RB**, not 24th.
 
-`VOR` = `AVG` minus that replacement player's points.
+`VORP` = `AVG` minus that replacement player's points.
 
 Worked, from DMWD's real numbers:
 
-| pos | replacement is | best player | his `AVG` | his `VOR` |
+| pos | replacement is | best player | his `AVG` | his `VORP` |
 |-----|----------------|-------------|-----------|-----------|
 | QB  | 12th best, ~301 | Josh Allen  | 348.0 | **47** |
 | RB  | 28th best, ~181 | Jahmyr Gibbs | 342.9 | **161** |
@@ -93,7 +93,7 @@ Josh Allen outscores Gibbs on raw points and is worth about a third as much,
 because skipping Allen costs you 47 points and skipping Gibbs costs you 161.
 The kicker row is the same logic at its limit: the best kicker alive is worth
 five points more than one you can take in the last round. That is why nobody
-drafts a kicker early, and `VOR` says it as a number instead of as folklore.
+drafts a kicker early, and `VORP` says it as a number instead of as folklore.
 
 **Why this had to exist.** `VAL` compares `ADP`, a draft-order number, against
 our rank. Ranking on `AVG` meant ranking on raw points, and in RCL the pool is
@@ -103,7 +103,7 @@ drafts early. They pushed every running back down the board and made **every**
 symptom of this same class of bug.
 
 **Reading it.** Use `AVG` to compare two players at the same position, since
-they share a replacement level and the subtraction cancels. Use `VOR` the
+they share a replacement level and the subtraction cancels. Use `VORP` the
 moment you compare across positions. Within one position the two give
 identical orderings, which is also why positional tiers are unaffected by the
 choice.
@@ -167,7 +167,7 @@ uv run combine try plan dmwd 15 --slot=9   # override the configured slot
 
 ```
 GONE before pick 24 -- take one of these now
-     #  POS   PLAYER                TM     VOR   ADP  VAL  FLAG
+     #  POS   PLAYER                TM    VORP   ADP  VAL  FLAG
     #1  RB1   Jahmyr Gibbs          DET  185.2   1.4   +0
     #3  RB2   Bijan Robinson        ATL  169.6   2.0   -1
 ```
@@ -194,11 +194,11 @@ the bucket. If everyone left in GONE at your position is the same tier as
 several players in STILL THERE, the position is not actually scarce and you
 should spend the pick elsewhere.
 
-Within each group, rows are ordered by `VOR`, best player first, **not** by
+Within each group, rows are ordered by `VORP`, best player first, **not** by
 `VAL`. Everyone in GONE is someone you cannot wait on, so the cost of waiting
 is already zero for all of them and the only question left is who is best.
-`VAL` chooses between groups; `VOR` orders within them. Use `VAL` as a
-tiebreaker when two players are close in `VOR`, and ignore it when they are
+`VAL` chooses between groups; `VORP` orders within them. Use `VAL` as a
+tiebreaker when two players are close in `VORP`, and ignore it when they are
 not.
 
 With no position filter it also prints a **scarcity** table: how many players

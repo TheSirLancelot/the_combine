@@ -123,7 +123,7 @@ def get_draft_plan(league: str, on_clock: int, slot: int = 0, position: str = ""
         return "\n".join(lines)
 
     def block(title, group, n):
-        # Sort by VOR (board order), NOT by VAL. Every player in GONE is
+        # Sort by VORP (board order), NOT by VAL. Every player in GONE is
         # someone you cannot wait on, so the cost of waiting is already zero
         # for all of them and the only question left is who is best. Sorting
         # these by VAL buries the top-ranked player under a mid-round bargain,
@@ -133,7 +133,7 @@ def get_draft_plan(league: str, on_clock: int, slot: int = 0, position: str = ""
             return f"\n{title}\n  (none)"
         best = sorted(group, key=lambda r: r.overall_rank)[:n]
         lines = [f"\n{title}",
-                 f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VOR':>6} "
+                 f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VORP':>6} "
                  f"{'ADP':>5} {'VAL':>4} {'TIER':>4}  FLAG"]
         for r in best:
             lines.append(
@@ -191,7 +191,7 @@ def get_needs(league: str, limit: int = 10) -> str:
         return head
     best = [r for r in rows if r.state.pos in wanted][:limit]
     lines = ["\nBEST AVAILABLE AT POSITIONS YOU NEED",
-             f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VOR':>6} "
+             f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VORP':>6} "
              f"{'ADP':>5} {'TD%':>4} {'BYE':>3} {'TIER':>4}  FLAG"]
     for r in best:
         tdp = f"{r.td_share * 100:>3.0f}%" if r.td_share is not None else "   -"

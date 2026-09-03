@@ -9,7 +9,7 @@ AVG is the plain mean of the projection sources, so adding a third (Yahoo, or
 PFF's API when it ships) changes the number of terms and nothing else.
 
 AVG is the mean of the two projections. VAL is the interesting number: ADP
-minus our overall VOR rank. Positive means the room is letting him fall
+minus our overall VORP rank. Positive means the room is letting him fall
 past where the numbers say he belongs, which is the only edge a draft offers.
 
 Deliberate shortcut for the 2026 draft: this blends finished point totals
@@ -29,7 +29,7 @@ from .providers import news as news_src, opinion, pff_csv, pff_rankings
 from .vorp import replacement_points
 
 DISAGREE_AT = 10   # positional rank gap between sources worth flagging
-VALUE_AT = 12      # ADP vs VOR-rank gap worth flagging
+VALUE_AT = 12      # ADP vs VORP-rank gap worth flagging
 
 
 @dataclass(frozen=True)
@@ -233,7 +233,7 @@ def render(rows: list[BoardRow], header: str) -> str:
     # the caller filters by position. A bare line number is misleading here.
     out = [header,
            f"{'#':>4} {'POS':<5} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
-           f"{'AVG':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'TD%':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
+           f"{'AVG':>6} {'VORP':>6} {'ADP':>5} {'VAL':>4} {'TD%':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
     for i, r in enumerate(rows):
         s = r.state
         pff = f"{r.pff_pts:>6.1f}" if r.pff_pts is not None else "     -"

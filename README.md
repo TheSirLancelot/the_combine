@@ -58,7 +58,7 @@ as players come off the board. No refresh step, just run it again.
 | `ADP` | PFF's average draft position, from the rankings export **matching this league's scoring format**. Dash means unknown. | Where the room takes him. Also tells you roughly whether he survives to your next pick. |
 | `VAL` | `ADP` minus his overall `VOR` rank. Positive = the room takes him later than the numbers say he is worth. | **Who** is underpriced, never **when** to take him. A big `+` often means you can wait, see below. |
 | `BYE` | Bye week. | Late rounds, avoid stacking your starters on one week. |
-| `TIER` | Groups players where the drop in `VOR` to the next is unusually steep. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. |
+| `TIER` | Tier **within his position**, computed by me, not by PFF. Breaks where the drop in `VOR` to the next player at that position is more than 1.6x the typical drop. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. Whole-pool, so it does not change when you filter. |
 | `BUZZ` | Net analyst sentiment from the opinion lists, or `SPLIT` when they contradict each other. Blank = nobody mentioned him. | Never in the blend. `SPLIT` is the interesting one; `try notes` gives the detail. |
 | `FLAG` | The single most important thing about the row. See below. | Read this before the numbers. |
 
@@ -154,6 +154,11 @@ Splits the best available into three groups against your next snake pick:
 - **STILL THERE** — he lasts. Even a huge `VAL` here can wait; spend the pick
   on someone from GONE and come back for him.
 - **NO ADP** — timing unknown. In RCL that is every defender.
+
+`TIER` shows on the plan rows too, and it is the second thing to read after
+the bucket. If everyone left in GONE at your position is the same tier as
+several players in STILL THERE, the position is not actually scarce and you
+should spend the pick elsewhere.
 
 Within each group, rows are ordered by `VOR`, best player first, **not** by
 `VAL`. Everyone in GONE is someone you cannot wait on, so the cost of waiting

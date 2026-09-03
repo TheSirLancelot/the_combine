@@ -59,6 +59,7 @@ class BoardRow:
     vorp: float = 0.0        # AVG minus replacement level at his position
     overall_rank: int = 0
     avg_pos_rank: int = 0   # rank at his position by AVG, whole pool
+    tier: int = 0           # tier WITHIN his position, whole pool
     value: int | None = None
     flag: str = ""
 
@@ -141,13 +142,18 @@ def build(league: str, states: list[PlayerState], slots: dict | None = None,
         if r.adp is not None:
             r.value = int(round(r.adp - r.overall_rank))
 
-    # our own average positional rank, for comparison against PFF's ranking
+    # Positional rank and tier, both computed once against the whole pool.
+    # Tiering per rendered list made a player's tier depend on how you queried
+    # him, which is indefensible. Tiers are within a position, which is what
+    # the word means in fantasy: "RB tier 2" is a claim about running backs.
     by_pos_avg: dict[str, list[BoardRow]] = {}
     for r in rows:
         by_pos_avg.setdefault(r.state.pos, []).append(r)
     for group in by_pos_avg.values():
         for i, r in enumerate(group):
             r.avg_pos_rank = i + 1
+        for r, tr in zip(group, tiers([g.vorp for g in group])):
+            r.tier = tr
 
     # positional rank within each source, to surface disagreement
     for src in ("espn_pts", "pff_pts"):
@@ -192,7 +198,6 @@ def filter_pos(rows: list[BoardRow], position: str) -> list[BoardRow]:
 
 
 def render(rows: list[BoardRow], header: str) -> str:
-    tier_of = tiers([r.vorp for r in rows])
     # Both ranks, computed against the whole pool, so they do not shift when
     # the caller filters by position. A bare line number is misleading here.
     out = [header,
@@ -207,7 +212,7 @@ def render(rows: list[BoardRow], header: str) -> str:
         line = (f"{'#' + str(r.overall_rank):>4} {s.pos + str(r.avg_pos_rank):<5} "
                 f"{s.name[:21]:<21} {(s.team or '--'):<3} "
                 f"{r.espn_pts:>6.1f} {pff} {r.avg:>6.1f} {r.vorp:>6.1f} {adp} {val} {bye} "
-                f"T{tier_of[i]:<3}")
+                f"T{r.tier:<3}")
         if r.buzz is not None:
             line += f" {('SPLIT' if r.buzz.split else f'{r.buzz.net:+d}'):>5}"
         else:

@@ -133,13 +133,13 @@ def get_draft_plan(league: str, on_clock: int, slot: int = 0, position: str = ""
         best = sorted(group, key=lambda r: r.overall_rank)[:n]
         lines = [f"\n{title}",
                  f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VOR':>6} "
-                 f"{'ADP':>5} {'VAL':>4}  FLAG"]
+                 f"{'ADP':>5} {'VAL':>4} {'TIER':>4}  FLAG"]
         for r in best:
             lines.append(
                 f"  {'#' + str(r.overall_rank):>4} "
                 f"{r.state.pos + str(r.avg_pos_rank):<5} "
                 f"{r.state.name[:20]:<20} {r.state.team or '--':<3} "
-                f"{r.vorp:>6.1f} {r.adp:>5.1f} {r.value:>+4d}"
+                f"{r.vorp:>6.1f} {r.adp:>5.1f} {r.value:>+4d} {'T' + str(r.tier):>4}"
                 f"{'  ' + r.flag if r.flag else ''}")
         return "\n".join(lines)
 
@@ -175,6 +175,7 @@ def get_player_notes(league: str, name: str) -> str:
 
     out = [f"{hit.state.name} ({hit.state.pos} {hit.state.team})",
            f"  overall #{hit.overall_rank}  {hit.state.pos}{hit.avg_pos_rank}  "
+           f"tier {hit.tier}  "
            f"espn {hit.espn_pts:.1f}  "
            f"pff {hit.pff_pts if hit.pff_pts is None else round(hit.pff_pts, 1)}  "
            f"cons {hit.avg:.1f}",

@@ -104,10 +104,16 @@ def get_draft_plan(league: str, slot: int, on_clock: int, limit: int = 12) -> st
             f"on the clock: {on_clock}, your next pick: {nxt or 'none left'}\n")
 
     def block(title, group, n):
+        # Sort by CONS (board order), NOT by VAL. Every player in GONE is
+        # someone you cannot wait on, so the cost of waiting is already zero
+        # for all of them and the only question left is who is best. Sorting
+        # these by VAL buries the consensus #1 under a mid-round bargain,
+        # which is nonsense at the top of a draft. VAL chooses between
+        # buckets; CONS orders within them.
         if not group:
             return f"\n{title}\n  (none)"
-        best = sorted(group, key=lambda r: (-(r.value or 0), r.overall_rank))[:n]
-        lines = [f"  {r.state.pos:<4} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
+        best = sorted(group, key=lambda r: r.overall_rank)[:n]
+        lines = [f"  #{r.overall_rank:<3} {r.state.pos:<4} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
                  f"cons {r.consensus:>6.1f}  adp {r.adp:>5.1f}  val {r.value:>+4d}"
                  f"{'  ' + r.flag if r.flag else ''}" for r in best]
         return f"\n{title}\n" + "\n".join(lines)

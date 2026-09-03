@@ -18,7 +18,28 @@ Every command takes a slug. One league per call, always.
 
 ---
 
-## Draft day
+## The app
+
+```bash
+uv run streamlit run app.py
+```
+
+One page: needs at the top, timing against your next pick in the middle, the
+full board below, player detail at the bottom. League radio, draft slot and
+pick-on-the-clock live in the sidebar.
+
+Auto refresh is on by default and polls every 30s, with a pause toggle and a
+Refresh now button that clears the cache. Data is cached for 25s so clicking
+around costs nothing; one ESPN round trip feeds every section on the page.
+
+Rows are coloured: red for `OUT?` and `NEWS!`, green for `VALUE`, dimmed for
+`no-pff`. Every column is sortable, so the ASCII tables below are the same
+data without the mouse.
+
+The CLI still works and is documented below. The app is a front end over the
+identical code, not a reimplementation.
+
+## Draft day (CLI)
 
 Three commands do everything. Run them from `~/the_combine`.
 

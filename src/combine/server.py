@@ -130,21 +130,26 @@ def get_draft_plan(league: str, slot: int, on_clock: int, position: str = "",
         return "\n".join(lines)
 
     def block(title, group, n):
-        # Sort by CONS (board order), NOT by VAL. Every player in GONE is
+        # Sort by VORP (board order), NOT by VAL. Every player in GONE is
         # someone you cannot wait on, so the cost of waiting is already zero
         # for all of them and the only question left is who is best. Sorting
         # these by VAL buries the consensus #1 under a mid-round bargain,
         # which is nonsense at the top of a draft. VAL chooses between
-        # buckets; CONS orders within them.
+        # buckets; VORP orders within them.
         if not group:
             return f"\n{title}\n  (none)"
         best = sorted(group, key=lambda r: r.overall_rank)[:n]
-        # Both ranks: overall for comparing across positions, positional
-        # because "#12" is ambiguous the moment you filter to one position.
-        lines = [f"  #{r.overall_rank:<3} {r.state.pos}{r.cons_pos_rank:<3} {r.state.name[:20]:<20} {r.state.team or '--':<3} "
-                 f"vor {r.vorp:>6.1f}  adp {r.adp:>5.1f}  val {r.value:>+4d}"
-                 f"{'  ' + r.flag if r.flag else ''}" for r in best]
-        return f"\n{title}\n" + "\n".join(lines)
+        lines = [f"\n{title}",
+                 f"  {'#':>4} {'POS':<5} {'PLAYER':<20} {'TM':<3} {'VOR':>6} "
+                 f"{'ADP':>5} {'VAL':>4}  FLAG"]
+        for r in best:
+            lines.append(
+                f"  {'#' + str(r.overall_rank):>4} "
+                f"{r.state.pos + str(r.cons_pos_rank):<5} "
+                f"{r.state.name[:20]:<20} {r.state.team or '--':<3} "
+                f"{r.vorp:>6.1f} {r.adp:>5.1f} {r.value:>+4d}"
+                f"{'  ' + r.flag if r.flag else ''}")
+        return "\n".join(lines)
 
     return (head
             + block(f"GONE before pick {nxt} -- take one of these now", gone, limit)

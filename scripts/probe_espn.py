@@ -1,3 +1,5 @@
+# TODO: Fix errors
+
 #!/usr/bin/env python3
 """Dump the real shape of espn-api objects so the adapter is written against
 actual field names instead of guesses. Read-only. Writes probe_espn_output.txt.
@@ -11,8 +13,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from combine.config import SEASON, get_league  # noqa: E402
-from combine.platforms import client_for  # noqa: E402
+from combine.config import SEASON, get_league
+from combine.platforms import client_for
 
 OUT = ROOT / "probe_espn_output.txt"
 MAXLEN = 220
@@ -69,13 +71,16 @@ def main() -> int:
                 elif isinstance(val, list):
                     for v in val[:40]:
                         p(f"    {trunc(v)}")
+
     section("SCORING / ROSTER SLOTS", scoring)
 
     def my_team():
         team = next((t for t in lg.teams if str(t.team_id) == str(cfg.team_id)), None)
         if team is None:
-            p(f"!! team_id {cfg.team_id} not found. available: "
-              + ", ".join(f"{t.team_id}={t.team_name}" for t in lg.teams))
+            p(
+                f"!! team_id {cfg.team_id} not found. available: "
+                + ", ".join(f"{t.team_id}={t.team_name}" for t in lg.teams)
+            )
             return
         describe(team, "my team")
         if team.roster:
@@ -86,6 +91,7 @@ def main() -> int:
                 p(f"\n  stats[{wk!r}]:")
                 for k, v in (blob or {}).items():
                     p(f"    {k:22s} = {trunc(v)}")
+
     section("MY TEAM + PLAYER SHAPE", my_team)
 
     def fa():
@@ -93,6 +99,7 @@ def main() -> int:
         p(f"  returned {len(players)}")
         if players:
             describe(players[0], "free_agents[0]")
+
     section("FREE AGENTS", fa)
 
     def box():
@@ -101,6 +108,7 @@ def main() -> int:
         p(f"  week {wk}, {len(scores)} box scores")
         if scores:
             describe(scores[0], "box_scores[0]", skip_private=False)
+
     section("BOX SCORES", box)
 
     OUT.write_text("\n".join(lines) + "\n")

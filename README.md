@@ -39,10 +39,10 @@ as players come off the board. No refresh step, just run it again.
 **Reading a row:**
 
 ```
-  #  POS PLAYER                TM   ESPN    PFF    AVG   VORP   ADP  VAL BYE TIER  BUZZ FLAG
-  1  RB  Jahmyr Gibbs          DET 365.7  342.9  354.3  185.2   1.3   +0   6 T1      +2
-  7  WR  Some Guy              MIA 210.4  248.1  229.2   96.4  41.2  +34   9 T3   SPLIT VALUE+34
- 14  RB  Another Guy           NYG 240.1      -  240.1   71.0  64.1  +50  11 T3      -1 NEWS!
+    #  POS   PLAYER               TM   ESPN    PFF    AVG   VORP   ADP  VAL  TD% BYE TIER  BUZZ FLAG
+   #1  RB1   Jahmyr Gibbs         DET 365.7  342.9  354.3  185.2   1.3   +0  24%   6 T1      +2
+   #7  WR3   Some Guy             MIA 210.4  248.1  229.2   96.4  41.2  +34  41%   9 T3   SPLIT VALUE+34
+  #14  RB6   Another Guy          NYG 240.1      -  240.1   71.0  64.1  +50   -   11 T3      -1 NEWS! 15g
 ```
 
 | col | what it is | how to use it |
@@ -57,6 +57,7 @@ as players come off the board. No refresh step, just run it again.
 | `VORP` | Value over replacement. `AVG` minus replacement level at his position, where replacement is the last player who starts somewhere in a 12-team league. | **This sets the order.** It is what makes a QB and an RB comparable. See below. |
 | `ADP` | PFF's average draft position, from the rankings export **matching this league's scoring format**. Dash means unknown. | Where the room takes him. Also tells you roughly whether he survives to your next pick. |
 | `VAL` | `ADP` minus his overall `VORP` rank. Positive = the room takes him later than the numbers say he is worth. | **Who** is underpriced, never **when** to take him. A big `+` often means you can wait, see below. |
+| `TD%` | Share of his projection that comes from touchdowns, using **this league's** points per TD. Dash means no PFF match. | Volume projects reliably, touchdowns do not. Two players at the same `VORP` are not the same bet if one is at 20% and the other at 45%. Over ~35% is volatile and the first candidate for negative regression. |
 | `BYE` | Bye week. | Late rounds, avoid stacking your starters on one week. |
 | `TIER` | Tier **within his position**, computed by me, not by PFF. Breaks where the drop in `VORP` to the next player at that position is more than 1.6x the typical drop. | A tier edge is the "take him now or wait a round" line. Within a tier, take the best `VAL`. Whole-pool, so it does not change when you filter. |
 | `BUZZ` | Net analyst sentiment from the opinion lists, or `SPLIT` when they contradict each other. Blank = nobody mentioned him. | Never in the blend. `SPLIT` is the interesting one; `try notes` gives the detail. |
@@ -145,6 +146,7 @@ by position never changes them.
 | `PFF+n` / `ESPN+n` | The two projection sources disagree by 10+ positional spots on a normally-priced player. | Coin flip the numbers can't settle. Use your own read. |
 | `PFFRK+n` | PFF's analysts rank him n spots away from where PFF's own projections put him. Humans overriding the model. | The only market-ish signal on the IDP side, where no ADP exists. |
 | `Q` `D` `O` `IR` | Injury status, appended after any of the above. | |
+| `15g` | Not a flag but a marker after it: PFF projects him for fewer than 17 games. | An absence is already priced into that season total, so the projection is not being optimistic. Worth knowing why. |
 
 **Where columns go blank, and why.** `ADP` and `VAL` are always dashes for
 RCL defenders, because PFF publishes no IDP draft position anywhere. RCL is
@@ -214,6 +216,37 @@ off the board between your first and second turn; almost nothing you want at
 pick 1 survives it. Picks 24 and 25 back to back are the one place you can be
 greedy, since nothing moves in between.
 
+**From round 4 on, use this instead of the board.** Rounds 1-3 are
+best-player-available. After that a fourth RB is worth less than a first TE no
+matter what the numbers say, because you can only start so many.
+
+```bash
+uv run combine try needs dmwd
+uv run combine try needs rcl 15     # trailing number = how many rows
+```
+
+Reads your **live** roster from ESPN, so it updates as you draft. It shows:
+
+- which starting slots are still empty, and which positions can fill them
+- your current starters by slot, and who is on the bench
+- a **BYE PILEUP** warning when 3+ of your starters share a bye week
+- the best available players **only at positions you still need**
+
+Before your first pick it will say every slot is empty, which is correct but
+useless; use the board until you have picks. Slot filling is greedy, dedicated
+slots before flex, so it can be marginally suboptimal in odd cases but will
+never claim a slot is filled when it is not.
+
+**Look up one player.** News, analyst opinion, TD share and his board line.
+
+```bash
+uv run combine try notes dmwd Kittle
+uv run combine try notes rcl "Byron Young"
+```
+
+Use it whenever a row shows `NEWS!`, `OUT?`, `SPLIT`, or before spending an
+early pick on someone.
+
 **Sanity check the sources.** Run once before the draft, not during.
 
 ```bash
@@ -241,7 +274,7 @@ uv run combine doctor --live   # actually hit the platforms
 uv run combine try health      # same check, as Claude sees it
 uv run combine try leagues     # slugs
 uv run combine try plan rcl 1 1 # league, slot, pick on the clock
-uv run combine try notes dmwd Kittle  # news + analyst detail on one player
+uv run combine try needs dmwd   # roster-aware, use from round 4 on
 uv run combine try roster dmwd # empty until the draft happens
 uv run combine serve           # MCP server on 127.0.0.1:8787/mcp
 ```

@@ -68,6 +68,13 @@ def load(league: str, _nonce: int) -> dict:
         "Analysts": r.buzz.describe() if r.buzz else "",
     } for r in rows])
 
+    # A column with any missing value gets upcast to float64 by pandas, which
+    # is why BYE rendered as 11.0. Nullable Int64 keeps them integers.
+    for col in ("#", "VAL", "TD%", "G", "BYE", "TIER"):
+        df[col] = df[col].astype("Int64")
+    for col in ("ESPN", "PFF", "AVG", "VORP", "ADP"):
+        df[col] = df[col].round(1)
+
     return {
         "df": df,
         "roster": [(p.name, p.pos, p.team, p.status) for p in roster],
@@ -96,15 +103,18 @@ BOARD_COLS = ["#", "PosRk", "Player", "TM", "ESPN", "PFF", "AVG", "VORP",
               "ADP", "VAL", "TD%", "G", "BYE", "TIER", "BUZZ", "FLAG"]
 
 COL_CONFIG = {
-    "#": st.column_config.NumberColumn("#", help="Overall rank by VORP, whole pool", width="small"),
+    "#": st.column_config.NumberColumn("#", help="Overall rank by VORP, whole pool", width="small", format="%d"),
+    "ESPN": st.column_config.NumberColumn("ESPN", help="ESPN projection, scored for this league", format="%.1f"),
+    "PFF": st.column_config.NumberColumn("PFF", help="PFF projection, scored for this league", format="%.1f"),
+    "BYE": st.column_config.NumberColumn("Bye", width="small", format="%d"),
     "PosRk": st.column_config.TextColumn("Pos", help="Rank at his position, whole pool", width="small"),
     "VORP": st.column_config.NumberColumn("VORP", help="Value over replacement. This sets the order.", format="%.1f"),
     "AVG": st.column_config.NumberColumn("AVG", help="Mean of the projection sources", format="%.1f"),
     "ADP": st.column_config.NumberColumn("ADP", help="PFF average draft position for this scoring format", format="%.1f"),
-    "VAL": st.column_config.NumberColumn("VAL", help="ADP minus VORP rank. Positive = the room lets him fall."),
+    "VAL": st.column_config.NumberColumn("VAL", help="ADP minus VORP rank. Positive = the room lets him fall.", format="%d"),
     "TD%": st.column_config.NumberColumn("TD%", help="Share of his projection that is touchdowns. High = volatile.", format="%d%%"),
-    "G": st.column_config.NumberColumn("G", help="Projected games. Under 17 means an absence is priced in.", width="small"),
-    "TIER": st.column_config.NumberColumn("Tier", help="Tier within his position", width="small"),
+    "G": st.column_config.NumberColumn("G", help="Projected games. Under 17 means an absence is priced in.", width="small", format="%d"),
+    "TIER": st.column_config.NumberColumn("Tier", help="Tier within his position", width="small", format="%d"),
     "BUZZ": st.column_config.TextColumn("Buzz", help="Net analyst sentiment, SPLIT when they disagree", width="small"),
 }
 
@@ -236,7 +246,7 @@ def page():
         m[0].metric("Overall", f"#{row['#']}")
         m[1].metric("Position", row["PosRk"])
         m[2].metric("VORP", f"{row['VORP']:.1f}")
-        m[3].metric("ADP", row["ADP"] if pd.notna(row["ADP"]) else "-")
+        m[3].metric("ADP", f"{row['ADP']:.1f}" if pd.notna(row["ADP"]) else "-")
         m[4].metric("TD share", f"{row['TD%']}%" if pd.notna(row["TD%"]) else "-")
         if row["News"]:
             st.error(f"News: {row['News']}")

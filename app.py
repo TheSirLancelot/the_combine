@@ -85,18 +85,36 @@ def load(league: str, _nonce: int) -> dict:
     }
 
 
+# Row colours, in the same priority order the FLAG column uses. Kept in one
+# place so the legend below cannot drift from what actually renders.
+ROW_STYLES = [
+    ("OUT?",   "rgba(220,50,50,0.18)",  "red",    "Projected zero but drafted early. Something happened; find out what."),
+    ("NEWS!",  "rgba(220,50,50,0.18)",  "red",    "Injury, suspension or legal news the projections have not absorbed."),
+    ("VALUE",  "rgba(60,180,90,0.15)",  "green",  "ADP has him falling 12+ spots past where the numbers put him."),
+    ("REACH",  "rgba(230,150,40,0.15)", "amber",  "The room drafts him 12+ spots earlier than the numbers justify."),
+    ("no-pff", None,                    "dimmed", "No PFF match, so AVG is ESPN alone. Deep bench guy usually; high up, treat like OUT?."),
+]
+
+
 def style(df: pd.DataFrame):
-    """Red for 'find out why', amber for value, muted for stale."""
     def row_color(row):
         flag = str(row.get("FLAG", ""))
-        if flag.startswith("OUT?") or flag.startswith("NEWS!"):
-            return ["background-color: rgba(220,50,50,0.18)"] * len(row)
-        if flag.startswith("VALUE"):
-            return ["background-color: rgba(60,180,90,0.15)"] * len(row)
-        if flag.startswith("no-pff"):
-            return ["opacity: 0.55"] * len(row)
+        for prefix, bg, _, _ in ROW_STYLES:
+            if flag.startswith(prefix):
+                css = f"background-color: {bg}" if bg else "opacity: 0.55"
+                return [css] * len(row)
         return [""] * len(row)
     return df.style.apply(row_color, axis=1)
+
+
+def legend():
+    with st.expander("What the row colours mean"):
+        for prefix, bg, name, why in ROW_STYLES:
+            swatch = (f"<span style='background:{bg};padding:1px 10px;"
+                      f"border-radius:3px'>&nbsp;</span>" if bg
+                      else "<span style='opacity:0.55'>dimmed</span>")
+            st.markdown(f"{swatch} &nbsp;`{prefix}` — {why}",
+                        unsafe_allow_html=True)
 
 
 BOARD_COLS = ["#", "PosRk", "Player", "TM", "ESPN", "PFF", "AVG", "VORP",
@@ -207,24 +225,26 @@ def page():
                          & (rows_for_plan["ADP"] <= (nxt or 999) + 8)]
     safe = rows_for_plan[rows_for_plan["ADP"] > (nxt or 999) + 8]
 
-    need_only = st.checkbox("Only positions I still need", value=False,
+    o1, o2 = st.columns([3, 1])
+    need_only = o1.checkbox("Only positions I still need", value=False,
                             disabled=not needs.empty)
+    rows_each = o2.slider("Rows per group", 5, 25, 10, step=5)
     def trim(d):
         if need_only and needs.open_positions:
             d = d[d["POS"].isin(needs.open_positions)]
-        return d.head(10)[BOARD_COLS]
+        return d.head(rows_each)[BOARD_COLS]
 
-    cols = st.columns(3)
-    for col, (title, frame, note) in zip(cols, [
+    legend()
+
+    for title, frame, note in [
         ("Gone before your pick", gone, "Your real choices. Take the best of these."),
-        ("Coin flip", flip, "Within 8 picks either way. ADP is an average."),
-        ("Still there", safe, "You can wait. Spend the pick elsewhere."),
-    ]):
-        with col:
-            st.markdown(f"**{title}**")
-            st.caption(note)
-            st.dataframe(style(trim(frame)), hide_index=True,
-                         use_container_width=True, column_config=COL_CONFIG)
+        ("Coin flip", flip, "Within 8 picks either way. ADP is an average, not a deadline."),
+        ("Still there", safe, "He lasts. Spend this pick elsewhere and come back for him."),
+    ]:
+        st.markdown(f"**{title}** &nbsp; <span style='opacity:0.6'>{note}</span>",
+                    unsafe_allow_html=True)
+        st.dataframe(style(trim(frame)), hide_index=True,
+                     use_container_width=True, column_config=COL_CONFIG)
 
     # ---- board
     st.subheader("Board")

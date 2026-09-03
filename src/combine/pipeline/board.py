@@ -190,8 +190,10 @@ def filter_pos(rows: list[BoardRow], position: str) -> list[BoardRow]:
 
 def render(rows: list[BoardRow], header: str) -> str:
     tier_of = tiers([r.vorp for r in rows])
+    # Both ranks, computed against the whole pool, so they do not shift when
+    # the caller filters by position. A bare line number is misleading here.
     out = [header,
-           f"{'#':>3} {'POS':<4} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
+           f"{'#':>4} {'POS':<5} {'PLAYER':<21} {'TM':<3} {'ESPN':>6} {'PFF':>6} "
            f"{'CONS':>6} {'VOR':>6} {'ADP':>5} {'VAL':>4} {'BYE':>3} TIER {'BUZZ':>5} FLAG"]
     for i, r in enumerate(rows):
         s = r.state
@@ -199,7 +201,8 @@ def render(rows: list[BoardRow], header: str) -> str:
         adp = f"{r.adp:>5.1f}" if r.adp is not None else "    -"
         val = f"{r.value:>+4d}" if r.value is not None else "   -"
         bye = f"{r.bye:>3}" if r.bye else "  -"
-        line = (f"{i+1:>3} {s.pos:<4} {s.name[:21]:<21} {(s.team or '--'):<3} "
+        line = (f"{'#' + str(r.overall_rank):>4} {s.pos + str(r.cons_pos_rank):<5} "
+                f"{s.name[:21]:<21} {(s.team or '--'):<3} "
                 f"{r.espn_pts:>6.1f} {pff} {r.consensus:>6.1f} {r.vorp:>6.1f} {adp} {val} {bye} "
                 f"T{tier_of[i]:<3}")
         if r.buzz is not None:

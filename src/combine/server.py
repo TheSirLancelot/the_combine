@@ -45,19 +45,6 @@ def get_league_settings(league: str) -> str:
 
 
 @mcp.tool
-def get_draft_pool(league: str, position: str = "", limit: int = 15) -> str:
-    """Best available undrafted players for one league, ranked by that league's
-    own scoring and grouped into tiers. This is the draft-day tool: during a
-    draft it reflects who is still on the board. Optional position filter
-    (QB, RB, WR, TE, K, D/ST, LB, DL, DB)."""
-    limit = max(1, min(limit, MAX_LIMIT))
-    c = client_for(league)
-    states = c.free_agents(position=position or None, limit=limit)
-    label = f"{get_league(league).name} available{f' at {position}' if position else ''}"
-    return ranked_table(states, label)
-
-
-@mcp.tool
 def get_draft_board(league: str, position: str = "", limit: int = 20) -> str:
     """Best available players for one league with BOTH projection sources side
     by side: ESPN's and PFF's, each already scored under this league's rules,

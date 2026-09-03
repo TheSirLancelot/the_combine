@@ -68,11 +68,6 @@ def try_tools() -> int:
         print(fn(server.get_league_settings)(rest[0]))
     elif what == "roster":
         print(fn(server.get_my_roster)(rest[0]))
-    elif what == "pool":
-        league = rest[0]
-        pos = rest[1] if len(rest) > 1 else ""
-        limit = int(rest[2]) if len(rest) > 2 else 15
-        print(fn(server.get_draft_pool)(league, pos, limit))
     elif what == "board":
         league = rest[0]
         pos = rest[1] if len(rest) > 1 else ""

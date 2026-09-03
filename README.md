@@ -47,8 +47,8 @@ as players come off the board. No refresh step, just run it again.
 
 | col | what it is | how to use it |
 |-----|-----------|---------------|
-| `#` | Row number in what you asked for. Filter by position and it renumbers. **Not** an overall rank. | Ignore it. It is a line number. |
-| `POS` | ESPN's position for that player. | RCL uses `LB DL DB DP` slots, DMWD uses `K D/ST`. |
+| `#` | Overall rank by `VOR` across the whole pool. Does not shift when you filter. | Compare across positions. |
+| `POS` | Position plus his rank at it, e.g. `RB4` = fourth best RB available. Also whole-pool. | Compare within a position. |
 | `PLAYER` | ESPN's name, truncated at 21 chars. | The PFF row it matched may be spelled differently; `try crosswalk` shows pairs. |
 | `TM` | NFL team, ESPN's spelling. | PFF writes some differently (`HST`, `ARZ`, `LA`). Handled internally. |
 | `ESPN` | ESPN's projected season points, **scored under this league's rules**. | One opinion. Do not read alone. |
@@ -94,12 +94,11 @@ not survive to your next turn, take the biggest `VAL`. That is the pick where
 you paid less than the player is worth and genuinely could not have waited.
 `combine try plan` does this comparison for you.
 
-**Two things `#` and `VAL` do not mean.** `#` renumbers per query, so the
-5th row of `board rcl WR` is not the 5th best player available. `VAL` is
-computed against the whole 250-player pool regardless of your filter, so it
-stays comparable across positions. And `VAL` says nothing about whether a
-player is good, only whether he is cheap. A 180th-ranked player with `VAL+40`
-is still the 180th best player.
+**What `VAL` does not mean.** It says nothing about whether a player is good,
+only whether he is cheap. A 180th-ranked player with `VAL+40` is still the
+180th best player. Every rank on the board (`#`, the number in `POS`, and the
+one inside `VAL`) is computed against the whole 250-player pool, so filtering
+by position never changes them.
 
 **`FLAG` values,** in the priority order the code emits them (a row shows one):
 
@@ -200,7 +199,6 @@ uv run combine try leagues     # slugs
 uv run combine try plan rcl 1 1 # league, slot, pick on the clock
 uv run combine try notes dmwd Kittle  # news + analyst detail on one player
 uv run combine try roster dmwd # empty until the draft happens
-uv run combine try pool rcl RB # ESPN only, no PFF column
 uv run combine serve           # MCP server on 127.0.0.1:8787/mcp
 ```
 

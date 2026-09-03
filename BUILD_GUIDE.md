@@ -1,360 +1,189 @@
-# The Combine — step by step build guide
+# The Combine — build guide
 
-Companion to `fantasy-copilot-brief.md`. The brief is the architecture. This is the order of operations, with the decisions locked in and the actual mechanics of each step.
+Companion to `fantasy-copilot-brief.md` (the architecture) and `README.md` (how
+to use it). This is what got built, where it diverged from the original plan
+and why, and what is still owed.
 
-## Decisions locked
-
-**Auth: static bearer header + Cloudflare WAF IP allowlist.** Claude supports fixed-credential auth for custom connectors via `static_headers` (beta). An org admin (you) enters the credential once when adding the connector and Claude sends it on every request. Standard header names (`authorization`, `x-api-key`) are accepted without review. Anthropic's outbound traffic comes from `160.79.104.0/21`, a fixed published range, so you can pin a WAF rule to it. Note that range is shared across all Anthropic customers, so the IP rule alone is not authentication. You need both. If `static_headers` isn't exposed in your connector UI yet, the fallback is a long random path segment on the endpoint (`/mcp/7f3a9c...`) plus the IP rule, and you rotate the path instead of a token. Never a query-string token.
-
-**Store: SQLite.** One file at `data/combine.db`. WAL mode so the pipeline can write while MCP tools read.
-
-**MCP servers: thin, ours.** Community forks tend to expose broad dump-everything tools, which is the exact token problem the brief is built to avoid.
-
-**Design change I'm proposing.** The brief has stdio servers wrapped in supergateway/mcp-proxy for HTTP. If we're writing the servers ourselves, skip that layer entirely. FastMCP speaks streamable HTTP natively, so a gateway container adds a hop, a failure mode, and nothing else. Same for the ESPN/Yahoo split: one server process, one connector, with a `league` argument on every tool and platform adapters behind a common interface. Three leagues from one connector, and the token-scoping rule (one league per query) becomes a required parameter instead of a convention. If you'd rather keep two connectors for blast-radius reasons, the code below splits cleanly, but I'd start with one.
+Last updated 2026-09-03, three days before drafts.
 
 ---
 
-## Phase 0 — repo skeleton
+## Status
 
-```
-the_combine/
-  pyproject.toml
-  .env                  # gitignored
-  .env.example          # committed, keys only
-  data/                 # gitignored, holds combine.db
-  src/combine/
-    __init__.py
-    config.py           # env + league registry
-    db.py               # sqlite connection, schema, migrations
-    platforms/
-      __init__.py       # LeagueClient protocol
-      espn.py
-      yahoo.py
-    server.py           # FastMCP app + tools
-    pipeline/
-      __init__.py
-      crosswalk.py
-      providers/
-        __init__.py     # Provider protocol + normalized shape
-        espn_proj.py
-        yahoo_proj.py
-        own_model.py
-      scoring.py
-      blend.py
-      run.py            # entrypoint the scheduler calls
-  scripts/
-    refresh_espn_cookies.py
-    yahoo_login.py
-```
+**Working today, shell only.** Live ESPN league state for both leagues, PFF
+projections and ADP, a merged draft board ranked by value over replacement, a
+snake-draft timing tool, a roster-aware needs view, analyst sentiment and
+injury news. All of it runs from `uv run combine try ...`.
 
-```bash
-cd ~/the_combine
-git init && printf '.env\ndata/\n__pycache__/\n*.pyc\n.venv/\n' > .gitignore
-uv init --package . 2>/dev/null || python3 -m venv .venv
-uv add fastmcp espn-api yahoofantasy python-dotenv rapidfuzz
-```
+**Not built yet.** The tunnel, the WAF rule, and the connector registration.
+Nothing is reachable from a phone. That was Phase 1 in the original plan and it
+is now the largest outstanding piece.
 
-`.env.example`:
-
-```
-COMBINE_BEARER_TOKEN=
-ESPN_S2=
-ESPN_SWID=
-ESPN_LEAGUE_1_ID=
-ESPN_LEAGUE_1_TEAM_ID=
-ESPN_LEAGUE_2_ID=
-ESPN_LEAGUE_2_TEAM_ID=
-YAHOO_CONSUMER_KEY=
-YAHOO_CONSUMER_SECRET=
-YAHOO_LEAGUE_ID=
-YAHOO_TEAM_KEY=
-SEASON=2026
-```
-
-Generate the bearer token now: `openssl rand -hex 32`.
-
-`config.py` holds a league registry keyed by short slug, because every tool takes that slug and you don't want league IDs in prompts:
-
-```python
-LEAGUES = {
-    "dynasty":  {"platform": "espn",  "id": env("ESPN_LEAGUE_1_ID"),  "team": env("ESPN_LEAGUE_1_TEAM_ID")},
-    "work":     {"platform": "espn",  "id": env("ESPN_LEAGUE_2_ID"),  "team": env("ESPN_LEAGUE_2_TEAM_ID")},
-    "college":  {"platform": "yahoo", "id": env("YAHOO_LEAGUE_ID"),   "team": env("YAHOO_TEAM_KEY")},
-}
-```
-
-Rename those slugs to whatever you actually call the leagues. You'll be typing them into Claude constantly.
+**Blocked.** Yahoo. Their Fantasy Sports API now sits behind a manual review,
+applied 2026-09-02, quoted at 1-2 weeks. The `work` league shows as SKIP in
+`doctor`, which is expected rather than broken.
 
 ---
 
-## Phase 1 — live league access
+## What changed from the original plan
 
-Goal: ask Claude "who should I start at flex in dynasty" from your phone and get a real answer off live rosters. Ship this before any projection work.
+The brief's build order was: MCP servers, then tunnel and connector, then the
+crosswalk, then the blend, then PFF when its API ships. Reality reordered most
+of that, and the reasons are worth keeping.
 
-### 1.1 Credentials
+**The draft moved to the front.** All three drafts landed on 2026-09-06, four
+days after the repo existed. Everything got reprioritised around being useful
+on that day. Roster and matchup tools were deliberately skipped, because ESPN
+returns an empty roster and 404s on box scores in preseason, so they could be
+written but not verified. Draft prep works entirely off the free-agent pool,
+which preseason is the whole draftable player universe.
 
-**ESPN.** Log into fantasy.espn.com in a browser, DevTools, Application, Cookies, copy `espn_s2` and `SWID` (keep the braces on SWID). Into `.env`. These die mid-season, usually without warning, and the failure looks like a 401 or an empty league rather than a clean error. Phase 1.8 adds a health check so you find out on a Tuesday instead of at 10am Sunday.
+**PFF arrived early, as CSVs.** It was Phase 4, gated on an API that has not
+shipped. Instead the exports came in by hand: two per-league projection files
+with full 61-column stat lines, plus rankings exports carrying ADP. That turned
+the blend from a one-source stub into a real two-source system before the
+draft. The provider model absorbed it without changes, which is the first
+actual evidence that the N-source design works.
 
-**Yahoo.** Register an app at the Yahoo developer portal, Fantasy Sports read scope, redirect URI `https://localhost:8000`. That gives you a consumer key and secret. Then run the one-time browser flow, which writes a token file you gitignore:
+**We never wrote `scoring.py`.** Both ESPN and PFF hand back projections
+already scored under each league's own rules. Same player, same raw stat line,
+different point totals per league. So the board blends finished totals rather
+than rescoring stat lines. This is a documented shortcut, not an oversight. The
+stat lines are parsed and kept, so doing it properly later changes the blend
+and not the ingest.
 
-```bash
-python scripts/yahoo_login.py   # thin wrapper over yahoofantasy's login flow
-```
+**We added value over replacement, which was not in the plan at all.** `VAL`
+compares ADP, a draft-order number, against our rank. Ranking on raw points
+made every `VAL` negative, because RCL's pool is full of 230-point linebackers
+and 300-point quarterbacks that nobody drafts early. Replacement level comes
+from each league's own slot counts times team count. This is the single most
+important correctness fix in the repo.
 
-Yahoo's refresh token is long-lived and the library refreshes access tokens on its own, so this is genuinely a once-a-year problem, unlike ESPN.
+**We added two layers the brief never imagined.** `data/opinion/` holds analyst
+lists (ESPN's cheat sheet, NFL.com sleepers) and `data/news/` holds injury and
+legal status. Both are hand-curated, both sit beside the numbers, and neither
+enters the blend. Opinion has no scale and no scoring format; folding it into
+`AVG` would corrupt a number that currently means something. News is the layer
+that says the projection snapshot is stale, which before a draft is often the
+most valuable information in the system. Josh Jacobs was the worked example:
+arrested, zeroed by PFF, still fully projected by ESPN.
 
-### 1.2 Platform adapters
+**The stat vocabulary came from ESPN, not from us.** The original schema
+invented names like `pass_yd`. The real answer was in
+`settings.scoring_format`: a numeric ESPN stat id with an abbreviation and a
+point value, different per league. That was found by writing a probe script
+against the live API rather than guessing, which is a pattern worth repeating.
 
-Define the interface first, then satisfy it twice. This is the same discipline as the provider model in the brief, applied one layer up.
-
-```python
-# platforms/__init__.py
-class LeagueClient(Protocol):
-    def scoring_rules(self) -> dict: ...
-    def roster_slots(self) -> dict: ...
-    def my_roster(self) -> list[PlayerState]: ...
-    def matchup(self, week: int) -> Matchup: ...
-    def free_agents(self, position: str | None, limit: int) -> list[PlayerState]: ...
-    def injuries(self) -> list[PlayerState]: ...
-```
-
-`PlayerState` is a small dataclass: `player_id, name, team, pos, slot, status, opponent, platform_proj`. Nothing else. Every field you add here gets multiplied by every player in every tool response for the rest of the season.
-
-ESPN implementation wraps `espn_api.football.League(league_id=..., year=..., espn_s2=..., swid=...)`, instantiated per league ID as the brief notes. Yahoo wraps `yahoofantasy`. Cache the `League` object per process with a short TTL, since ESPN's client refetches aggressively.
-
-Do not write anything that posts. No `add_player`, no `set_lineup`, no trade tools. Read-only is the rule and it's easiest to keep by never writing the method in the first place.
-
-### 1.3 Tool surface
-
-Six tools, all league-scoped, all capped. Resist adding a seventh until you've missed it twice.
-
-```python
-get_my_roster(league)                      -> starters + bench, one line each
-get_matchup(league, week=None)             -> both lineups, projected totals
-get_top_free_agents(league, position, limit=10)
-get_player(league, name)                   -> one player, full detail
-get_league_settings(league)                -> scoring + roster slots, cached
-health_check()                             -> per-league auth status
-```
-
-Output shape matters more than tool count. Return compact structured text, not nested JSON. A roster should be about 20 short lines, not 8KB of objects:
-
-```
-QB  Josh Allen        BUF  vs MIA   proj 21.4  OK
-RB  Bijan Robinson    ATL  @ TB     proj 17.2  OK
-RB  --empty--
-WR  Puka Nacua        LAR  vs SEA   proj 15.8  Q
-```
-
-Two rules that do most of the work. Cap every list-returning tool with a `limit` that defaults low and is enforced server-side, and filter server-side before serializing (ESPN's `X-Fantasy-Filter` header lets you ask for a position slice instead of pulling 300 players and slicing in Python).
-
-Docstrings are the prompt. Write them so Claude picks the right tool without trying two first. Say explicitly in `get_top_free_agents` that it returns waiver candidates ranked by projection, and in `get_player` that it's for one named player.
-
-### 1.4 Serve it
-
-```python
-# server.py
-from fastmcp import FastMCP
-mcp = FastMCP("combine")
-# ... @mcp.tool definitions ...
-if __name__ == "__main__":
-    mcp.run(transport="http", host="127.0.0.1", port=8787, path="/mcp")
-```
-
-Bind to loopback. The tunnel is the only way in.
-
-Auth middleware: reject any request whose `Authorization` header isn't `Bearer {COMBINE_BEARER_TOKEN}`, using `hmac.compare_digest`. Do this in the ASGI app rather than per tool so there's no path around it. Cloudflare will also check, but the server enforcing it independently means a tunnel misconfiguration isn't a breach.
-
-Run it under launchd (not Docker, since it's a single Python process and you want it reading the same `data/combine.db` the pipeline writes). A `KeepAlive` plist in `~/Library/LaunchAgents/` with `RunAtLoad`, stdout and stderr to `logs/`.
-
-### 1.5 Tunnel
-
-Add a route to the existing tunnel config, same pattern as your *arr services:
-
-```yaml
-ingress:
-  - hostname: combine.yourdomain.com
-    service: http://127.0.0.1:8787
-```
-
-`cloudflared tunnel route dns <tunnel> combine.yourdomain.com`, restart the tunnel, confirm `curl -H "Authorization: Bearer $TOKEN" https://combine.yourdomain.com/mcp` gets past the proxy.
-
-Critically: do **not** put a Cloudflare Access policy on this hostname. An email-gated Access app will bounce Anthropic's requests with a login redirect and the connector will fail with a generic unreachable error that tells you nothing.
-
-### 1.6 WAF rule
-
-Security, WAF, custom rule on `combine.yourdomain.com`:
-
-```
-(http.host eq "combine.yourdomain.com" and not ip.src in {160.79.104.0/21}) -> Block
-```
-
-Add your home IP to that set while developing, or you'll lock yourself out of your own curl tests. Take it back out when you're done.
-
-### 1.7 Register the connector
-
-claude.ai, Settings, Connectors, Add custom connector. URL is `https://combine.yourdomain.com/mcp`. Under the header/credential option, `Authorization` = `Bearer <token>`. Connect once on web and it's available on iOS and Android on the same account, no per-device setup.
-
-If the header field isn't there, fall back to the secret path segment described up top and mount the app at `/mcp/<random>` instead.
-
-### 1.8 Verify, then harden
-
-Ask Claude "what's my roster in dynasty" from your phone. Then ask for all three leagues in one message and watch what it does; if it fans out to three calls and the context balloons, tighten the tool docstring to say one league per call.
-
-Then add the ESPN cookie watchdog. A daily launchd job that calls `health_check()` locally and, on failure, does something you'll actually notice. Email via `mail`, a ntfy push, whatever. Pair it with `scripts/refresh_espn_cookies.py` that takes the two cookie values on stdin and rewrites `.env` in place, so the recovery is a 30-second paste rather than a debugging session.
-
-**Phase 1 is a working system.** Draft prep and start/sit off live state, no projections yet. Stop here and use it for a week before starting phase 2.
+**SQLite is created and unused.** `combine init` builds the schema and nothing
+reads or writes it. Every command runs live: hit ESPN, parse the CSVs, build
+the board in memory, print. For a draft that is correct, since staleness is the
+enemy and the whole thing takes a second or two. It becomes wrong the moment we
+want a projected-versus-actual accuracy log, or a Discord bot, or any consumer
+that is not a person waiting on a prompt.
 
 ---
 
-## Phase 2 — crosswalk and normalization
+## What exists
 
-This is the actual engineering. Everything after it is config.
-
-### 2.1 Schema
-
-```sql
-CREATE TABLE player (              -- canonical identity
-  player_id   TEXT PRIMARY KEY,    -- our ID, e.g. 'josh-allen-qb-buf-1996'
-  full_name   TEXT NOT NULL,
-  pos         TEXT NOT NULL,
-  team        TEXT,
-  birthdate   TEXT
-);
-
-CREATE TABLE player_alias (        -- every source's ID for that player
-  source      TEXT NOT NULL,       -- 'espn' | 'yahoo' | 'own' | 'pff'
-  source_id   TEXT NOT NULL,
-  player_id   TEXT NOT NULL REFERENCES player(player_id),
-  source_name TEXT,
-  PRIMARY KEY (source, source_id)
-);
-
-CREATE TABLE projection (          -- normalized STAT LINES, never points
-  source      TEXT NOT NULL,
-  player_id   TEXT NOT NULL,
-  season      INTEGER NOT NULL,
-  week        INTEGER,             -- NULL = season-long
-  stat        TEXT NOT NULL,       -- 'pass_yd','rec','rush_td',...
-  value       REAL NOT NULL,
-  pulled_at   TEXT NOT NULL,
-  PRIMARY KEY (source, player_id, season, week, stat)
-);
-
-CREATE TABLE league_scoring (
-  league      TEXT NOT NULL,
-  stat        TEXT NOT NULL,
-  points      REAL NOT NULL,
-  PRIMARY KEY (league, stat)
-);
-
-CREATE TABLE actual (              -- the accuracy log, populated weekly
-  player_id TEXT, season INTEGER, week INTEGER, stat TEXT, value REAL,
-  PRIMARY KEY (player_id, season, week, stat)
-);
 ```
-
-`projection` storing stats rather than points is the load-bearing decision. It's what lets one adapter serve all three leagues, and it's why `actual` can be compared to it later for accuracy weighting.
-
-### 2.2 The crosswalk
-
-Automated pass then a manual override file, as the brief specifies. Match key is normalized name plus position plus team, in that priority:
-
-1. Exact match on normalized name (lowercase, strip punctuation and suffixes like Jr/III, collapse whitespace) plus position.
-2. Same, ignoring team, if the name+pos pair is unique on both sides. Handles in-season team changes.
-3. Fuzzy match with `rapidfuzz` at a high threshold (start at 92), only within the same position, and only when the best match beats the runner-up by a clear margin. Otherwise it's not a match, it's a guess.
-4. Everything left over goes into `crosswalk_unmatched.csv` for you.
-
-The override file is committed and hand-edited:
-
-```csv
-source,source_id,player_id,note
-espn,4429795,marvin-harrison-wr-ari-2002,rookie name collision with HOF dad
-yahoo,40021,,IGNORE  # yahoo DST duplicate
+src/combine/
+  config.py            league registry, env, draft slots
+  db.py, schema.sql    created, not yet used by anything
+  format.py            tiering, compact row rendering
+  cli.py               combine doctor | init | try ... | serve
+  server.py            7 MCP tools, bearer auth, loopback
+  platforms/
+    espn.py            real. written against probe output, not docs
+    yahoo.py           ping only, blocked on API approval
+  pipeline/
+    board.py           merge sources, VORP, tiers, flags
+    vorp.py            replacement level from league slots
+    crosswalk.py       ESPN <-> PFF name matching, conservative
+    draftplan.py       snake picks, gone / coin flip / still there
+    needs.py           roster-aware slot gaps and bye pileups
+    providers/
+      pff_csv.py       per-league projections, stat lines
+      pff_rankings.py  per-league ADP + analyst ranks, plus IDP
+      opinion.py       any CSV in data/opinion/
+      news.py          any CSV in data/news/
+      espn_proj.py     stub
+      own_model.py     stub
+    scoring.py         stub, see "we never wrote scoring.py"
+    blend.py, run.py   stubs
+scripts/
+  probe_espn.py            dump real API shapes before writing adapters
+  refresh_espn_cookies.py  30-second recovery when cookies die
+  yahoo_login.py           one-time OAuth, blocked
 ```
-
-Overrides apply after automated matching and win unconditionally. Run the crosswalk as its own command so you can iterate on it without running the whole pipeline, and have it print a one-line summary: matched, overridden, unmatched. When unmatched is under about five, you're done for the week.
-
-Defense and kickers will fight you. Simplest answer is to canonicalize team defenses as `def-<TEAM>` and skip name matching for them entirely.
-
-### 2.3 Providers
-
-```python
-class Provider(Protocol):
-    name: str
-    def fetch(self, season: int, week: int | None) -> Iterable[RawProjection]: ...
-```
-
-`RawProjection` is `(source_id, source_name, pos, team, stats: dict[str, float])`. The adapter's entire job is producing that. It does not resolve player IDs (the crosswalk does), does not apply scoring (the blend does), and does not know what a league is.
-
-Start with two. `espn_proj` pulls ESPN's own projections through the same client phase 1 already uses. `own_model` reads whatever you're generating, even if version one is a CSV you hand-build. Having a second real source from day one is what proves the N-source design actually works, and a stub that returns nothing proves nothing.
-
-`yahoo_proj` is a third if Yahoo exposes usable projections for your league; treat it as optional.
-
-### 2.4 Scoring and blend
-
-`scoring.py` is a pure function: `(stat_line, league_rules) -> points`. No I/O, no platform knowledge. Pull `league_rules` from `league_scoring`, which phase 1's `get_league_settings` already knows how to fetch.
-
-`blend.py` combines N normalized providers per player. Weights live in `config/weights.yaml`, not code:
-
-```yaml
-default:
-  espn: 1.0
-  own:  1.0
-missing_source: renormalize   # drop it and rescale the rest
-```
-
-Start equal-weighted. Per-source weighting is guesswork until you have data, and you'll have that data by midseason from the `actual` table. Then output tiers by clustering the blended points within position (gap-based works fine, no need for k-means), and write the compact results the MCP layer will read:
-
-```sql
-CREATE TABLE value_board (
-  league TEXT, season INT, week INT, player_id TEXT,
-  blended_pts REAL, tier INT, rank_pos INT, rank_overall INT,
-  sources_used INT,
-  PRIMARY KEY (league, season, week, player_id)
-);
-```
-
-Then add three tools that read only this table, no live calls: `get_value_board(league, position, limit)`, `get_start_sit(league, week)`, `get_waiver_targets(league, position, limit)`. These are the payoff. They're fast, they're small, and they're precomputed.
-
-### 2.5 Weekly actuals
-
-Once the season starts, a Tuesday job writes real stat lines into `actual`. Costs nothing now and is the only way you'll ever get accuracy-weighted blending later. Do it from week one or you'll wish you had.
 
 ---
 
-## Phase 3 — scheduling
+## What is still owed, in order
 
-launchd, not cron, since the mini sleeps and launchd catches up on missed runs.
+**1. After the draft: roster and matchup.** `get_my_roster` works but has
+nothing to show yet. `matchup` raises on purpose, since `box_scores()` 404s in
+preseason. Both become writable and testable the moment week 1 has real data.
+This is the smallest, highest-value next step.
 
-```
-combine.projections   Wed 04:00        full pipeline: fetch, crosswalk, blend
-combine.injuries      daily 07:00      injury/status refresh, rebuild value_board
-combine.actuals       Tue 06:00        write last week's actuals
-combine.health        daily 07:30      ESPN cookie check, alert on failure
-combine.gameday       Sun 09:00,11:30  inactive-player check in your lineups
-```
+**2. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress
+range `160.79.104.0/21`, connector registered with a static bearer header. The
+server already enforces the token itself, independent of Cloudflare, so a
+tunnel misconfiguration is not a breach. Do not put a Cloudflare Access policy
+on the hostname; it will bounce Anthropic with a login redirect and fail with a
+useless error. Running as a long-lived process also removes the per-command
+cold start, which is a second or two of re-fetching league settings on every
+CLI invocation.
 
-Every job writes a row to a `run_log` table with status and duration. When something's stale you want to know whether the job failed or never fired.
+**3. Persist to SQLite.** Specifically the `actual` table, weekly, starting
+week 1. It costs nothing now and it is the only way to ever answer the
+weighting question from the brief with data instead of opinion. Everything else
+can stay in memory until there is a second consumer.
+
+**4. Yahoo, when approved.** Consumer key and secret into `.env`, run
+`scripts/yahoo_login.py`, implement the adapter against probe output the same
+way ESPN was done. Redirect URI must be `https://localhost:8000`.
+
+**5. Rescore properly.** Write `scoring.py`, apply each league's stat-id
+scoring to PFF's raw stat lines, and compare the result against PFF's own
+`fantasyPoints`. If they match, the shortcut was safe and we gain the ability
+to add sources that only publish stats. If they do not, we have found a bug in
+someone's scoring, which is worth knowing either way.
+
+**6. Weight the blend.** Equal weighting is currently a necessity, not a
+choice: two sources and no track record. Once `actual` has a season of data,
+weight by measured accuracy per source and per position.
+
+**7. Discord bot.** Unchanged from the brief. Reads the same store, never
+touches ESPN or Yahoo directly, push notifications only.
 
 ---
 
-## Phase 4 — PFF, when the API ships
+## Known soft spots
 
-One adapter in `providers/pff.py`, its aliases added to the crosswalk, one line in `weights.yaml`. Write it against the real field names, not the documentation's examples. Keep the raw data in `projection` and never expose PFF's numbers as their own values through any tool; the blend output is yours, the inputs are theirs.
+These are all documented in the README where a user would hit them, and listed
+here so they do not get rediscovered as surprises.
 
-If that turns out to be more than a day of work, something upstream is wrong and it's worth fixing then rather than at source five.
+**Tiering is mine and unvalidated.** Tiers break where the drop in VORP exceeds
+1.6x the median drop. That constant was picked, not derived. PFF's own tiers
+were examined and are not reproducible from any field in their export: points
+are non-monotonic inside their tiers and rise across five of twelve boundaries,
+so their tiers are analyst-drawn on an analyst-adjusted board. There is no
+formula to copy.
 
----
+**RCL's ADP is soft.** It is a keeper league, so 24 players are gone in ways
+public ADP cannot know, and PFF publishes no IDP draft position at all, so
+every defender has no ADP and no VAL. Whether ESPN's free-agent pool correctly
+excludes kept players has not been verified.
 
-## Phase 5 — Discord bot, stretch
+**Everything hand-curated is a snapshot.** The PFF exports, the opinion lists
+and the news file have no freshness check. An August export will serve October
+numbers without complaint. News rows carry a source and a date for exactly this
+reason.
 
-Separate process on the mini, reads `combine.db`, never touches ESPN or Yahoo directly. Push only: inactive starters before kickoff, waiver deadline reminder, Tuesday digest of value board movement. Routine summaries go through a small model, and you only reach for the strong one when a message actually needs analysis. Interactive querying stays on the connector where it's covered by your subscription.
+**The crosswalk refuses to guess.** Match rate is around 97% with the remainder
+reported, never silently matched. Unmatched players are usually genuinely
+absent from PFF's data rather than a matching failure, and that absence is
+itself a signal.
 
----
-
-## Start here
-
-Phase 0 and 1.1 through 1.4 in one sitting gets you a local server you can point Claude Desktop at over stdio for testing, before any tunnel or WAF exists. Prove the tools return the right shape locally, then do 1.5 through 1.7 as one deployment step.
-
-Tell me which piece you want to write first and I'll build it.
+**ESPN cookies will die mid-season.** `scripts/refresh_espn_cookies.py` makes
+recovery a 30-second paste. Run `doctor --live` before anything that matters.

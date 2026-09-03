@@ -111,9 +111,15 @@ class EspnClient:
         """Undrafted / unrostered players, best projected first.
 
         Preseason this is the whole draftable pool, which is what makes it the
-        useful tool before a draft. Oversample then trim, because ESPN's own
-        ordering is by its ranking rather than by projection."""
-        pool = self.league.free_agents(size=max(limit * 5, 50), position=position)
+        useful tool before a draft. During a draft it shrinks as players are
+        rostered, so this is the live view of who is actually left.
+
+        Oversample a little then trim, because ESPN orders by its own ranking
+        rather than by projection and we re-sort. Headroom is additive, not a
+        multiplier: callers now ask for 250, and a 5x multiplier turned that
+        into a 1250-player request several times a minute during a draft."""
+        size = min(max(limit + 100, 100), 500)
+        pool = self.league.free_agents(size=size, position=position)
         pool.sort(key=lambda p: getattr(p, "projected_total_points", 0) or 0, reverse=True)
         return [self._state(p, slot="FA") for p in pool[:limit]]
 

@@ -50,6 +50,7 @@ def load(league: str, _nonce: int) -> dict:
         "#": r.overall_rank,
         "POS": r.state.pos,
         "PosRk": f"{r.state.pos}{r.avg_pos_rank}",
+        "PosN": r.avg_pos_rank,
         "Player": r.state.name,
         "TM": r.state.team or "",
         "ESPN": round(r.espn_pts, 1),
@@ -70,7 +71,7 @@ def load(league: str, _nonce: int) -> dict:
 
     # A column with any missing value gets upcast to float64 by pandas, which
     # is why BYE rendered as 11.0. Nullable Int64 keeps them integers.
-    for col in ("#", "VAL", "TD%", "G", "BYE", "TIER"):
+    for col in ("#", "PosN", "VAL", "TD%", "G", "BYE", "TIER"):
         df[col] = df[col].astype("Int64")
     for col in ("ESPN", "PFF", "AVG", "VORP", "ADP"):
         df[col] = df[col].round(1)
@@ -248,12 +249,29 @@ def page():
 
     # ---- board
     st.subheader("Board")
-    c1, c2 = st.columns([3, 1])
     positions = sorted(df["POS"].dropna().unique())
+    c1, c2 = st.columns([3, 1])
     pick_pos = c1.multiselect("Positions", positions, default=[])
-    limit = c2.slider("Rows", 10, 150, 40, step=10)
+    limit = c2.slider("Max rows", 10, 200, 60, step=10)
 
     view = df[df["POS"].isin(pick_pos)] if pick_pos else df
+
+    # Rank window. With one position selected this walks that position's own
+    # ranking (RB20 to RB40); otherwise it walks the overall board. Useful when
+    # the pool does not reflect who has actually been drafted and the top of
+    # the list is full of players who are already gone.
+    single = pick_pos[0] if len(pick_pos) == 1 else None
+    rank_col = "PosN" if single else "#"
+    label = f"{single} rank window" if single else "Overall rank window"
+    if not view.empty:
+        lo_all = int(view[rank_col].min())
+        hi_all = int(view[rank_col].max())
+        if hi_all > lo_all:
+            lo, hi = st.slider(label, lo_all, hi_all, (lo_all, hi_all))
+            view = view[(view[rank_col] >= lo) & (view[rank_col] <= hi)]
+            st.caption(f"showing {single or 'overall'} {lo} to {hi} · "
+                       f"{len(view)} players")
+
     st.dataframe(style(view.head(limit)[BOARD_COLS]), hide_index=True,
                  use_container_width=True, column_config=COL_CONFIG, height=600)
 

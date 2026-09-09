@@ -51,16 +51,25 @@ identical code, not a reimplementation.
 
 ## Reaching it from a phone
 
-The app runs on the Mac mini, which is always on. Access is over Tailscale
-rather than the public internet: install Tailscale on the mini and on the phone,
-then browse to `http://<mini-tailnet-name>:8501`.
+The app runs on the Mac mini, which is always on and is also the Plex server.
+Access goes through the Cloudflare tunnel already running there for the *arr
+stack, so this is one more ingress rule rather than new infrastructure.
 
-There is no login in front of the app, which is exactly why it must only be
-reachable on the tailnet. Do not port-forward it. It stores no secrets itself,
-but every page load acts as your ESPN session, so a public URL means strangers
-driving your account.
+```yaml
+# ~/.cloudflared/config.yml, alongside the existing *arr entries
+ingress:
+  - hostname: combine.example.com
+    service: http://localhost:8501
+  # ... existing rules, catch-all stays last
+```
 
-To keep it running across reboots without competing with Plex:
+**Put a Cloudflare Access policy on that hostname.** The app has no login of its
+own and every page load acts as your ESPN session, so a tunnel without Access is
+a public URL that drives your ESPN account. Email OTP or Google, same as the
+*arr stack.
+
+Then run it as a launchd agent so it survives reboots and never competes with
+Plex:
 
 ```bash
 cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
@@ -68,15 +77,32 @@ cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
 launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
 ```
 
-That launches under `taskpolicy -b`, macOS background QoS, so any Plex transcode
+It launches under `taskpolicy -b`, macOS background QoS, so any Plex transcode
 wins CPU and I/O contention and the app yields instead of competing. Measured
-cost when idle is a Python process with pandas loaded and effectively no CPU;
-the outcome history it reads builds in about a second and occupies 4.4MB. Auto
+cost when idle is a Python process with pandas loaded and effectively no CPU; the
+outcome history it reads builds in about a second and occupies 4.4MB. Auto
 refresh is off by default in Week mode, so it is not polling ESPN for nobody.
 
-Hosted options were considered and rejected. `data/` is gitignored and holds the
-33MB outcome database, the PFF caches, the projection exports and the id
-crosswalk, so a deploy from the repo would silently lose the outcome columns,
+Two gotchas worth knowing before you debug the wrong thing:
+
+Streamlit is a websocket app. Behind a proxy without `--server.enableCORS false
+--server.enableXsrfProtection false` it serves the page and then hangs forever on
+"Please wait...", which reads as a tunnel fault and is not. The plist sets both,
+which is safe only because Access is doing the authentication.
+
+**Do not put Access on the hostname you later use for the MCP server.** Build
+guide item 9 covers this: Access bounces Anthropic's connector with a login
+redirect and fails with a useless error. The browser app wants Access, the MCP
+endpoint wants its own hostname with no Access policy and the bearer token doing
+the work.
+
+Tailscale is the alternative if you would rather not rely on Access: bind
+`0.0.0.0` instead and the app is never publicly routable. It needs the client on
+every device you use.
+
+Hosted options were rejected for two concrete reasons. `data/` is gitignored and
+holds the 33MB outcome database, the PFF caches, the projection exports and the
+id crosswalk, so a deploy from the repo would silently lose the outcome columns,
 the Role column and the scaling comparison threshold. And it would mean putting
 ESPN session cookies in a third party's secret store.
 

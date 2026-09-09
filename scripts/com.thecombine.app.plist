@@ -9,10 +9,15 @@
   with pandas loaded and effectively no CPU; the outcome history it reads builds
   in about a second.
 
-  Bound to 0.0.0.0 so it is reachable over Tailscale from a phone. There is no
-  authentication in front of it, which is exactly why it should be reachable
-  ONLY over the tailnet: do not port-forward this, and do not expose it to the
-  public internet. It holds no secrets itself, but it acts as your ESPN session.
+  Bound to 127.0.0.1, because access goes through the Cloudflare tunnel already
+  running on this box for the *arr stack. The tunnel connects to localhost, so
+  nothing needs to listen on the LAN.
+
+  The app has NO authentication of its own. Every page load acts as your ESPN
+  session, so the hostname MUST have a Cloudflare Access policy in front of it.
+  A tunnel without Access is a public URL. If you would rather not rely on
+  Access, bind 0.0.0.0 instead and reach it over Tailscale, which is not
+  publicly routable at all.
 
   Install:
     cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
@@ -21,6 +26,11 @@
   Check:      launchctl list | grep thecombine
   Stop:       launchctl unload -w ~/Library/LaunchAgents/com.thecombine.app.plist
   Logs:       tail -f <REPO>/logs/app.out
+
+  The CORS and XSRF flags are for running behind a reverse proxy. Streamlit is a
+  websocket app, and behind a proxy without them it serves the page and then
+  hangs on "Please wait...", which looks like a tunnel problem and is not. They
+  are safe here only because Access is doing the authentication.
 -->
 <plist version="1.0">
 <dict>
@@ -35,7 +45,7 @@
     <string>-lc</string>
     <!-- REPLACE <REPO> with the absolute path to the checkout, e.g.
          /Users/williamweir/the_combine -->
-    <string>cd &lt;REPO&gt; &amp;&amp; exec uv run streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --browser.gatherUsageStats false</string>
+    <string>cd &lt;REPO&gt; &amp;&amp; exec uv run streamlit run app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false</string>
   </array>
 
   <key>WorkingDirectory</key>

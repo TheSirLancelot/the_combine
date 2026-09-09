@@ -141,6 +141,12 @@ the usage gap, then a verdict:
   into one number, because averaging a points projection with a grade produces
   something that means nothing.
 
+When nothing qualifies it says so and then shows the closest comparisons it
+rejected, phrased as how many more points the bench player would need. That is
+deliberately not a signed gap next to a threshold: a bench player 1.6 behind a
+starter who needs to be 1.6 ahead is 3.2 short, and printing "-1.6" beside
+"1.6" reads as a match.
+
 `compare` does the same for any two players in the week's matchup, whether or
 not they are a legal swap for each other.
 

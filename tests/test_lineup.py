@@ -276,3 +276,37 @@ def test_required_edge_survives_a_band_without_spread():
     a, b = p("a", "WR", "WR", 10), p("b", "WR", "BE", 13)
     assert required_edge(a, b, OldDist()) == MIN_EDGE
     assert len(swaps([a], [b], dist=OldDist())) == 1
+
+
+def test_near_miss_reports_the_distance_to_qualifying_not_the_gap():
+    """The bench player is 1.6 behind and must end up 1.6 ahead, so he is 3.2
+    short. Reporting the raw -1.6 next to a threshold of 1.6 reads as a match
+    and is how this got misread once already."""
+    from combine.pipeline.lineup import near_misses
+    starter = p("starter", "WR", "WR", 9.4)
+    bench = p("bench", "WR", "BE", 7.8, elig=("WR", "BE"))
+
+    class Dist:
+        def for_player(self, family, proj):
+            from combine.pipeline.distribution import Band
+            return Band(floor=0, median=proj, ceiling=0, boom=0, bust=0,
+                        spread=6.4, n=999, basis="fake")
+
+    miss = near_misses([starter], [bench], Dist())[0]
+    assert round(miss.needed, 1) == 1.6
+    assert round(miss.short_by, 1) == 3.2
+
+
+def test_near_misses_exclude_anything_that_actually_qualifies():
+    from combine.pipeline.lineup import near_misses
+    starters = [p("weak", "RB", "RB", 5)]
+    bench = [p("strong", "RB", "BE", 14, elig=("RB", "BE"))]
+    assert near_misses(starters, bench) == []
+
+
+def test_near_misses_skip_players_who_cannot_play():
+    from combine.pipeline.lineup import near_misses
+    starters = [p("fine", "RB", "RB", 12)]
+    bench = [p("out", "RB", "BE", 11, elig=("RB", "BE"), status="O"),
+             p("bye", "RB", "BE", 11, elig=("RB", "BE"), bye=True)]
+    assert near_misses(starters, bench) == []

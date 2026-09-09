@@ -201,6 +201,43 @@ def optimal_moves(lineup: list[WeeklyPlayer], slots: dict[str, int]
     return add, drop, gain
 
 
+@dataclass(frozen=True)
+class NearMiss:
+    """A comparison the tool considered and rejected, with the reason in points.
+
+    Exists so an empty report is legible. "No start/sit questions" alone is
+    indistinguishable from a broken report, and it does not say whether nothing
+    was close or something missed by a tenth.
+    """
+    bench: WeeklyPlayer
+    starter: WeeklyPlayer
+    needed: float             # how far ahead the bench player must be
+
+    @property
+    def short_by(self) -> float:
+        """Points the bench player would have to gain before this is a
+        question. Always positive: these are the ones that did not qualify."""
+        return (effective(self.starter) + self.needed) - self.bench.projected
+
+
+def near_misses(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
+                dist=None, limit: int = 3) -> list[NearMiss]:
+    """The closest comparisons that did NOT qualify, nearest first."""
+    out: list[NearMiss] = []
+    for b in bench:
+        if b.on_bye or b.status in BAD_STATUS or b.locked:
+            continue
+        cands = [s for s in starters if s.slot in b.eligible_slots and not s.locked]
+        if not cands:
+            continue
+        target = min(cands, key=effective)
+        miss = NearMiss(bench=b, starter=target,
+                        needed=required_edge(target, b, dist))
+        if miss.short_by > 0:
+            out.append(miss)
+    return sorted(out, key=lambda m: m.short_by)[:limit]
+
+
 def render(m: Matchup, slots: dict[str, int], league_name: str = "", dist=None) -> str:
     """Compact weekly view. Same discipline as the board: decision-relevant
     fields only, one line per player."""

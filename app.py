@@ -23,7 +23,14 @@ from combine.pipeline.board import build as build_board
 from combine.pipeline.crosswalk import load_ids
 from combine.pipeline.distribution import Distribution
 from combine.pipeline.draftplan import next_pick, snake_picks
-from combine.pipeline.lineup import optimal_moves, order_starters, problems, split, swaps
+from combine.pipeline.lineup import (
+    near_misses,
+    optimal_moves,
+    order_starters,
+    problems,
+    split,
+    swaps,
+)
 from combine.pipeline.needs import compute as compute_needs
 from combine.pipeline.providers.pff_api import PffApi
 from combine.pipeline.startsit import review
@@ -234,6 +241,8 @@ def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
         "problems": problems(starters),
         "swaps": swaps(starters, bench,
                        dist=outcome_distribution(config.SEASON - 1)),
+        "near": near_misses(starters, bench,
+                            dist=outcome_distribution(config.SEASON - 1)),
         "calls": calls,
         "optimal": optimal_moves(m.my_lineup, c.roster_slots()),
         "dist": outcome_distribution(config.SEASON - 1),
@@ -618,8 +627,21 @@ def week_page():
                 for r in c.reasons:
                     st.caption(r)
     elif not data["pff_err"]:
-        st.success("No start/sit questions. Every bench player is projected below "
-                   "the starter he could replace.")
+        st.success("No start/sit questions: no bench player is projected far "
+                   "enough ahead of a starter he could replace.")
+        if data["near"]:
+            with st.expander("Closest comparisons, none of them close enough"):
+                for c in data["near"]:
+                    st.markdown(
+                        f"**{c.bench.name}** {c.bench.projected:.1f} would need "
+                        f"**{c.short_by:.1f} more** to be worth weighing against "
+                        f"{c.starter.name} {c.starter.projected:.1f} "
+                        f"(`{c.starter.slot}`)")
+                st.caption(
+                    f"A bench player has to be {data['near'][0].needed:.1f}+ points "
+                    f"AHEAD of a starter before the gap beats the noise, not level "
+                    f"with him. That figure scales with how widely these two "
+                    f"positions actually scatter; see the glossary.")
 
     if data["usage"] and not data["in_season"]:
         st.caption("Usage columns are last season's numbers, a prior rather than "

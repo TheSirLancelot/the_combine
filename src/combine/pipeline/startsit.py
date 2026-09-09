@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from ..platforms import Matchup, WeeklyPlayer
 from . import usage as usage_mod
-from .lineup import BAD_STATUS, optimal_moves, problems, split, swaps
+from .lineup import BAD_STATUS, near_misses, optimal_moves, problems, split, swaps
 
 # Both picked, not derived, and both worth revisiting once we have a few weeks
 # of projected-versus-actual to calibrate against. A point is inside the noise
@@ -142,8 +142,20 @@ def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
             out.append(f"  {p.slot:<8} {p.name} ({'bye' if p.on_bye else p.status})")
 
     if not calls:
-        out.append("\nNo start/sit questions. Every bench player is projected "
-                   "below the starter he could replace.")
+        out.append("\nNo start/sit questions: no bench player is projected far "
+                   "enough ahead of a starter he could replace.")
+        starters, bench = split(m.my_lineup)
+        close = near_misses(starters, bench, dist)
+        if close:
+            out.append("\nCLOSEST COMPARISONS, none of them close enough")
+            for c in close:
+                out.append(
+                    f"  {c.bench.name} {c.bench.projected:.1f} would need "
+                    f"{c.short_by:.1f} more to be worth weighing against "
+                    f"{c.starter.name} {c.starter.projected:.1f} "
+                    f"({c.starter.slot})")
+            out.append(f"  a bench player has to be {close[0].needed:.1f}+ points "
+                       f"AHEAD before the gap beats the noise, not level with him")
         return "\n".join(out)
 
     for c in sorted(calls, key=lambda x: -x.proj_edge):

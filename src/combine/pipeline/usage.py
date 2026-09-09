@@ -174,3 +174,57 @@ def for_espn(usage: dict[int, Usage], ids: dict[str, int], espn_id: str) -> Usag
     never resolved (a D/ST, or someone PFF has not charted)."""
     pff_id = ids.get(str(espn_id))
     return usage.get(pff_id) if pff_id else None
+
+
+# What every token in a role line means. Lives here, beside the code that
+# renders those lines, so the explanation cannot drift from the output. The CLI
+# prints it via `combine glossary`; the app shows it under the week tables.
+GLOSSARY = (
+    ("Pass catchers (WR, TE)", (
+        ("route/g", "routes run per game. The opportunity everything else "
+                    "multiplies against"),
+        ("rt%", "route participation: share of his team's pass plays he ran a "
+                "route on. Under about 70% is a part-time role"),
+        ("tgt/g", "targets per game"),
+        ("yprr", "yards per route run, the efficiency number most predictive of "
+                 "receiving production. 2.0+ is very good, under 1.2 is poor"),
+        ("adot", "average depth of target in yards. High is boom or bust, low is "
+                 "a volume floor"),
+        ("grade", "PFF receiving grade, 0-100. About 60 is average, 85+ elite"),
+    )),
+    ("Backs (RB)", (
+        ("touch/g", "carries plus receptions per game"),
+        ("route/g", "routes run per game. This is the passing-game role, and it "
+                    "separates a back who scores in PPR from one who does not"),
+        ("yco/att", "yards after contact per attempt, which credits the back "
+                    "rather than his line"),
+        ("brk%", "breakaway rate: share of his rushing yards on runs of 15+. "
+                 "High means he needs a long run to hit his projection"),
+        ("grade", "PFF offensive grade, 0-100"),
+    )),
+    ("Quarterbacks", (
+        ("db/g", "dropbacks per game, the volume number"),
+        ("ypa", "yards per attempt"),
+        ("btt%", "big-time throw rate: share of throws that were high value and "
+                 "high difficulty. This is the upside"),
+        ("twp%", "turnover-worthy play rate, the downside. It counts drops that "
+                 "should have been interceptions"),
+        ("grade", "PFF passing grade, 0-100"),
+    )),
+    ("Defenders (IDP)", (
+        ("snap/g", "defensive snaps per game. In an IDP league this is most of "
+                   "the story"),
+        ("tkl/g", "tackles plus assists per game"),
+        ("sacks", "season sacks"),
+        ("press", "total pressures: sacks, hits and hurries. Predicts future "
+                  "sacks far better than sacks themselves do"),
+        ("grade", "PFF defensive grade, 0-100"),
+    )),
+)
+
+OUTCOME_GLOSSARY = (
+    ("floor / ceiling", "the 10th and 90th percentile outcomes for players at "
+                        "the same position and projection level last season"),
+    ("boom", "how often those players scored 20+"),
+    ("bust", "how often they came in under half their projection"),
+)

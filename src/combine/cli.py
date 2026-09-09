@@ -326,10 +326,8 @@ def train() -> int:
     are slow.
     """
     from . import db
-    from .pipeline.crosswalk import (directory, load_ids, resolve_by_lookup,
-                                     resolve_ids, save_ids)
-    from .pipeline.history import (REGULAR_SEASON, coverage, espn_players,
-                                   pull_espn, pull_pff)
+    from .pipeline.crosswalk import directory, load_ids, resolve_by_lookup, resolve_ids, save_ids
+    from .pipeline.history import REGULAR_SEASON, coverage, espn_players, pull_espn, pull_pff
     from .pipeline.providers.pff_api import PffApi
 
     args = sys.argv[2:]
@@ -372,8 +370,7 @@ def train() -> int:
         return 0
 
     if what == "backtest":
-        from .pipeline.backtest import (optimizer_result, posture_modes,
-                                        posture_sweep, replay)
+        from .pipeline.backtest import optimizer_result, posture_modes, posture_sweep, replay
         with db.connect() as conn:
             r = replay(conn, season)
         if not r.n:
@@ -461,6 +458,25 @@ def train() -> int:
     return 0
 
 
+def glossary() -> int:
+    """combine glossary — what every token in a role line means."""
+    from .pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY
+
+    print("ROLE (PFF usage and efficiency, shown beside the projection and\n"
+          "deliberately never blended into it)\n")
+    for title, entries in GLOSSARY:
+        print(f"  {title}")
+        for token, meaning in entries:
+            print(f"    {token:<9} {meaning}")
+        print()
+    print("OUTCOME (the spread around a projection, which ESPN does not give you)\n")
+    for token, meaning in OUTCOME_GLOSSARY:
+        print(f"    {token:<9} {meaning}")
+    print("\n  Context for a close call, not a ranking. Sorting a lineup by "
+          "ceiling\n  or floor was backtested and lost at every threshold.")
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "doctor"
     if cmd == "doctor":
@@ -473,6 +489,8 @@ def main() -> int:
         return start_sit()
     if cmd == "train":
         return train()
+    if cmd == "glossary":
+        return glossary()
     if cmd == "compare":
         return compare()
     if cmd == "init":

@@ -20,12 +20,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from combine import config
 from combine.pipeline.board import build as build_board
 from combine.pipeline.crosswalk import load_ids
+from combine.pipeline.distribution import load as load_distribution
 from combine.pipeline.draftplan import next_pick, snake_picks
 from combine.pipeline.lineup import optimal_moves, order_starters, problems, split, swaps
 from combine.pipeline.needs import compute as compute_needs
 from combine.pipeline.providers.pff_api import PffApi
 from combine.pipeline.startsit import review
-from combine.pipeline.usage import for_espn
+from combine.pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY, family, for_espn
 from combine.pipeline.usage import load as load_usage
 from combine.platforms import client_for
 
@@ -152,6 +153,20 @@ COL_CONFIG = {
 }
 
 
+@st.cache_resource(show_spinner="reading outcome history...")
+def outcome_distribution(season: int):
+    """Empirical floor/ceiling from a past season. Optional: no history means
+    no distribution columns, not a broken page."""
+    from combine import db
+
+    try:
+        with db.connect(readonly=True) as conn:
+            dist = load_distribution(conn, season)
+        return None if dist.empty else dist
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=60, show_spinner="pulling this week's lineup...")
 def load_week(league: str, week: int, _nonce: int) -> dict:
     """One box-score round trip. Much cheaper than the draft loader: no
@@ -186,6 +201,7 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
         "swaps": swaps(starters, bench),
         "calls": calls,
         "optimal": optimal_moves(m.my_lineup, c.roster_slots()),
+        "dist": outcome_distribution(config.SEASON - 1),
         "usage": usage,
         "ids": ids,
         "in_season": in_season,
@@ -193,23 +209,84 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
     }
 
 
-def lineup_frame(players, show_actual: bool, usage=None, ids=None) -> pd.DataFrame:
-    df = pd.DataFrame([{
-        "SLOT": p.slot,
-        "POS": p.pos,
-        "Player": p.name,
-        "TM": p.team or "",
-        "OPP": p.opponent,
-        "PROJ": round(p.projected, 1),
-        "ACT": round(p.actual, 1),
-        "ROLE": (lambda u: u.line(p.pos) if u else "")(
-            for_espn(usage, ids, p.player_id) if usage and ids else None),
-        "NOTE": " ".join(x for x in (p.status if p.status != "OK" else "",
-                                     "LOCK" if p.locked and not p.played else "") if x),
-    } for p in players])
-    if not show_actual and not df.empty:
+def lineup_frame(players, show_actual: bool, usage=None, ids=None,
+                 dist=None) -> pd.DataFrame:
+    rows = []
+    for p in players:
+        role = for_espn(usage, ids, p.player_id) if usage and ids else None
+        band = dist.for_player(family(p.pos), p.projected) if dist else None
+        rows.append({
+            "SLOT": p.slot,
+            "POS": p.pos,
+            "Player": p.name,
+            "TM": p.team or "",
+            "OPP": p.opponent,
+            "PROJ": round(p.projected, 1),
+            "ACT": round(p.actual, 1),
+            "ROLE": role.line(p.pos) if role else "",
+            "FLOOR": round(band.floor, 1) if band else None,
+            "CEIL": round(band.ceiling, 1) if band else None,
+            "BOOM": round(band.boom * 100) if band else None,
+            "BUST": round(band.bust * 100) if band else None,
+            "NOTE": " ".join(x for x in (p.status if p.status != "OK" else "",
+                                         "LOCK" if p.locked and not p.played else "")
+                             if x),
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    if not show_actual:
         df = df.drop(columns=["ACT"])
+    if dist is None:
+        df = df.drop(columns=["FLOOR", "CEIL", "BOOM", "BUST"])
     return df
+
+
+WEEK_COLS = {
+    "PROJ": st.column_config.NumberColumn(
+        "Proj", help="ESPN's weekly projection. A mean, not a typical outcome.",
+        format="%.1f"),
+    "ACT": st.column_config.NumberColumn("Act", format="%.1f"),
+    "FLOOR": st.column_config.NumberColumn(
+        "Floor", help="10th percentile outcome for comparable players", format="%.1f"),
+    "CEIL": st.column_config.NumberColumn(
+        "Ceil", help="90th percentile outcome for comparable players", format="%.1f"),
+    "BOOM": st.column_config.NumberColumn(
+        "Boom", help="Chance of a 20+ point game", format="%d%%", width="small"),
+    "BUST": st.column_config.NumberColumn(
+        "Bust", help="Chance of under half the projection", format="%d%%",
+        width="small"),
+    "ROLE": st.column_config.TextColumn(
+        "Role (PFF)", help="See the glossary below the tables", width="large"),
+}
+
+
+def role_legend(in_season: bool, dist_season: int | None):
+    with st.expander("What the Role and outcome columns mean"):
+        st.caption(
+            "Role is PFF usage and efficiency, shown beside the projection and "
+            "deliberately never blended into it. Grades and rates are on scales "
+            "that have nothing to do with fantasy points."
+            + ("" if in_season else " Before kickoff these are last season's "
+                                    "numbers, a prior rather than evidence about "
+                                    "this week."))
+        for title, entries in GLOSSARY:
+            st.markdown(f"**{title}**")
+            for token, meaning in entries:
+                st.markdown(f"&nbsp;&nbsp;`{token}` &nbsp; {meaning}",
+                            unsafe_allow_html=True)
+        if dist_season:
+            st.markdown("**Outcome columns**")
+            for token, meaning in OUTCOME_GLOSSARY:
+                st.markdown(f"&nbsp;&nbsp;`{token}` &nbsp; {meaning}",
+                            unsafe_allow_html=True)
+            st.caption(
+                f"Outcome columns are measured on {dist_season}. "
+                "These describe the spread around a projection, which ESPN does "
+                "not give you: at 8 to 16 projected points a back booms 15.4% of "
+                "the time against a receiver's 11.8% and a defender's 9.8%. They "
+                "are context for a close call, not a ranking. Sorting a lineup by "
+                "ceiling or floor was backtested and lost at every threshold.")
 
 
 # --- sidebar --------------------------------------------------------------
@@ -515,12 +592,18 @@ def week_page():
     left, right = st.container(), st.container()
     with left:
         st.markdown("**Starters**")
-        st.dataframe(lineup_frame(data["starters"], played, data["usage"], data["ids"]),
-                     hide_index=True, use_container_width=True)
+        st.dataframe(
+            lineup_frame(data["starters"], played, data["usage"], data["ids"],
+                         data["dist"]),
+            hide_index=True, use_container_width=True, column_config=WEEK_COLS)
     with right:
         st.markdown("**Bench**")
-        st.dataframe(lineup_frame(data["bench"], played, data["usage"], data["ids"]),
-                     hide_index=True, use_container_width=True)
+        st.dataframe(
+            lineup_frame(data["bench"], played, data["usage"], data["ids"],
+                         data["dist"]),
+            hide_index=True, use_container_width=True, column_config=WEEK_COLS)
+
+    role_legend(data["in_season"], config.SEASON - 1 if data["dist"] else None)
 
     if final:
         st.caption("week is final")

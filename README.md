@@ -169,6 +169,23 @@ of the time against ESPN's 55.6%. The command stays because the harness is
 reusable and because the flip test it prints is the standard any future model
 has to clear.
 
+## What the columns mean
+
+```bash
+uv run combine glossary
+```
+
+The same glossary is an expander under the tables in the app's Week mode. Role
+is PFF usage and efficiency shown beside the projection and never blended into
+it, because grades and rates are on scales that have nothing to do with fantasy
+points. Floor, ceiling, boom and bust describe the spread around a projection,
+which ESPN does not give you: a projection is a mean, and in 2025 the median
+outcome landed 1.4 points below it.
+
+Those outcome columns are context for a close call, not a ranking. Sorting a
+lineup by ceiling or floor was backtested and lost at every threshold, so the
+tool shows them and leaves the judgement to you.
+
 ## Draft day (CLI)
 
 Three commands do everything. Run them from `~/the_combine`.

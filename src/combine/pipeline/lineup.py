@@ -69,13 +69,14 @@ def swaps(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
     out: list[Swap] = []
     taken: set[str] = set()
     for b in sorted(bench, key=lambda p: -p.projected):
-        if b.on_bye or b.status in BAD_STATUS:
+        if b.on_bye or b.status in BAD_STATUS or b.locked:
             continue
         cands = [
             s for s in starters
             if s.player_id not in taken
             and s.slot in b.eligible_slots
             and (b.projected - s.projected) >= min_edge
+            and not s.locked          # his game kicked off, the call is made
         ]
         if not cands:
             continue
@@ -106,17 +107,17 @@ def render(m: Matchup, slots: dict[str, int], league_name: str = "") -> str:
 
     def rows(players: list[WeeklyPlayer], label: str) -> list[str]:
         lines = [f"\n{label}",
-                 f"  {'SLOT':<8} {'POS':<4} {'PLAYER':<22} {'TM':<3} {'PROJ':>6}"
+                 f"  {'SLOT':<8} {'POS':<4} {'PLAYER':<22} {'TM':<3} {'OPP':<7} {'PROJ':>6}"
                  + (f" {'ACT':>6}" if state != "pregame" else "") + "  NOTE"]
         for p in players:
             note = []
-            if p.on_bye:
-                note.append("BYE")
             if p.status != "OK":
                 note.append(p.status)
+            if p.locked and not p.played:
+                note.append("LOCK")
             lines.append(
                 f"  {p.slot:<8} {p.pos:<4} {p.name[:22]:<22} {(p.team or '--'):<3} "
-                f"{p.projected:>6.1f}"
+                f"{p.opponent or '--':<7} {p.projected:>6.1f}"
                 + (f" {p.actual:>6.1f}" if state != "pregame" else "")
                 + (("  " + " ".join(note)) if note else ""))
         return lines

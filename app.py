@@ -175,10 +175,11 @@ def lineup_frame(players, show_actual: bool) -> pd.DataFrame:
         "POS": p.pos,
         "Player": p.name,
         "TM": p.team or "",
+        "OPP": p.opponent,
         "PROJ": round(p.projected, 1),
         "ACT": round(p.actual, 1),
-        "NOTE": " ".join(x for x in ("BYE" if p.on_bye else "",
-                                     p.status if p.status != "OK" else "") if x),
+        "NOTE": " ".join(x for x in (p.status if p.status != "OK" else "",
+                                     "LOCK" if p.locked and not p.played else "") if x),
     } for p in players])
     if not show_actual and not df.empty:
         df = df.drop(columns=["ACT"])

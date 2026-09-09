@@ -13,13 +13,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from combine.pipeline.lineup import order_starters, problems, split, swaps
-from combine.platforms import WeeklyPlayer
+from combine.platforms import ProGame, WeeklyPlayer
 
 
-def p(name, pos, slot, proj, elig=(), status="OK", bye=False) -> WeeklyPlayer:
+# Kickoff times either side of "now", so `locked` is deterministic in tests.
+PAST = 1_000_000_000_000
+FUTURE = 4_000_000_000_000
+
+
+def p(name, pos, slot, proj, elig=(), status="OK", bye=False,
+      kickoff=FUTURE) -> WeeklyPlayer:
     return WeeklyPlayer(
         player_id=name, name=name, team="XX", pos=pos, slot=slot,
         eligible_slots=frozenset(elig or (pos, "BE")), status=status,
+        game=None if bye else ProGame(opponent="YY", home=True, kickoff_ms=kickoff),
         projected=proj, on_bye=bye,
     )
 
@@ -99,3 +106,36 @@ def test_problem_starters_catch_status_and_bye():
     starters = [p("fine", "RB", "RB", 12), p("out", "WR", "WR", 14, status="O"),
                 p("bye", "TE", "TE", 9, bye=True), p("quest", "QB", "QB", 20, status="Q")]
     assert {x.name for x in problems(starters)} == {"out", "bye"}
+
+
+def test_opponent_label_reads_home_and_away():
+    home = WeeklyPlayer(player_id="1", name="h", team="XX", pos="RB", slot="RB",
+                        game=ProGame(opponent="KC", home=True, kickoff_ms=FUTURE))
+    away = WeeklyPlayer(player_id="2", name="a", team="XX", pos="RB", slot="RB",
+                        game=ProGame(opponent="KC", home=False, kickoff_ms=FUTURE))
+    assert home.opponent == "vs KC"
+    assert away.opponent == "@ KC"
+
+
+def test_bye_player_has_no_game_and_says_so():
+    """Bye is derived from the schedule: no game for his NFL team that week."""
+    resting = p("resting", "RB", "BE", 0, bye=True)
+    assert resting.game is None and resting.opponent == "BYE"
+
+
+def test_locked_follows_kickoff():
+    assert p("started", "RB", "RB", 10, kickoff=PAST).locked
+    assert not p("later", "RB", "RB", 10, kickoff=FUTURE).locked
+
+
+def test_locked_starter_is_not_offered_for_a_swap():
+    """His game kicked off, so the decision is already made and a hint is noise."""
+    starters = [p("playing", "RB", "RB", 4, kickoff=PAST)]
+    bench = [p("better", "RB", "BE", 20, elig=("RB", "BE"))]
+    assert swaps(starters, bench) == []
+
+
+def test_locked_bench_player_is_never_suggested():
+    starters = [p("weak", "RB", "RB", 4)]
+    bench = [p("already-played", "RB", "BE", 20, elig=("RB", "BE"), kickoff=PAST)]
+    assert swaps(starters, bench) == []

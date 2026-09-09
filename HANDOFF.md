@@ -47,7 +47,7 @@ start/sit call.
 
 Next up, in order: a PFF API client with the crosswalk extended to PFF player
 ids, then start/sit and player comparison, which is what William actually
-asked for. Opponent data needs its own probe first, see below.
+asked for.
 
 ## The PFF API, correctly
 
@@ -66,9 +66,13 @@ Verified working, tier `pro`.
   anchor for extending the crosswalk to a third source.
 - 2026 shows `default_week: -4` (preseason) until games are played.
 
-ESPN gives us no opponent. On box-score players `pro_opponent` is the string
-`"None"` and `pro_pos_rank` is 0. Start/sit wants opponent and defensive
-matchup, so that needs its own probe before step 3.
+Opponent does not come from the box score. ESPN sends opponent pro-team id 0
+there, which espn-api renders as the string `"None"`. The real schedule is the
+season-level `proTeamSchedules_wl` view: one request, all 32 teams, every week,
+with home/away and kickoff time. `EspnClient.pro_schedule(week)` wraps it, and
+bye is now derived from a team having no game rather than from ESPN's flag.
+Defensive matchup strength is still owed and should come from PFF's team
+defense facets.
 
 PFF's 2026 data is preseason only until games are played. `season=2026&week=1`
 returns zero rows; `season=2025` is full. Week 1 start/sit leans on 2025 grades

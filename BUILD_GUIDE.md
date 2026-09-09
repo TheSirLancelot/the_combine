@@ -153,11 +153,19 @@ outprojecting a starter whose slot they can fill. That last one is deliberately
 projection alone, because that is the only weekly number the system has until
 the PFF client lands. `tests/test_lineup.py` covers the slot logic.
 
-Two things ESPN does not give us here. `pro_opponent` comes back as the string
-`"None"` and `pro_pos_rank` is 0 on box players, so **opponent and defensive
-matchup need their own source**, and that probe belongs before start/sit rather
-than inside it. And no games have been played yet, so every `actual` is 0 and
-item 4 below has nothing to log until week 1 finishes.
+Opponent needed a second source and now has one. The box score reports
+opponent pro-team id 0, which espn-api renders as the string `"None"`, so the
+first cut of this view was opponent-blind. `proTeamSchedules_wl` is the answer:
+one season-level request covering all 32 teams and every week, with home/away
+and kickoff timestamp. `EspnClient.pro_schedule(week)` wraps it and caches per
+week. Two things fell out of it for free: bye is now derived from a team having
+no game that week rather than from ESPN's own flag, and kickoff time gives us
+`locked`, so the swap list stops suggesting moves for players whose game has
+already started. Defensive matchup strength is still owed and belongs to PFF's
+team defense facets.
+
+No games have been played yet, so every `actual` is 0 and item 4 below has
+nothing to log until week 1 finishes.
 
 **2. PFF API client.** Auth is a bearer token, `PFF_API_KEY=ak_...` in `.env`,
 base URL `https://api.pff.com`. Two endpoint families that behave differently:

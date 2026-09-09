@@ -25,6 +25,24 @@ class PlayerState:
 
 
 @dataclass(frozen=True)
+class ProGame:
+    """One NFL team's game in one week. Comes from the pro schedule endpoint,
+    not from the fantasy box score, which reports opponent id 0."""
+    opponent: str               # opposing NFL team abbreviation
+    home: bool
+    kickoff_ms: int             # epoch milliseconds
+
+    @property
+    def label(self) -> str:
+        return f"{'vs' if self.home else '@'} {self.opponent}"
+
+    def started(self, now_ms: int | None = None) -> bool:
+        import time
+
+        return (now_ms if now_ms is not None else int(time.time() * 1000)) >= self.kickoff_ms
+
+
+@dataclass(frozen=True)
 class WeeklyPlayer:
     """One player in one week's lineup.
 
@@ -44,7 +62,7 @@ class WeeklyPlayer:
     slot: str                       # lineup slot this week: RB, FLEX, BE, IR...
     eligible_slots: frozenset[str] = field(default_factory=frozenset)
     status: str = "OK"
-    opponent: str | None = None
+    game: ProGame | None = None     # None means bye, or no NFL team
     projected: float = 0.0
     actual: float = 0.0
     played: bool = False            # game finished or in progress
@@ -53,6 +71,18 @@ class WeeklyPlayer:
     @property
     def starting(self) -> bool:
         return self.slot not in BENCH_SLOTS
+
+    @property
+    def opponent(self) -> str:
+        """'@ KC', 'vs KC', or 'BYE'. Empty when the schedule had no answer."""
+        if self.on_bye:
+            return "BYE"
+        return self.game.label if self.game else ""
+
+    @property
+    def locked(self) -> bool:
+        """His game has kicked off, so the start/sit decision is already made."""
+        return bool(self.game and self.game.started())
 
 
 @dataclass(frozen=True)

@@ -310,3 +310,24 @@ def test_near_misses_skip_players_who_cannot_play():
     bench = [p("out", "RB", "BE", 11, elig=("RB", "BE"), status="O"),
              p("bye", "RB", "BE", 11, elig=("RB", "BE"), bye=True)]
     assert near_misses(starters, bench) == []
+
+
+def test_each_pair_carries_its_own_required_edge():
+    """The bar is per pair, so a report must not quote one pair's number as a
+    general rule. A quiet pair and a noisy pair in the same lineup need
+    different separation."""
+    from combine.pipeline.distribution import Band
+    from combine.pipeline.lineup import near_misses
+
+    class Dist:
+        def for_player(self, family, proj):
+            spread = 6.0 if family == "idp" else 10.6
+            return Band(floor=0, median=proj, ceiling=0, boom=0, bust=0,
+                        spread=spread, n=999, basis="fake")
+
+    starters = [p("lb", "LB", "LB", 11), p("rb", "RB", "RB", 11)]
+    bench = [p("lb2", "LB", "BE", 10, elig=("LB", "BE")),
+             p("rb2", "RB", "BE", 10, elig=("RB", "BE"))]
+    needed = {m.bench.name: round(m.needed, 2) for m in near_misses(starters, bench, Dist())}
+    assert needed["lb2"] == 1.5      # 0.25 * 6.0
+    assert needed["rb2"] == 2.65     # 0.25 * 10.6

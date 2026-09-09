@@ -153,9 +153,10 @@ def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
                     f"  {c.bench.name} {c.bench.projected:.1f} would need "
                     f"{c.short_by:.1f} more to be worth weighing against "
                     f"{c.starter.name} {c.starter.projected:.1f} "
-                    f"({c.starter.slot})")
-            out.append(f"  a bench player has to be {close[0].needed:.1f}+ points "
-                       f"AHEAD before the gap beats the noise, not level with him")
+                    f"({c.starter.slot}); that pair needs a {c.needed:.1f} point edge")
+            out.append("  the edge required differs per pair, because it scales "
+                       "with how widely\n  those two positions actually scatter "
+                       "at those projections. see: combine glossary")
         return "\n".join(out)
 
     for c in sorted(calls, key=lambda x: -x.proj_edge):

@@ -636,12 +636,14 @@ def week_page():
                         f"**{c.bench.name}** {c.bench.projected:.1f} would need "
                         f"**{c.short_by:.1f} more** to be worth weighing against "
                         f"{c.starter.name} {c.starter.projected:.1f} "
-                        f"(`{c.starter.slot}`)")
+                        f"(`{c.starter.slot}`) &nbsp;·&nbsp; that pair needs a "
+                        f"{c.needed:.1f} point edge")
                 st.caption(
-                    f"A bench player has to be {data['near'][0].needed:.1f}+ points "
-                    f"AHEAD of a starter before the gap beats the noise, not level "
-                    f"with him. That figure scales with how widely these two "
-                    f"positions actually scatter; see the glossary.")
+                    "A bench player has to be AHEAD by the edge shown, not level. "
+                    "The edge differs per pair: it scales with how widely those "
+                    "two positions actually scatter at those projections, so two "
+                    "defenders need less separation than two backs projected 20+. "
+                    "See the glossary.")
 
     if data["usage"] and not data["in_season"]:
         st.caption("Usage columns are last season's numbers, a prior rather than "

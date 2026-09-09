@@ -140,8 +140,16 @@ def week() -> int:
         return 2
     league = args[0]
     wk = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
+    from datetime import datetime
+
     c = client_for(league)
-    print(render(c.matchup(wk), c.roster_slots(), config.get_league(league).name))
+    m = c.matchup(wk)
+    stamp = datetime.now().astimezone().strftime("%H:%M %Z")
+    print(render(m, c.roster_slots(), config.get_league(league).name,
+                 pulled_at=stamp))
+    if config.get_league(league).platform == "manual":
+        print("\n(hand-entered league: projections are ESPN stat lines priced by "
+              "your scoring table, so they will not match Yahoo's display)")
     return 0
 
 

@@ -238,7 +238,8 @@ def near_misses(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
     return sorted(out, key=lambda m: m.short_by)[:limit]
 
 
-def render(m: Matchup, slots: dict[str, int], league_name: str = "", dist=None) -> str:
+def render(m: Matchup, slots: dict[str, int], league_name: str = "", dist=None,
+           pulled_at: str = "") -> str:
     """Compact weekly view. Same discipline as the board: decision-relevant
     fields only, one line per player."""
     starters, bench = split(m.my_lineup)
@@ -249,7 +250,11 @@ def render(m: Matchup, slots: dict[str, int], league_name: str = "", dist=None) 
     # A hand-entered league has no opponent, so the matchup line and the margin
     # would both be fiction.
     have_opponent = bool(m.their_lineup)
-    head = [f"{league_name or 'week'} — week {m.week} ({state})"]
+    # ESPN moves its weekly projections through the day, so a number here that
+    # disagrees with the site by a little is usually just a different moment.
+    # Stamping the pull makes that checkable instead of mysterious.
+    head = [f"{league_name or 'week'} — week {m.week} ({state})"
+            + (f"   projections as of {pulled_at}" if pulled_at else "")]
     if have_opponent:
         head.append(
             f"{m.my_team} {m.my_proj:.1f} proj"

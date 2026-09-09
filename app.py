@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -219,6 +220,7 @@ def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
     """
     c = client_for(league)
     m = c.matchup(week or None)
+    pulled_at = datetime.now().astimezone().strftime("%H:%M:%S %Z")
     starters, bench = split(m.my_lineup)
 
     # PFF is optional here on purpose: an expired key or an unbuilt crosswalk
@@ -235,6 +237,7 @@ def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
 
     return {
         "matchup": m,
+        "pulled_at": pulled_at,
         "slots": c.roster_slots(),
         "starters": order_starters(starters, c.roster_slots()),
         "bench": bench,
@@ -582,6 +585,13 @@ def week_page():
     have_opponent = bool(m.their_lineup)
     st.subheader(f"Week {m.week} · {m.my_team}"
                  + (f" vs {m.their_team}" if have_opponent else ""))
+    st.caption(f"ESPN projections as of {data['pulled_at']}. ESPN moves these "
+               f"through the day, so small differences against the site are a "
+               f"different moment rather than different arithmetic."
+               if leagues[league].platform == "espn" else
+               f"Projections computed at {data['pulled_at']} from ESPN stat lines "
+               f"priced by your scoring table, so they will not match Yahoo's "
+               f"display.")
     cols = st.columns(4)
     cols[0].metric("My projection", f"{m.my_proj:.1f}")
     if have_opponent:

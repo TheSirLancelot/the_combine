@@ -297,6 +297,97 @@ def compare() -> int:
     return 0
 
 
+def train() -> int:
+    """combine train <build|status> [season]
+
+    build     pull a past season's ESPN player-weeks and PFF weekly stat lines
+              into SQLite, then resolve any new players onto PFF ids
+    status    what is already stored
+    baseline  score ESPN and the no-model baselines, which is the bar
+
+    Resumable: it skips whatever is already there, so run it again after an
+    interruption. A full season is around a hundred requests and some of them
+    are slow.
+    """
+    from . import db
+    from .pipeline.crosswalk import (directory, load_ids, resolve_by_lookup,
+                                     resolve_ids, save_ids)
+    from .pipeline.history import (REGULAR_SEASON, coverage, espn_players,
+                                   pull_espn, pull_pff)
+    from .pipeline.providers.pff_api import PffApi
+
+    args = sys.argv[2:]
+    what = args[0] if args else "status"
+    season = int(args[1]) if len(args) > 1 and args[1].isdigit() else config.SEASON - 1
+
+    db.ensure_schema()
+
+    if what == "status":
+        with db.connect() as conn:
+            cov = coverage(conn, season)
+        e = cov["espn"]
+        print(f"season {season}")
+        print(f"  espn: {e.get('n') or 0} player-weeks, {e.get('wks') or 0}/"
+              f"{len(REGULAR_SEASON)} weeks, {e.get('players') or 0} players, "
+              f"{e.get('starts') or 0} starts")
+        for area, v in sorted(cov["pff"].items()):
+            print(f"  pff {area:<10} {v['rows']:>6} rows, {v['weeks']}/"
+                  f"{len(REGULAR_SEASON)} weeks")
+        if not cov["pff"]:
+            print("  pff: nothing stored yet")
+        print(f"  crosswalk: {len(load_ids())} espn ids resolved")
+        return 0
+
+    if what == "baseline":
+        from .pipeline.evaluate import baselines, by_family
+        from .pipeline.training import build as build_frame
+        with db.connect() as conn:
+            frame = build_frame(conn, season)
+        if frame.empty:
+            print(f"nothing stored for {season}. run: combine train build {season}",
+                  file=sys.stderr)
+            return 2
+        print(f"season {season}: {len(frame)} player-weeks played")
+        print("\nBASELINES (the bar a model has to clear)")
+        for sc in baselines(frame):
+            print("  " + sc.line())
+        print("\nESPN BY POSITION FAMILY")
+        print(by_family(frame).to_string(index=False))
+        return 0
+
+    if what != "build":
+        print("usage: combine train <build|status|baseline> [season]", file=sys.stderr)
+        return 2
+
+    leagues = [s for s, c in config.leagues().items() if c.platform == "espn"]
+    print(f"building {season} from {', '.join(leagues)}")
+    with db.connect() as conn:
+        for league in leagues:
+            pull_espn(conn, league, season)
+        pull_pff(conn, PffApi(), season)
+
+        # Rosters churn between seasons, so players who appeared in the past
+        # season are often missing from a crosswalk built off current rosters.
+        people = espn_players(conn, season)
+    known = load_ids()
+    unknown = [p for p in people if str(p.player_id) not in known]
+    print(f"crosswalk: {len(people)} players in {season}, {len(unknown)} unresolved")
+    if unknown:
+        api = PffApi()
+        rows, misses = resolve_ids(unknown, directory(api))
+        found, misses = resolve_by_lookup(api, misses)
+        rows += found
+        stored = save_ids(rows)
+        skip = [m for m in misses if m["espn_pos"].upper() in ("D/ST", "DST", "DEF")]
+        print(f"  resolved {len(rows)}, {stored} stored, "
+              f"{len(misses) - len(skip)} unresolved, {len(skip)} d/st skipped")
+
+    with db.connect() as conn:
+        cov = coverage(conn, season)
+    print(f"espn player-weeks now: {cov['espn'].get('n')}")
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "doctor"
     if cmd == "doctor":
@@ -307,6 +398,8 @@ def main() -> int:
         return pff_ids()
     if cmd == "startsit":
         return start_sit()
+    if cmd == "train":
+        return train()
     if cmd == "compare":
         return compare()
     if cmd == "init":
@@ -320,7 +413,8 @@ def main() -> int:
         return 0
     print("usage: combine [doctor [--live] | init | week <league> [week] | "
           "pffids <league> | startsit <league> [week] | "
-          "compare <league> A B | try ... | serve]",
+          "compare <league> A B | train <build|status|baseline> | "
+          "try ... | serve]",
           file=sys.stderr)
     return 2
 

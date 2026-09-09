@@ -54,9 +54,29 @@ and `combine compare <league> A B`, plus the same calls inside the app's Week
 mode. The projection and the usage are deliberately never blended, and
 opportunities only compare inside a position family. See the build guide.
 
-Next up: opponent defense strength (the schedule says who, not how hard), then
-persisting actuals to SQLite from week 1 onward, which is the only route to
-weighting the blend by measured accuracy rather than by opinion.
+**The current work is a residual model.** William's goal, stated 2026-09-09: use
+ESPN's projections plus PFF data to spot when a lower-projected player is the
+better start because of matchup and role. The training data is built:
+`combine train build` pulled 7752 player-weeks from 2025 across both leagues,
+and the key find is that a past ESPN week carries both the projection and the
+actual, already scored per league, so one row is the label and the benchmark
+together.
+
+The bar is measured and lives in `combine train baseline`. ESPN is MAE 5.67 and
+55.1% on close calls, which is barely better than a coin flip exactly where the
+decisions are hard. That is the opportunity and the warning: there is room, but
+anything claiming 70% is leaking.
+
+No model exists yet, on purpose. The metric was written before the model.
+
+**ARGUE, not override.** William's call. The model never reorders anything; it
+flags where it disagrees with ESPN and says why, and he decides. It graduates
+to overriding once the `prediction` table shows it has earned it.
+
+**The leakage rule.** Every feature for week W comes from weeks strictly before
+W. `training._prior` is the only function that slices weeks, and
+`tests/test_training.py` checks it. A frame that includes W backtests
+beautifully and is worthless on Sunday.
 
 ## The PFF API, correctly
 

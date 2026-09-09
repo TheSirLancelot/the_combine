@@ -33,9 +33,12 @@ def _status(p) -> str:
 
 
 class EspnClient:
-    def __init__(self, cfg: LeagueConfig):
+    def __init__(self, cfg: LeagueConfig, season: int = SEASON):
         self.slug = cfg.slug
         self.cfg = cfg
+        # Past seasons are readable and carry both the weekly projection and
+        # the actual, which is what makes a training set possible at all.
+        self.season = int(season)
         self._league = None
         self._schedule_cache: dict[int, dict[str, ProGame]] = {}
 
@@ -46,7 +49,7 @@ class EspnClient:
 
             self._league = League(
                 league_id=int(self.cfg.league_id),
-                year=SEASON,
+                year=self.season,
                 espn_s2=os.environ["ESPN_S2"],
                 swid=os.environ["ESPN_SWID"],
             )
@@ -96,7 +99,7 @@ class EspnClient:
         import requests
 
         url = (f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"
-               f"{SEASON}/segments/0/leagues/{self.cfg.league_id}")
+               f"{self.season}/segments/0/leagues/{self.cfg.league_id}")
         r = requests.get(url, params={"view": "mDraftDetail"},
                          cookies={"espn_s2": os.environ["ESPN_S2"],
                                   "SWID": os.environ["ESPN_SWID"]}, timeout=15)
@@ -263,3 +266,23 @@ class EspnClient:
     def weekly_lineup(self, week: int | None = None) -> list[WeeklyPlayer]:
         """My full roster for one week, starters and bench, with weekly numbers."""
         return self.matchup(week).my_lineup
+
+    def player_weeks(self, week: int) -> list[tuple[str, WeeklyPlayer]]:
+        """(fantasy team name, player) for EVERY rostered player in the league
+        that week, not just mine.
+
+        This is the training population: the players someone actually had to
+        make a decision about. Free agents are excluded on purpose, since
+        nobody was choosing whether to start them.
+        """
+        schedule = self.pro_schedule(week)
+        out: list[tuple[str, WeeklyPlayer]] = []
+        for b in self.league.box_scores(week):
+            for side in ("home", "away"):
+                team = getattr(b, f"{side}_team", None)
+                name = getattr(team, "team_name", None)
+                if not name:
+                    continue  # bye weeks hand back an int 0 here
+                for p in getattr(b, f"{side}_lineup", None) or []:
+                    out.append((name, self._weekly(p, schedule)))
+        return out

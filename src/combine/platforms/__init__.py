@@ -143,16 +143,18 @@ class LeagueClient(Protocol):
     def ping(self) -> str: ...
 
 
-def client_for(slug: str) -> LeagueClient:
-    from ..config import get_league
+def client_for(slug: str, season: int | None = None) -> LeagueClient:
+    from ..config import SEASON, get_league
 
     cfg = get_league(slug)
     if cfg.platform == "espn":
         from .espn import EspnClient
 
-        return EspnClient(cfg)
+        return EspnClient(cfg, season=season or SEASON)
     if cfg.platform == "yahoo":
         from .yahoo import YahooClient
 
+        if season and int(season) != int(SEASON):
+            raise ValueError("yahoo has no history path; it is still blocked on API access")
         return YahooClient(cfg)
     raise ValueError(f"unknown platform {cfg.platform}")

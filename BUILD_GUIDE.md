@@ -266,29 +266,103 @@ Still owed here: opponent defense strength. The schedule gives us who, not how
 hard. `defense/summary` aggregated by team, or the `versus` table inside
 coverage_matchup, is where that comes from.
 
-**4. Persist to SQLite.** Still created and unused. The `actual` table wants
-weekly writes from week 1 onward, and that is the only path to weighting the
-blend by measured accuracy instead of by opinion.
+**4. Persist to SQLite. DONE for the training path 2026-09-09.**
+`pipeline/history.py`, `combine train build|status|baseline`.
 
-**5. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
+The original tables are still unused and are still built around a canonical
+`player_id` ('josh-allen-qb-buf') that nothing produces, and around stat lines
+rather than points. The training path needs the opposite, so three new tables
+sit beside them rather than retrofitting: `espn_player_week`,
+`pff_player_week` and `prediction`. Only raw pulls are stored; features are
+computed on read, because the feature set changes on every modelling pass and
+stored features would need invalidating each time.
+
+**The find that made the model plan viable:** ESPN serves past seasons, and a
+past week carries `projected_points` AND `points` for every rostered player,
+already scored under each league's own rules. One row is the label and the
+benchmark together. 2025 gave 7752 player-weeks across both leagues, 459
+players, 4536 of them started. So "does our model beat ESPN" is a measurable
+question on William's exact scoring rather than an argument, and `scoring.py`
+is not on the critical path for it after all.
+
+Only rostered players are pulled. Someone had to decide whether to start those
+people; nobody was deciding about the free agent pool, so including it would
+train on a population the model is never asked about.
+
+The build is resumable, since it is about a hundred requests and some are slow.
+Every step skips what is already stored. Resolving 2025's rosters also grew the
+id crosswalk from 559 to 796, because rosters churn between seasons.
+
+**5. The residual model. NEXT, and gated.**
+`pipeline/training.py` builds the frame, `pipeline/evaluate.py` holds the bar.
+No model exists yet, deliberately: the metric was written first, because a
+model built first and measured afterwards gets graded against whichever metric
+flatters it.
+
+**Target is the residual, `actual - espn_proj`, not the raw score.** ESPN's
+projection already absorbs what we cannot see: Vegas lines, beat reporting,
+depth chart churn. Trying to out-project it from a few thousand rows loses.
+Predicting where it is *wrong* is a much smaller problem, and a model that
+learns nothing predicts a zero residual and lands exactly on ESPN, which is the
+right failure mode.
+
+**The leakage rule lives in one function.** Every feature for week W comes from
+weeks strictly before W, and `training._prior` is the only thing that slices
+weeks. A frame that quietly includes W scores brilliantly and is worthless on
+Sunday, so `tests/test_training.py` checks it directly.
+
+**The bar, measured on 2025:**
+
+```
+ESPN projection        MAE  5.67  RMSE 7.25  pairs 62.5%  close 55.1%
+own last 3 weeks       MAE  6.50  RMSE 8.58  pairs 58.4%  close 52.3%
+ESPN + recent bias     MAE  6.35  RMSE 8.28  pairs 59.8%  close 52.4%
+```
+
+Two metrics because they answer different questions. MAE is how close a number
+is. Pairwise decision accuracy is how often the player you were told to prefer
+outscored the other, inside one league, week and position family, and that is
+the actual job. The CLOSE column is the one that matters: pairs within 3
+projected points, where the decision is real. Everyone gets Chase over a backup
+right, so overall pairwise accuracy mostly measures how many easy pairs are in
+the sample.
+
+**55.1% on close calls is the number to keep in mind.** ESPN is barely better
+than a coin flip exactly where the decisions are hard, which is both the
+opportunity and the warning. There is room. But anything claiming 70% is
+leaking, and the honest ceiling here is a few points, not a transformation.
+
+By family, ESPN is worst at QB (MAE 6.69, close 52.1%) and best at IDP
+(MAE 5.07), which is where to look first.
+
+Both no-model baselines lose to ESPN, which is the sanity check that the
+harness works.
+
+Still to do: train per-position models on weeks 1-13, validate on 14-18, and
+ship only if both metrics beat ESPN out of sample. Then wire it in ARGUE mode
+(William's call, 2026-09-09): ESPN's order stands, the model only adds a flag
+where it disagrees and why. It graduates to overriding the order once the
+`prediction` table says it has earned it.
+
+**6. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server
 enforces its own token independently of Cloudflare. Do not put a Cloudflare
 Access policy on the hostname, it bounces Anthropic with a login redirect and
 fails with a useless error.
 
-**6. Yahoo, when approved.** Key and secret into `.env`, run
+**7. Yahoo, when approved.** Key and secret into `.env`, run
 `scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
 be `https://localhost:8000`.
 
-**7. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
+**8. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
 to PFF's raw stat lines, compare against PFF's own `fantasyPoints`. Match means
 the shortcut was safe; mismatch means someone has a scoring bug.
 
-**8. Live draft reader.** For next August. ESPN's league API does not expose an
+**9. Live draft reader.** For next August. ESPN's league API does not expose an
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
 the draft-day notes in project memory.
 
-**9. Discord bot.** Unchanged from the brief.
+**10. Discord bot.** Unchanged from the brief.
 
 ## Known soft spots
 

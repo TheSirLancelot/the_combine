@@ -125,6 +125,27 @@ so and falls back to the projection alone.
 Before kickoff the usage is last season's, which every output labels as a prior.
 Both commands need the id crosswalk, so run `combine pffids <league>` first.
 
+## Training data and baselines
+
+```bash
+uv run combine train build          # pull last season into SQLite, resumable
+uv run combine train status         # what is stored
+uv run combine train baseline       # the bar a model has to beat
+```
+
+`build` pulls every rostered player-week from a past season: ESPN's weekly
+projection and the actual score, already under your league's rules, plus PFF's
+charted stat line for the same weeks. 2025 gives 7752 player-weeks. It skips
+whatever is already stored, so it is safe to re-run after an interruption.
+
+`baseline` scores ESPN and two no-model predictors on two metrics. MAE is how
+close the number is. Pairwise accuracy is how often the player you were told to
+prefer actually outscored the other, and the `close` column restricts that to
+pairs within 3 projected points, which is where the real decisions are.
+
+ESPN currently sits at MAE 5.67 and 55.1% on close calls. Any model has to beat
+both out of sample or it does not ship.
+
 ## Draft day (CLI)
 
 Three commands do everything. Run them from `~/the_combine`.

@@ -120,8 +120,11 @@ def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
            usage: dict[int, usage_mod.Usage], ids: dict[str, int],
            in_season: bool, league_name: str = "",
            slots: dict[str, int] | None = None, dist=None) -> str:
-    out = [f"{league_name or 'start/sit'} — week {m.week}",
-           f"{m.my_team} {m.my_proj:.1f} vs {m.their_team} {m.their_proj:.1f}"]
+    out = [f"{league_name or 'start/sit'} — week {m.week}"]
+    if m.their_lineup:
+        out.append(f"{m.my_team} {m.my_proj:.1f} vs {m.their_team} {m.their_proj:.1f}")
+    else:
+        out.append(f"{m.my_team}: {m.my_proj:.1f} projected (no opponent entered)")
 
     # The one thing here that is arithmetic rather than judgement, so it leads.
     if slots:

@@ -458,6 +458,38 @@ def train() -> int:
     return 0
 
 
+def check_scoring() -> int:
+    """combine scoring [week] — prove the scoring engine against ESPN itself.
+
+    Scores ESPN's own stat lines under each ESPN league's own rules and compares
+    against the points ESPN published. A match means the engine is right, so a
+    hand-entered league's numbers are only as wrong as its hand-entered table.
+    """
+    from .pipeline.scoring import load_table, validate
+    from .platforms import client_for
+
+    week = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 0
+    for slug, cfg in config.leagues().items():
+        if cfg.platform != "espn":
+            continue
+        c = client_for(slug)
+        r = validate(c, week or c.week)
+        print(f"{slug}: {r['matched']}/{r['n']} stat lines within 0.05 "
+              f"(worst {r['max_error']:.3f})")
+        for name, pos, published, ours in r["worst"][:5]:
+            print(f"    {pos:<5} {name[:22]:<23} espn {published:7.2f}  "
+                  f"ours {ours:7.2f}  {ours - published:+.2f}")
+    for slug, cfg in config.leagues().items():
+        if cfg.platform != "manual":
+            continue
+        table = load_table(config.CONFIG_DIR / f"{slug}_league.toml")
+        print(f"\n{slug}: {len(table.rules)} scoring rules loaded from "
+              f"config/{slug}_league.toml, idp={table.idp}")
+        print("  hand-entered, so it cannot be validated against the platform. "
+              "the engine below it is.")
+    return 0
+
+
 def glossary() -> int:
     """combine glossary — what every token in a role line means."""
     from .pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY
@@ -491,6 +523,8 @@ def main() -> int:
         return train()
     if cmd == "glossary":
         return glossary()
+    if cmd == "scoring":
+        return check_scoring()
     if cmd == "compare":
         return compare()
     if cmd == "init":

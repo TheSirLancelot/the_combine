@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import DB_PATH
@@ -13,7 +13,7 @@ SCHEMA = Path(__file__).with_name("schema.sql")
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def connect(path: Path = DB_PATH, *, readonly: bool = False) -> sqlite3.Connection:

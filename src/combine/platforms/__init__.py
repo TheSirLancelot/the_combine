@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-BENCH_SLOTS = frozenset({"BE", "IR"})
+# ESPN says BE, Yahoo says BN. Both mean bench, and getting this wrong counted
+# every bench player as a starter in the hand-entered league.
+BENCH_SLOTS = frozenset({"BE", "BN", "IR"})
 
 
 @dataclass(frozen=True)
@@ -151,6 +153,10 @@ def client_for(slug: str, season: int | None = None) -> LeagueClient:
         from .espn import EspnClient
 
         return EspnClient(cfg, season=season or SEASON)
+    if cfg.platform == "manual":
+        from .manual import ManualClient
+
+        return ManualClient(cfg.slug, season=season or SEASON)
     if cfg.platform == "yahoo":
         from .yahoo import YahooClient
 

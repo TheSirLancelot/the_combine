@@ -16,13 +16,14 @@ Leagues, by slug, which every tool takes:
 |------|----------|--------|
 | `rcl` | ESPN | IDP keeper, 0.5 PPR, no K/DST, draft slot 1 |
 | `dmwd` | ESPN | full PPR redraft, K + D/ST, draft slot 9 |
-| `work` | Yahoo | blocked on API approval, shows SKIP in doctor |
+| `work` | manual | League of Degenerates, 14 teams, entered by hand while the Yahoo API is in review |
 
 ## Where things are
 
 ```
 src/combine/          config, db (unused), format, cli, server (7 MCP tools)
   platforms/espn.py   real, written from probe output
+  platforms/manual.py hand-entered league, scores ESPN stat lines by our rules
   platforms/yahoo.py  ping only, blocked
   pipeline/           board, vorp, crosswalk, draftplan, needs, providers/
 app.py                Streamlit UI, the primary interface

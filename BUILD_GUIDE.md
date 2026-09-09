@@ -62,7 +62,7 @@ What it is good for is better than a redundant projection:
     rate, aDOT, contested catch, drops, EPA, pressure, snap counts
   * defense, which matters for RCL where IDP projections are thin
 
-**We never wrote `scoring.py`.** Both ESPN and PFF hand back projections
+**We did not write `scoring.py` until the Yahoo league forced it.** Both ESPN and PFF hand back projections
 already scored under each league's own rules. Same player, same raw stat line,
 different point totals per league. So the board blends finished totals rather
 than rescoring stat lines. This is a documented shortcut, not an oversight. The
@@ -494,25 +494,86 @@ Even taking the one real effect at face value, RB grade would move the bar from
 to 2.6, in exchange for a per-player dependency that needs half a season to
 warm up. Not worth it.
 
-**8. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
+**8. scoring.py and the hand-entered Yahoo league. DONE 2026-09-09.**
+The Yahoo API is still in review, so the league was entered by hand:
+`config/work_league.toml` for settings and scoring, `config/work_roster.csv` for
+the roster, and `platforms/manual.py` to make it look enough like a league that
+the week view, the optimizer and the comparison threshold all work unchanged.
+
+Projections are built rather than fetched. ESPN publishes a raw projected stat
+line per player per week that is league independent, so we score that line under
+Yahoo's rules. The numbers will not match Yahoo's display, which is expected:
+this is ESPN's view of the player priced by Yahoo's rules, and the upside is
+that all three leagues use one methodology.
+
+**The vocabulary is ESPN stat IDs, not names, and this is the whole lesson.** A
+name-keyed table looks completely reasonable and validated at 92% on DMWD and 0%
+on RCL. Three separate causes, each found by validating rather than by reading:
+
+  * espn-api's id-to-name map does not cover every stat a league can score. RCL
+    pays a point per 25 passing yards (id 8) and per 10 rushing yards (id 28),
+    DMWD pays 5 for a 50+ field goal (id 198), and none of those have names. The
+    stat lines carry them as bare numeric keys for exactly that reason, so a
+    name-keyed table dropped them and every RCL quarterback came out 11 light.
+  * Six names map to TWO ids each: passingYards is 3 and 22,
+    receivingReceptions is 41 and 53. Which one a league scores is a property of
+    the league, so a single reverse map cannot be right for everyone. Collapsing
+    them cost every DMWD quarterback 15 points.
+  * ESPN projects defensive stats for two-way players, and pays them only where
+    the league has IDP slots. Travis Hunter is the worked example. Gating on
+    `idp` fixed it, and then over-gating made every kick returner project low,
+    because return touchdowns (ids 101, 102, 93) sit in the same id band as
+    defensive stats but a receiver earns them.
+
+`combine scoring` is the standing proof: score ESPN's stat lines under each ESPN
+league's own rules and compare against the points ESPN published. Currently
+209/209 exact on RCL and 184/185 on DMWD, the exception being Travis Hunter at
+0.054. A hand-entered table cannot be validated against its platform, but the
+engine under it can be, which is the strongest guarantee available here.
+
+**What the Yahoo table cannot price**, listed in the file itself so the omission
+is visible: 40+ yard non-TD completions, runs and receptions (ESPN projects only
+the 40+ yard TD versions), pick sixes thrown, return TDs by offensive players,
+and D/ST fourth-down stops and three-and-outs. The quarterback gap is the
+largest at roughly 1-2 points a game; the D/ST gaps under-count every defense by
+a similar amount. Near constant within a position, so they move totals more than
+ordering. One approximation: Yahoo's points-allowed tiers break at 20/21 and
+ESPN projects an 18-21 bucket, so it is split three quarters into the 1-point
+tier.
+
+**What this league's scoring does to it.** Completions at a full point each,
+confirmed with the GM, makes quarterbacks enormous: Kyler Murray projects 39.4
+where ESPN's own scoring would say about 19. It also means a backup quarterback
+is worth more on the bench than a skill player, which is a roster-construction
+fact rather than a bug. Sacks were confirmed as changing to -1, and the table
+reflects that.
+
+**Two bugs the hand-entered league exposed in shared code.** `BENCH_SLOTS` knew
+ESPN's "BE" but not Yahoo's "BN", so every bench player counted as a starter.
+And the week view printed a matchup line and a projected margin against an
+opponent that does not exist; both are now suppressed when there is no opponent
+lineup. Entering an opponent's whole roster every week is more upkeep than the
+matchup line is worth, so that stays empty until the API lands.
+
+**9. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server
 enforces its own token independently of Cloudflare. Do not put a Cloudflare
 Access policy on the hostname, it bounces Anthropic with a login redirect and
 fails with a useless error.
 
-**9. Yahoo, when approved.** Key and secret into `.env`, run
+**10. Yahoo, when approved.** Key and secret into `.env`, run
 `scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
 be `https://localhost:8000`.
 
-**10. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
+**11. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
 to PFF's raw stat lines, compare against PFF's own `fantasyPoints`. Match means
 the shortcut was safe; mismatch means someone has a scoring bug.
 
-**11. Live draft reader.** For next August. ESPN's league API does not expose an
+**12. Live draft reader.** For next August. ESPN's league API does not expose an
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
 the draft-day notes in project memory.
 
-**12. Discord bot.** Unchanged from the brief.
+**13. Discord bot.** Unchanged from the brief.
 
 ## Known soft spots
 

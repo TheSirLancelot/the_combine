@@ -1,0 +1,106 @@
+# League of Degenerates (Yahoo, id 975121). Entered by hand on 2026-09-09 while
+# Yahoo API access is still in review. Replace with the live adapter once it is.
+#
+# The scoring table is keyed by ESPN's stat-line vocabulary, not Yahoo's, because
+# ESPN's projected stat lines are what we score. One vocabulary, one lookup, no
+# translation layer to get wrong. Values are POINTS PER UNIT of that stat, so
+# passing yards at 1 per 25 is 0.04.
+
+name = "League of Degenerates"
+league_id = "975121"
+teams = 14
+scoring_type = "head-to-head"
+
+# Yahoo: QB, WR, WR, RB, RB, TE, W/R, W/R/T, K, DEF, BN x6, IR x2
+[slots]
+QB = 1
+RB = 2
+WR = 2
+TE = 1
+"W/R" = 1
+"W/R/T" = 1
+K = 1
+DEF = 1
+
+[bench]
+BN = 6
+IR = 2
+
+# Which real positions may fill each flex slot.
+[eligibility]
+"W/R" = ["RB", "WR"]
+"W/R/T" = ["RB", "WR", "TE"]
+
+[scoring]
+# --- passing. Completions at a full point each is the defining quirk of this
+# league: 25 completions is 25 points, so quarterbacks outscore everyone.
+passingCompletions = 1.0
+passingYards = 0.04              # 1 per 25
+passingTouchdowns = 6.0
+passingInterceptions = -1.0
+passingTimesSacked = -1.0        # confirmed with the GM 2026-09-09, was +1
+passing2PtConversions = 2.0
+passing40PlusYardTD = 1.0        # on top of the 6 for the touchdown
+
+# --- rushing
+rushingYards = 0.1
+rushingTouchdowns = 6.0
+rushing2PtConversions = 2.0
+rushing40PlusYardTD = 3.0
+
+# --- receiving. Full PPR.
+receivingReceptions = 1.0
+receivingYards = 0.1
+receivingTouchdowns = 6.0
+receiving2PtConversions = 2.0
+receiving40PlusYardTD = 3.0
+
+# --- turnovers and loose balls
+lostFumbles = -2.0
+fumbleRecoveredForTD = 6.0
+"2PtConversions" = 2.0           # generic, when ESPN does not split by type
+
+# --- kicking. Yahoo pays 3 for everything under 40, which is exactly how ESPN
+# buckets it, so this maps without approximation.
+madeFieldGoalsFromUnder40 = 3.0
+madeFieldGoalsFrom40To49 = 4.0
+madeFieldGoalsFrom50Plus = 5.0
+madeExtraPoints = 1.0
+
+# --- team defense
+defensiveSacks = 1.0
+defensiveInterceptions = 2.0
+defensiveFumbles = 2.0
+defensiveSafeties = 2.0
+defensiveBlockedKicks = 2.0
+defensiveTouchdowns = 6.0
+kickoffReturnTouchdowns = 6.0
+puntReturnTouchdowns = 6.0
+
+# Points allowed. Yahoo's tiers are 0 / 1-6 / 7-13 / 14-20 / 21-27 / 28-34 / 35+.
+# ESPN projects an 18-21 bucket that straddles the 20/21 boundary, so it is
+# split three quarters into the 1-point tier and one quarter into the 0-point
+# tier: 0.75 rather than a tier value. The only approximation in this table.
+defensive0PointsAllowed = 10.0
+defensive1To6PointsAllowed = 7.0
+defensive7To13PointsAllowed = 4.0
+defensive14To17PointsAllowed = 1.0
+defensive18To21PointsAllowed = 0.75
+defensive22To27PointsAllowed = 0.0
+defensive28To34PointsAllowed = -1.0
+defensive35To45PointsAllowed = -4.0
+defensive45PlusPointsAllowed = -4.0
+
+# NOT SCORED, because ESPN does not project them. Listed so the omission is
+# visible rather than silent, with a rough cost per game:
+#   40+ yard completions (1)      ~1-2 pts/g for a QB, the largest gap
+#   40+ yard runs (1)             ~0.2 pts/g
+#   40+ yard receptions (1)       ~0.3 pts/g
+#   pick sixes thrown (-6)        rare
+#   return TDs by offensive players (6)   rare
+#   D/ST 4th down stops (1)       ~0.5 pts/g
+#   D/ST three and outs (0.5)     ~1.5-2 pts/g
+#   D/ST extra point returned (2) rare
+# The skill-position gaps are near constant within a position, so they shift
+# totals more than they shift ordering. The D/ST gaps are a systematic
+# under-count of every defense by roughly the same amount.

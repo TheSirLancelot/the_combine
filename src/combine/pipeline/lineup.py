@@ -246,16 +246,22 @@ def render(m: Matchup, slots: dict[str, int], league_name: str = "", dist=None) 
     final = all(p.played for p in m.my_lineup if p.starting)
     state = "final" if final else ("live" if any(p.played for p in m.my_lineup) else "pregame")
 
-    head = [
-        f"{league_name or 'week'} — week {m.week} ({state})",
-        f"{m.my_team} {m.my_proj:.1f} proj"
-        + (f" / {m.my_score:.1f} act" if state != "pregame" else "")
-        + f"   vs {m.their_team} {m.their_proj:.1f} proj"
-        + (f" / {m.their_score:.1f} act" if state != "pregame" else ""),
-    ]
-    if state == "pregame":
-        edge = m.my_proj - m.their_proj
-        head.append(f"projected {'up' if edge >= 0 else 'down'} {abs(edge):.1f}")
+    # A hand-entered league has no opponent, so the matchup line and the margin
+    # would both be fiction.
+    have_opponent = bool(m.their_lineup)
+    head = [f"{league_name or 'week'} — week {m.week} ({state})"]
+    if have_opponent:
+        head.append(
+            f"{m.my_team} {m.my_proj:.1f} proj"
+            + (f" / {m.my_score:.1f} act" if state != "pregame" else "")
+            + f"   vs {m.their_team} {m.their_proj:.1f} proj"
+            + (f" / {m.their_score:.1f} act" if state != "pregame" else ""))
+        if state == "pregame":
+            edge = m.my_proj - m.their_proj
+            head.append(f"projected {'up' if edge >= 0 else 'down'} {abs(edge):.1f}")
+    else:
+        head.append(f"{m.my_team}: {m.my_proj:.1f} projected from your starters "
+                    f"(no opponent entered)")
 
     def rows(players: list[WeeklyPlayer], label: str) -> list[str]:
         lines = [f"\n{label}",

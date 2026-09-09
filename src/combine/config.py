@@ -56,7 +56,10 @@ class LeagueConfig:
 _SPECS = [
     ("rcl", "The REAL Champions League", "espn", "ESPN_RCL_ID", "ESPN_RCL_TEAM_ID"),
     ("dmwd", "Dont Mess With Dexas", "espn", "ESPN_DMWD_ID", "ESPN_DMWD_TEAM_ID"),
-    ("work", "Work league", "yahoo", "YAHOO_LEAGUE_ID", "YAHOO_TEAM_KEY"),
+    # Hand-entered while Yahoo API access is in review. Settings and roster live
+    # in config/work_league.toml and config/work_roster.csv; swap the platform
+    # back to "yahoo" once the adapter is real.
+    ("work", "League of Degenerates", "manual", "", ""),
 ]
 
 
@@ -65,6 +68,11 @@ def leagues() -> dict[str, LeagueConfig]:
     so one dead credential does not take the whole server down."""
     out: dict[str, LeagueConfig] = {}
     for slug, name, platform, id_key, team_key in _SPECS:
+        if platform == "manual":
+            # No credentials to check: the league is a file on disk.
+            if (CONFIG_DIR / f"{slug}_league.toml").exists():
+                out[slug] = LeagueConfig(slug, name, platform, slug, slug, 0)
+            continue
         league_id, team_id = os.environ.get(id_key), os.environ.get(team_key)
         if league_id and team_id:
             slot = os.environ.get(f"{slug.upper()}_DRAFT_POS", "")
@@ -85,6 +93,8 @@ def missing_env() -> list[str]:
     """Env vars referenced by _SPECS or required for auth that are unset."""
     keys = ["COMBINE_BEARER_TOKEN"]
     for _, _name, platform, id_key, team_key in _SPECS:
+        if platform == "manual":
+            continue
         keys += [id_key, team_key]
         keys += ["ESPN_S2", "ESPN_SWID"] if platform == "espn" else [
             "YAHOO_CONSUMER_KEY",
@@ -96,6 +106,8 @@ def missing_env() -> list[str]:
 def platform_ready(platform: str) -> bool:
     """Whether the shared credentials for a platform are present at all.
     Lets doctor distinguish 'not set up yet' from 'broken'."""
+    if platform == "manual":
+        return True   # a file on disk, not a credential
     need = ("ESPN_S2", "ESPN_SWID") if platform == "espn" else (
         "YAHOO_CONSUMER_KEY", "YAHOO_CONSUMER_SECRET")
     return all(os.environ.get(k) for k in need)

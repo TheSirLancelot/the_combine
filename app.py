@@ -578,16 +578,24 @@ def week_page():
     played = any(p.played for p in m.my_lineup)
     final = all(p.played for p in m.my_lineup if p.starting)
 
-    st.subheader(f"Week {m.week} · {m.my_team} vs {m.their_team}")
+    # A hand-entered league has no opponent, so a matchup line would be fiction.
+    have_opponent = bool(m.their_lineup)
+    st.subheader(f"Week {m.week} · {m.my_team}"
+                 + (f" vs {m.their_team}" if have_opponent else ""))
     cols = st.columns(4)
     cols[0].metric("My projection", f"{m.my_proj:.1f}")
-    cols[1].metric("Their projection", f"{m.their_proj:.1f}",
-                   delta=f"{m.my_proj - m.their_proj:+.1f} me", delta_color="normal")
-    if played:
-        cols[2].metric("My actual", f"{m.my_score:.1f}")
-        cols[3].metric("Their actual", f"{m.their_score:.1f}")
+    if have_opponent:
+        cols[1].metric("Their projection", f"{m.their_proj:.1f}",
+                       delta=f"{m.my_proj - m.their_proj:+.1f} me", delta_color="normal")
+        if played:
+            cols[2].metric("My actual", f"{m.my_score:.1f}")
+            cols[3].metric("Their actual", f"{m.their_score:.1f}")
+        else:
+            cols[2].metric("State", "pregame")
     else:
-        cols[2].metric("State", "pregame")
+        cols[1].metric("Opponent", "not entered",
+                       help="Hand-entered league: no opponent data until the "
+                            "Yahoo API is approved")
 
     for p in data["problems"]:
         st.error(f"{p.slot}: {p.name} is {'on bye' if p.on_bye else p.status}"

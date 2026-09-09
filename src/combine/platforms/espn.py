@@ -81,6 +81,36 @@ class EspnClient:
         counts = self.league.settings.position_slot_counts
         return sum(v for k, v in counts.items() if v and k != "IR")
 
+    def draft_picks(self) -> tuple[set[str], set[str]]:
+        """(all drafted player ids, the ones I drafted) during a LIVE draft.
+
+        espn-api's league.draft returns nothing until the draft is marked
+        complete, and rosters stay empty the whole time, so mid-draft both look
+        like nothing has happened. The raw mDraftDetail view does have it:
+        ESPN pre-creates every pick slot and fills playerId in as picks are
+        made, so an unmade pick is playerId -1. Verified live 2026-09-06.
+
+        Only lm-api-reads answers with our cookies; fantasy.espn.com 403s.
+        """
+        import requests
+
+        url = (f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"
+               f"{SEASON}/segments/0/leagues/{self.cfg.league_id}")
+        r = requests.get(url, params={"view": "mDraftDetail"},
+                         cookies={"espn_s2": os.environ["ESPN_S2"],
+                                  "SWID": os.environ["ESPN_SWID"]}, timeout=15)
+        r.raise_for_status()
+        picks = (r.json().get("draftDetail") or {}).get("picks") or []
+        taken, mine = set(), set()
+        for p in picks:
+            pid = p.get("playerId", -1)
+            if pid is None or pid < 0:
+                continue
+            taken.add(str(pid))
+            if str(p.get("teamId")) == str(self.cfg.team_id):
+                mine.add(str(pid))
+        return taken, mine
+
     def _my_team(self):
         team = next(
             (t for t in self.league.teams if str(t.team_id) == str(self.cfg.team_id)), None

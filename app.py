@@ -44,6 +44,12 @@ def load(league: str, _nonce: int) -> dict:
         slots, teams, c.scoring_rules(),
     )
     roster = c.my_roster()
+    draft_err = ""
+    try:
+        taken_ids, my_ids = c.draft_picks()
+    except Exception as exc:
+        taken_ids, my_ids = set(), set()
+        draft_err = f"{type(exc).__name__}: {exc}"
     byes = {r.state.name: r.bye for r in rows if r.bye}
 
     df = pd.DataFrame([{
@@ -51,6 +57,7 @@ def load(league: str, _nonce: int) -> dict:
         "POS": r.state.pos,
         "PosRk": f"{r.state.pos}{r.avg_pos_rank}",
         "PosN": r.avg_pos_rank,
+        "_id": r.state.player_id,
         "Player": r.state.name,
         "TM": r.state.team or "",
         "ESPN": round(r.espn_pts, 1),
@@ -78,6 +85,7 @@ def load(league: str, _nonce: int) -> dict:
 
     return {
         "df": df,
+        "taken_ids": taken_ids, "my_ids": my_ids, "draft_err": draft_err,
         "roster": [(p.name, p.pos, p.team, p.status) for p in roster],
         "needs": compute_needs(roster, slots, byes),
         "slots": slots, "teams": teams, "rounds": c.roster_size(),
@@ -147,25 +155,35 @@ if not leagues:
 
 with st.sidebar:
     st.title("The Combine")
-    league = st.radio("League", list(leagues),
-                      format_func=lambda s: f"{s} · {leagues[s].name}")
-    cfg = leagues[league]
 
-    st.divider()
-    slot = st.number_input("Your draft slot", 1, 32,
-                           value=cfg.draft_slot or 1,
-                           help="Defaults to <SLUG>_DRAFT_POS in .env")
+    # Collapsed by default: these are set once and then never touched, while
+    # the pick-history paste box below gets used every few picks.
+    with st.expander("League & draft slot", expanded=False):
+        league = st.radio("League", list(leagues),
+                          format_func=lambda s: f"{s} · {leagues[s].name}")
+        cfg = leagues[league]
+        slot = st.number_input("Your draft slot", 1, 32,
+                               value=cfg.draft_slot or 1,
+                               help="Defaults to <SLUG>_DRAFT_POS in .env")
+
     on_clock = st.number_input("Pick on the clock", 1, 400, value=1)
-    st.divider()
 
-    auto = st.toggle("Auto refresh", value=True)
-    every = st.select_slider("Every", [15, 30, 45, 60], value=30,
-                             disabled=not auto, format_func=lambda n: f"{n}s")
-    if st.button("Refresh now", use_container_width=True, type="primary"):
-        st.session_state.nonce = st.session_state.get("nonce", 0) + 1
-    st.caption("Auto refresh paused" if not auto else f"Polling every {every}s")
+    with st.expander("Refresh", expanded=False):
+        auto = st.toggle("Auto refresh", value=True)
+        every = st.select_slider("Every", [15, 30, 45, 60], value=30,
+                                 disabled=not auto, format_func=lambda n: f"{n}s")
+        if st.button("Refresh now", use_container_width=True, type="primary"):
+            st.session_state.nonce = st.session_state.get("nonce", 0) + 1
+        st.caption("paused" if not auto else f"polling every {every}s")
 
 st.session_state.setdefault("nonce", 0)
+
+# ESPN's league API does not expose a live draft: picks stay in the draft room
+# service and land on rosters only after it finishes. Verified mid-draft
+# 2026-09-06, draft endpoint and every roster returned zero. So the pool is
+# tracked by hand during a draft.
+st.session_state.setdefault("gone", [])
+st.session_state.setdefault("mine", [])
 
 
 # --- page -----------------------------------------------------------------
@@ -180,7 +198,48 @@ def page():
                 "Run `python scripts/refresh_espn_cookies.py`.")
         return
 
-    df, needs = data["df"], data["needs"]
+    base = data["df"]
+    live_taken = set(data["taken_ids"])
+    live_mine = set(data["my_ids"])
+
+    all_names = base["Player"].tolist()
+    with st.sidebar:
+        st.divider()
+        st.markdown("**Draft tracking**")
+        pasted = st.text_area("Paste pick history", height=120,
+                              placeholder="Pick History tab, then the console snippet")
+        if pasted:
+            blob = " ".join(pasted.split()).lower()
+            st.session_state.pasted_gone = [n for n in all_names if n.lower() in blob]
+        st.session_state.setdefault("pasted_gone", [])
+        st.caption(f"{len(st.session_state.get('pasted_gone', []))} matched from paste")
+        if live_taken:
+            st.caption(f"Live draft: {len(live_taken)} picks in, "
+                       f"{len(live_mine)} yours")
+        elif data.get("draft_err"):
+            st.error(f"draft fetch failed: {data['draft_err']}")
+        else:
+            st.caption("No live picks seen. Track by hand if needed.")
+        with st.expander("Manual entry", expanded=False):
+            st.session_state.mine = st.multiselect(
+                "My picks", all_names, default=st.session_state.mine)
+            st.session_state.gone = st.multiselect(
+                "Taken by others", all_names, default=st.session_state.gone)
+
+
+    taken_names = (set(st.session_state.mine) | set(st.session_state.gone)
+                   | set(st.session_state.get("pasted_gone", [])))
+    df = base[~base["_id"].isin(live_taken) & ~base["Player"].isin(taken_names)].copy()
+
+    from combine.platforms import PlayerState
+    mine_rows = base[base["_id"].isin(live_mine)
+                     | base["Player"].isin(st.session_state.mine)]
+    roster = [PlayerState(player_id="", name=r["Player"], team=r["TM"],
+                          pos=r["POS"]) for _, r in mine_rows.iterrows()]
+    byes = {r["Player"]: r["BYE"] for _, r in base.iterrows() if pd.notna(r["BYE"])}
+    needs = compute_needs(roster, data["slots"], byes)
+    data = {**data, "roster": [(p.name, p.pos, p.team, p.status) for p in roster]}
+
     picks = snake_picks(slot, data["teams"], data["rounds"])
     nxt = next_pick(on_clock, picks)
 
@@ -194,29 +253,10 @@ def page():
                + (f" · {data['unmatched']} of {len(df)} had no PFF match"
                   if data["unmatched"] else ""))
 
-    # ---- needs
-    st.subheader("Needs")
-    if needs.empty:
-        gaps = " · ".join(f"**{s}** x{n}" for s, n in needs.empty.items())
-        st.warning(f"Unfilled starting slots: {gaps}", icon="⚠️")
-        st.caption("Positions that fill them: "
-                   + ", ".join(sorted(needs.open_positions)))
-    elif data["roster"]:
-        st.success("All starting slots filled. Everything from here is depth.")
-    else:
-        st.info("Nothing drafted yet, so every slot reads empty. "
-                "Use the board until you have picks.")
-
-    stacked = [(w, n) for w, n in sorted(needs.bye_load.items()) if n >= 3]
-    if stacked:
-        st.error("Bye pileup: "
-                 + ", ".join(f"week {w} has {n} starters" for w, n in stacked))
-
-    if data["roster"]:
-        with st.expander(f"Roster ({len(data['roster'])})"):
-            st.dataframe(pd.DataFrame(data["roster"],
-                                      columns=["Player", "POS", "TM", "Status"]),
-                         hide_index=True, use_container_width=True)
+    # Needs section removed 2026-09-06: it depends on reading your roster,
+    # and ESPN does not populate rosters until the draft completes. The manual
+    # "My picks" list is the only source mid-draft and is not worth the space.
+    # Bring it back once the draft-room reader exists.
 
     # ---- plan
     st.subheader(f"Timing against pick {nxt}")
@@ -237,19 +277,56 @@ def page():
 
     legend()
 
+    # Players with no ADP never appear in the timing buckets, which in RCL is
+    # every defender, i.e. five of the starting slots. No IDP draft position
+    # exists anywhere in PFF's exports, so we do not invent timing for them.
+    # We just show them, best first, so they are not silently missing.
+    no_adp = df[df["ADP"].isna()]
+
     for title, frame, note in [
         ("Gone before your pick", gone, "Your real choices. Take the best of these."),
         ("Coin flip", flip, "Within 8 picks either way. ADP is an average, not a deadline."),
         ("Still there", safe, "He lasts. Spend this pick elsewhere and come back for him."),
+        ("No ADP — timing unknown", no_adp,
+         "Mostly IDP. PFF publishes no IDP draft position, so there is no market "
+         "signal here. Ranked by VORP; use tier and positional scarcity instead."),
     ]:
         st.markdown(f"**{title}** &nbsp; <span style='opacity:0.6'>{note}</span>",
                     unsafe_allow_html=True)
         st.dataframe(style(trim(frame)), hide_index=True,
                      use_container_width=True, column_config=COL_CONFIG)
 
+    # ---- round plan
+    positions_all = sorted(df["POS"].dropna().unique())
+    st.subheader("Targets by pick")
+    st.caption("For each of your remaining picks, who should plausibly still be "
+               "there (ADP at or past that pick) ranked by VORP. Blended ESPN + PFF.")
+    rp1, rp2 = st.columns([1, 3])
+    n_picks = rp1.slider("Picks ahead", 2, 10, 6)
+    strat = rp2.multiselect(
+        "Limit to positions", positions_all,
+        default=[p for p in ("RB", "WR", "TE") if p in positions_all],
+        help="Your strategy. Clear it to see every position.")
+
+    upcoming = [p for p in picks if p >= on_clock][:n_picks]
+    pool = df[df["POS"].isin(strat)] if strat else df
+    for p in upcoming:
+        rnd = picks.index(p) + 1
+        # Anyone whose ADP is at or beyond this pick should plausibly last.
+        # Slack of 6 because ADP is an average, not a guarantee.
+        avail = pool[pool["ADP"].isna() | (pool["ADP"] >= p - 6)]
+        best = avail.head(5)
+        names = " · ".join(
+            f"{r['PosRk']} {r['Player']}"
+            + (f" ({r['ADP']:.0f})" if pd.notna(r["ADP"]) else "")
+            for _, r in best.iterrows())
+        st.markdown(f"**R{rnd} pick {p}** &nbsp; <span style='opacity:0.75'>"
+                    f"{names or 'nothing left at those positions'}</span>",
+                    unsafe_allow_html=True)
+
     # ---- board
     st.subheader("Board")
-    positions = sorted(df["POS"].dropna().unique())
+    positions = positions_all
     c1, c2 = st.columns([3, 1])
     pick_pos = c1.multiselect("Positions", positions, default=[])
     limit = c2.slider("Max rows", 10, 200, 60, step=10)

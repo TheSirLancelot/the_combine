@@ -4,26 +4,30 @@ Companion to `fantasy-copilot-brief.md` (the architecture) and `README.md` (how
 to use it). This is what got built, where it diverged from the original plan
 and why, and what is still owed.
 
-Last updated 2026-09-03, three days before drafts.
+Last updated 2026-09-09, drafts done, season starting.
 
 ---
 
 ## Status
 
-**Working today, shell only.** Live ESPN league state for both leagues, PFF
-projections and ADP, a merged draft board ranked by value over replacement, a
-snake-draft timing tool, a roster-aware needs view, analyst sentiment and
-injury news. All of it runs from `uv run combine try ...`.
+**Drafts are done.** All three leagues drafted 2026-09-06. The draft toolchain
+(board, VORP, tiers, ADP, timing, targets by pick) worked and is committed. It
+is now off-season code until next August.
 
-**Not built yet.** The tunnel, the WAF rule, and the connector registration.
-Nothing is reachable from a phone. That was Phase 1 in the original plan and it
-is now the largest outstanding piece.
+**The season is what matters now.** Roster and matchup tools were deliberately
+skipped pre-draft because ESPN returns an empty roster and 404s on box scores
+in preseason. Both are unblocked once week 1 has data.
 
-**Blocked.** Yahoo. Their Fantasy Sports API now sits behind a manual review,
-applied 2026-09-02, quoted at 1-2 weeks. The `work` league shows as SKIP in
-`doctor`, which is expected rather than broken.
+**PFF API is live and we have a working key.** It is NOT what the original
+brief assumed, see below.
 
----
+**Still not built.** Tunnel, Cloudflare WAF rule, connector registration.
+Nothing is reachable from a phone. Everything runs from `uv run combine ...`
+or the Streamlit app.
+
+**Blocked.** Yahoo. Fantasy Sports API access is behind a manual review,
+applied 2026-09-02, quoted 1-2 weeks. The `work` league shows SKIP in doctor,
+which is expected rather than broken.
 
 ## What changed from the original plan
 
@@ -44,6 +48,19 @@ with full 61-column stat lines, plus rankings exports carrying ADP. That turned
 the blend from a one-source stub into a real two-source system before the
 draft. The provider model absorbed it without changes, which is the first
 actual evidence that the N-source design works.
+
+**The PFF API is not a projections source.** The brief assumed the PFF API
+would slot in as another projection provider. It does not. Verified against
+their OpenAPI spec and live calls on 2026-09-09: 70 endpoints of grades and
+charted stats, titled "Premium Stats Pro CLI API". There is no projection, no
+ranking and no ADP endpoint anywhere in it. Projections and ADP still come
+from hand exports.
+
+What it is good for is better than a redundant projection:
+  * actuals, which is what the `actual` table has always wanted
+  * real inputs for our own model, currently a stub: routes, route rate, slot
+    rate, aDOT, contested catch, drops, EPA, pressure, snap counts
+  * defense, which matters for RCL where IDP projections are thin
 
 **We never wrote `scoring.py`.** Both ESPN and PFF hand back projections
 already scored under each league's own rules. Same player, same raw stat line,
@@ -120,43 +137,47 @@ scripts/
 
 ## What is still owed, in order
 
-**1. After the draft: roster and matchup.** `get_my_roster` works but has
-nothing to show yet. `matchup` raises on purpose, since `box_scores()` 404s in
-preseason. Both become writable and testable the moment week 1 has real data.
-This is the smallest, highest-value next step.
+**1. Roster and matchup, now unblocked.** `get_my_roster` works but had nothing
+to show. `matchup` raises on purpose because `box_scores()` 404s in preseason.
+Both are testable the moment week 1 has real data. Smallest, highest value.
 
-**2. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress
-range `160.79.104.0/21`, connector registered with a static bearer header. The
-server already enforces the token itself, independent of Cloudflare, so a
-tunnel misconfiguration is not a breach. Do not put a Cloudflare Access policy
-on the hostname; it will bounce Anthropic with a login redirect and fail with a
-useless error. Running as a long-lived process also removes the per-command
-cold start, which is a second or two of re-fetching league settings on every
-CLI invocation.
+**2. PFF API client.** Auth is a bearer token, `PFF_API_KEY=ak_...` in `.env`,
+base URL `https://api.pff.com`. Two endpoint families that behave differently:
+  * `/v1/facet/<area>/<report>` returns every player at once, no id needed.
+    `?league=nfl&season=2025` gave 792 rows of receiving with player_id, name,
+    team, position, grades and charted stats. This is the one to build on.
+  * `/v1/player/<area>/<report>` needs an explicit `player_id`.
+  * `/v1/players?name=` is name lookup, and returns PFF's `player_id`. That id
+    is the anchor for extending the crosswalk to a third source.
+Probe first, adapter second, same as ESPN. Do not build against the docs.
 
-**3. Persist to SQLite.** Specifically the `actual` table, weekly, starting
-week 1. It costs nothing now and it is the only way to ever answer the
-weighting question from the brief with data instead of opinion. Everything else
-can stay in memory until there is a second consumer.
+**3. Start/sit and player comparison.** The reason for all of this. Compare two
+players on blended projection plus the PFF usage and efficiency stats, scoped
+to a league and a week. Needs 1 and 2 first.
 
-**4. Yahoo, when approved.** Consumer key and secret into `.env`, run
-`scripts/yahoo_login.py`, implement the adapter against probe output the same
-way ESPN was done. Redirect URI must be `https://localhost:8000`.
+**4. Persist to SQLite.** Still created and unused. The `actual` table wants
+weekly writes from week 1 onward, and that is the only path to weighting the
+blend by measured accuracy instead of by opinion.
 
-**5. Rescore properly.** Write `scoring.py`, apply each league's stat-id
-scoring to PFF's raw stat lines, and compare the result against PFF's own
-`fantasyPoints`. If they match, the shortcut was safe and we gain the ability
-to add sources that only publish stats. If they do not, we have found a bug in
-someone's scoring, which is worth knowing either way.
+**5. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
+`160.79.104.0/21`, connector registered with a static bearer header. The server
+enforces its own token independently of Cloudflare. Do not put a Cloudflare
+Access policy on the hostname, it bounces Anthropic with a login redirect and
+fails with a useless error.
 
-**6. Weight the blend.** Equal weighting is currently a necessity, not a
-choice: two sources and no track record. Once `actual` has a season of data,
-weight by measured accuracy per source and per position.
+**6. Yahoo, when approved.** Key and secret into `.env`, run
+`scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
+be `https://localhost:8000`.
 
-**7. Discord bot.** Unchanged from the brief. Reads the same store, never
-touches ESPN or Yahoo directly, push notifications only.
+**7. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
+to PFF's raw stat lines, compare against PFF's own `fantasyPoints`. Match means
+the shortcut was safe; mismatch means someone has a scoring bug.
 
----
+**8. Live draft reader.** For next August. ESPN's league API does not expose an
+in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
+the draft-day notes in project memory.
+
+**9. Discord bot.** Unchanged from the brief.
 
 ## Known soft spots
 

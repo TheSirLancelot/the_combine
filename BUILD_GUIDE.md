@@ -477,6 +477,21 @@ the draft-day notes in project memory.
 
 ## Known soft spots
 
+**Streamlit caches survive code changes, and that bit us.** Streamlit
+re-executes `app.py` when you save but keeps already-imported modules and their
+cached return values. Adding a field to the `Band` dataclass therefore put new
+code in front of objects built by the old code, and the running app raised
+`'Band' object has no attribute 'spread'` for a field that did exist in the
+source. Restarting fixed it, which is exactly what makes this kind of bug
+expensive: the code was correct and the failure looked like a code error.
+
+Two changes so it cannot recur. `_code_version()` in `app.py` hashes the mtimes
+of every module under `src/combine` and is passed to every cached function, so
+any edit invalidates every cache. And the outcome history is now cached as a
+plain DataFrame with the `Distribution` rebuilt per run, rather than caching the
+object itself, because caching data is version-proof in a way that caching
+objects is not.
+
 These are all documented in the README where a user would hit them, and listed
 here so they do not get rediscovered as surprises.
 

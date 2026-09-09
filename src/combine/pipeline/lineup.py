@@ -116,7 +116,10 @@ def required_edge(a: WeeklyPlayer, b: WeeklyPlayer, dist=None,
     from .usage import family
 
     bands = [dist.for_player(family(p.pos), p.projected) for p in (a, b)]
-    spreads = [x.spread for x in bands if x is not None and x.spread > 0]
+    # getattr rather than attribute access: this must never be the thing that
+    # takes a lineup down, and callers hand us whatever distribution they have.
+    spreads = [s for s in (getattr(x, "spread", 0.0) for x in bands if x is not None)
+               if s and s > 0]
     if not spreads:
         return floor
     pooled = (sum(s ** 2 for s in spreads) / len(spreads)) ** 0.5

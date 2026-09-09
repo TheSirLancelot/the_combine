@@ -9,6 +9,7 @@ sorting and filtering come from Streamlit instead of from me.
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from combine import config
 from combine.pipeline.board import build as build_board
 from combine.pipeline.crosswalk import load_ids
-from combine.pipeline.distribution import load as load_distribution
+from combine.pipeline.distribution import Distribution
 from combine.pipeline.draftplan import next_pick, snake_picks
 from combine.pipeline.lineup import optimal_moves, order_starters, problems, split, swaps
 from combine.pipeline.needs import compute as compute_needs
@@ -35,10 +36,27 @@ st.set_page_config(page_title="The Combine", page_icon="🏈", layout="wide")
 POOL_SIZE = 250
 
 
+def _code_version() -> str:
+    """A token that changes whenever the combine package changes on disk.
+
+    Every cached function below takes it as an argument, so editing any module
+    invalidates every cache. Without this, Streamlit re-executes app.py on save
+    but keeps already-imported modules and their cached return values, so new
+    code runs against objects built by the old code. That is not a hypothetical:
+    adding a field to the Band dataclass produced exactly that, an
+    AttributeError for a field the running code had just introduced.
+
+    Cheap enough to do on every rerun: a stat call per module, no reads.
+    """
+    root = Path(__file__).resolve().parent / "src" / "combine"
+    stamps = sorted(f"{p.name}:{p.stat().st_mtime_ns}" for p in root.rglob("*.py"))
+    return hashlib.sha1("|".join(stamps).encode()).hexdigest()[:12]
+
+
 # --- data -----------------------------------------------------------------
 
 @st.cache_data(ttl=25, show_spinner="pulling live league state...")
-def load(league: str, _nonce: int) -> dict:
+def load(league: str, _nonce: int, _version: str) -> dict:
     """One ESPN round trip per refresh, shared by every section on the page.
 
     _nonce is a cache buster the Refresh button increments; ttl keeps the
@@ -153,22 +171,38 @@ COL_CONFIG = {
 }
 
 
-@st.cache_resource(show_spinner="reading outcome history...")
-def outcome_distribution(season: int):
-    """Empirical floor/ceiling from a past season. Optional: no history means
-    no distribution columns, not a broken page."""
+@st.cache_data(show_spinner="reading outcome history...")
+def outcome_frame(season: int, _version: str):
+    """Past outcomes as a plain DataFrame.
+
+    A DataFrame on purpose, not a Distribution. Streamlit re-executes this
+    script on every edit but keeps already-imported modules, and a cached
+    OBJECT built by an older version of a module survives that reload while the
+    code around it moves on. That is how a stale `Band` ends up in front of new
+    code that expects a field it does not have. Caching plain data and
+    rebuilding the object each run makes the whole class of bug impossible.
+    """
     from combine import db
+    from combine.pipeline.training import build as build_frame
 
     try:
         with db.connect(readonly=True) as conn:
-            dist = load_distribution(conn, season)
-        return None if dist.empty else dist
+            return build_frame(conn, season)
     except Exception:
         return None
 
 
+def outcome_distribution(season: int):
+    """Rebuilt per run from the cached frame. Cheap: a filter and a column."""
+    frame = outcome_frame(season, _code_version())
+    if frame is None or frame.empty:
+        return None
+    dist = Distribution(frame)
+    return None if dist.empty else dist
+
+
 @st.cache_data(ttl=60, show_spinner="pulling this week's lineup...")
-def load_week(league: str, week: int, _nonce: int) -> dict:
+def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
     """One box-score round trip. Much cheaper than the draft loader: no
     250-player pool, no crosswalk, no draft-pick scrape.
 
@@ -342,7 +376,7 @@ st.session_state.setdefault("mine", [])
 @st.fragment(run_every=f"{every}s" if auto else None)
 def page():
     try:
-        data = load(league, st.session_state.nonce)
+        data = load(league, st.session_state.nonce, _code_version())
     except Exception as exc:  # cookies die mid-season; say so plainly
         st.error(f"{type(exc).__name__}: {exc}")
         st.info("If this is a 401 or an empty league, the ESPN cookies expired. "
@@ -523,7 +557,8 @@ def page():
 @st.fragment(run_every=f"{every}s" if auto else None)
 def week_page():
     try:
-        data = load_week(league, int(week_no), st.session_state.nonce)
+        data = load_week(league, int(week_no), st.session_state.nonce,
+                         _code_version())
     except Exception as exc:
         st.error(f"{type(exc).__name__}: {exc}")
         st.info("If this is a 401 or an empty league, the ESPN cookies expired. "

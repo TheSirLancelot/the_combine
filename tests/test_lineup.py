@@ -255,3 +255,24 @@ def test_a_noisy_pair_needs_a_bigger_gap_to_be_flagged():
     bench = [p("bench", "RB", "BE", 12, elig=("RB", "BE"))]
     assert len(swaps(starters, bench, dist=FakeDist(6.0))) == 1     # needs 1.5
     assert swaps(starters, bench, dist=FakeDist(10.6)) == []        # needs 2.65
+
+
+def test_required_edge_survives_a_band_without_spread():
+    """Regression: a Band built by an older version of the module, kept alive
+    in a Streamlit cache across a code reload, reached new code that expected a
+    field it did not have. The threshold must degrade to the floor, never
+    raise, whatever a caller hands it."""
+    from combine.pipeline.lineup import MIN_EDGE, required_edge
+
+    class Old:
+        """A Band as it looked before `spread` existed."""
+        floor = 3.0
+        ceiling = 20.0
+
+    class OldDist:
+        def for_player(self, family, proj):
+            return Old()
+
+    a, b = p("a", "WR", "WR", 10), p("b", "WR", "BE", 13)
+    assert required_edge(a, b, OldDist()) == MIN_EDGE
+    assert len(swaps([a], [b], dist=OldDist())) == 1

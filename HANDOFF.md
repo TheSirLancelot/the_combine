@@ -59,6 +59,12 @@ Verified working, tier `pro`.
   anchor for extending the crosswalk to a third source.
 - 2026 shows `default_week: -4` (preseason) until games are played.
 
+**Do the crosswalk before start/sit.** Right now ESPN and PFF are matched by
+name, conservatively, at about 97%. The API gives a stable `player_id`, so
+resolve ESPN players to PFF ids once and store the mapping rather than adding a
+third name-matched source. Doing this after start/sit is built means unpicking
+it later.
+
 ## Hard-won gotchas
 
 Write code against probe output, never against documentation. Every adapter

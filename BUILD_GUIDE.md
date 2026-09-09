@@ -151,6 +151,10 @@ base URL `https://api.pff.com`. Two endpoint families that behave differently:
     is the anchor for extending the crosswalk to a third source.
 Probe first, adapter second, same as ESPN. Do not build against the docs.
 
+Extend the crosswalk to PFF ids as part of this step, not after. ESPN and PFF
+are currently matched by name at ~97%, and the API hands us a stable id. Doing
+it later means unpicking start/sit code that was built on name matching.
+
 **3. Start/sit and player comparison.** The reason for all of this. Compare two
 players on blended projection plus the PFF usage and efficiency stats, scoped
 to a league and a week. Needs 1 and 2 first.

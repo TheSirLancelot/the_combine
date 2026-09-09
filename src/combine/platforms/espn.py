@@ -17,7 +17,6 @@ real leagues, not from documentation. Notes that cost us time:
 from __future__ import annotations
 
 import os
-from functools import lru_cache
 
 from ..config import SEASON, LeagueConfig
 from . import Matchup, PlayerState, ProGame, WeeklyPlayer

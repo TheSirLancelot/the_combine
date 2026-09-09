@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from combine.pipeline.lineup import order_starters, problems, split, swaps
+from combine.pipeline.lineup import effective, order_starters, problems, split, swaps
 from combine.platforms import ProGame, WeeklyPlayer
 
 # Kickoff times either side of "now", so `locked` is deterministic in tests.
@@ -138,3 +138,25 @@ def test_locked_bench_player_is_never_suggested():
     starters = [p("weak", "RB", "RB", 4)]
     bench = [p("already-played", "RB", "BE", 20, elig=("RB", "BE"), kickoff=PAST)]
     assert swaps(starters, bench) == []
+
+
+def test_a_ruled_out_starter_is_worth_nothing():
+    """ESPN still projects 11 points for a player it has marked OUT, which is
+    enough to beat every healthy bench player and suppress the one swap that
+    actually matters."""
+    assert effective(p("out", "RB", "RB", 11, status="O")) == 0
+    assert effective(p("bye", "RB", "RB", 11, bye=True)) == 0
+    assert effective(p("fine", "RB", "RB", 11)) == 11
+
+
+def test_a_healthy_bench_player_replaces_a_ruled_out_starter():
+    starters = [p("out", "RB", "RB", 11, status="O")]
+    bench = [p("healthy", "RB", "BE", 7, elig=("RB", "BE"))]
+    got = swaps(starters, bench)
+    assert len(got) == 1 and got[0].bench.name == "healthy" and got[0].edge == 7
+
+
+def test_the_ruled_out_starter_is_preferred_over_a_merely_weak_one():
+    starters = [p("weak", "RB", "RB", 5), p("out", "RB", "RB", 14, status="O")]
+    bench = [p("healthy", "RB", "BE", 9, elig=("RB", "BE"))]
+    assert swaps(starters, bench)[0].starter.name == "out"

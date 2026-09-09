@@ -17,12 +17,17 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from combine import config  # noqa: E402
-from combine.pipeline.board import build as build_board  # noqa: E402
-from combine.pipeline.draftplan import next_pick, partition, snake_picks  # noqa: E402
-from combine.pipeline.lineup import order_starters, problems, split, swaps  # noqa: E402
-from combine.pipeline.needs import compute as compute_needs  # noqa: E402
-from combine.platforms import client_for  # noqa: E402
+from combine import config
+from combine.pipeline.board import build as build_board
+from combine.pipeline.crosswalk import load_ids
+from combine.pipeline.draftplan import next_pick, snake_picks
+from combine.pipeline.lineup import order_starters, problems, split, swaps
+from combine.pipeline.needs import compute as compute_needs
+from combine.pipeline.providers.pff_api import PffApi
+from combine.pipeline.startsit import review
+from combine.pipeline.usage import for_espn
+from combine.pipeline.usage import load as load_usage
+from combine.platforms import client_for
 
 st.set_page_config(page_title="The Combine", page_icon="🏈", layout="wide")
 
@@ -159,6 +164,19 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
     c = client_for(league)
     m = c.matchup(week or None)
     starters, bench = split(m.my_lineup)
+
+    # PFF is optional here on purpose: an expired key or an unbuilt crosswalk
+    # should cost you the usage column, not the lineup.
+    calls, usage, ids, in_season, pff_err = [], {}, {}, True, ""
+    try:
+        ids = load_ids()
+        api = PffApi()
+        in_season = api.season_state().in_season
+        usage = load_usage(api)
+        calls, _ = review(m, usage, ids)
+    except Exception as exc:
+        pff_err = f"{type(exc).__name__}: {exc}"
+
     return {
         "matchup": m,
         "slots": c.roster_slots(),
@@ -166,10 +184,15 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
         "bench": bench,
         "problems": problems(starters),
         "swaps": swaps(starters, bench),
+        "calls": calls,
+        "usage": usage,
+        "ids": ids,
+        "in_season": in_season,
+        "pff_err": pff_err,
     }
 
 
-def lineup_frame(players, show_actual: bool) -> pd.DataFrame:
+def lineup_frame(players, show_actual: bool, usage=None, ids=None) -> pd.DataFrame:
     df = pd.DataFrame([{
         "SLOT": p.slot,
         "POS": p.pos,
@@ -178,6 +201,8 @@ def lineup_frame(players, show_actual: bool) -> pd.DataFrame:
         "OPP": p.opponent,
         "PROJ": round(p.projected, 1),
         "ACT": round(p.actual, 1),
+        "ROLE": (lambda u: u.line(p.pos) if u else "")(
+            for_espn(usage, ids, p.player_id) if usage and ids else None),
         "NOTE": " ".join(x for x in (p.status if p.status != "OK" else "",
                                      "LOCK" if p.locked and not p.played else "") if x),
     } for p in players])
@@ -445,23 +470,45 @@ def week_page():
         st.error(f"{p.slot}: {p.name} is {'on bye' if p.on_bye else p.status}"
                  f" and still in your lineup")
 
-    if data["swaps"]:
-        st.warning("Bench outprojects a starter. ESPN's weekly projection only, "
-                   "not yet a start/sit call.")
-        for sw in data["swaps"]:
-            st.markdown(f"- `{sw.slot}` **{sw.bench.name}** {sw.bench.projected:.1f} "
-                        f"over {sw.starter.name} {sw.starter.projected:.1f} "
-                        f"(+{sw.edge:.1f})")
+    if data["pff_err"]:
+        st.info(f"PFF usage unavailable ({data['pff_err']}). Lineup below is "
+                f"ESPN's projection only. If the crosswalk has never been built, "
+                f"run `combine pffids {league}`.")
 
-    left, right = st.columns(2)
+    if data["calls"]:
+        st.warning("Start/sit questions this week")
+        for c in sorted(data["calls"], key=lambda x: -x.proj_edge):
+            label = "SWAP" if c.verdict == "CLEAR" else c.verdict
+            with st.container(border=True):
+                st.markdown(f"**{label}** &nbsp; `{c.slot}` &nbsp; "
+                            f"+{c.proj_edge:.1f} projected")
+                st.markdown(f"IN &nbsp; **{c.bench.name}** {c.bench.projected:.1f} "
+                            f"{c.bench.opponent}")
+                st.markdown(f"OUT &nbsp; {c.starter.name} {c.starter.projected:.1f} "
+                            f"{c.starter.opponent}")
+                if c.opp_edge is not None:
+                    word = "more" if c.opp_edge > 0 else "fewer"
+                    st.caption(f"usage: {abs(c.opp_edge):.1f} {word} opportunities a "
+                               f"game for {c.bench.name}")
+                for r in c.reasons:
+                    st.caption(r)
+    elif not data["pff_err"]:
+        st.success("No start/sit questions. Every bench player is projected below "
+                   "the starter he could replace.")
+
+    if data["usage"] and not data["in_season"]:
+        st.caption("Usage columns are last season's numbers, a prior rather than "
+                   "evidence about this week.")
+
+    left, right = st.container(), st.container()
     with left:
         st.markdown("**Starters**")
-        st.dataframe(lineup_frame(data["starters"], played), hide_index=True,
-                     use_container_width=True)
+        st.dataframe(lineup_frame(data["starters"], played, data["usage"], data["ids"]),
+                     hide_index=True, use_container_width=True)
     with right:
         st.markdown("**Bench**")
-        st.dataframe(lineup_frame(data["bench"], played), hide_index=True,
-                     use_container_width=True)
+        st.dataframe(lineup_frame(data["bench"], played, data["usage"], data["ids"]),
+                     hide_index=True, use_container_width=True)
 
     if final:
         st.caption("week is final")

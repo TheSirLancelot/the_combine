@@ -225,16 +225,46 @@ The file is merged rather than overwritten, because ESPN player ids are global
 and both leagues share it. It is in `data/`, which is gitignored, so a fresh
 clone rebuilds it with two commands.
 
-**3. Start/sit and player comparison. NEXT.** The reason for all of this.
-Compare two players on blended projection plus the PFF usage and efficiency
-stats, scoped to a league and a week. 1 and 2 are done, so this is unblocked.
+**3. Start/sit and player comparison. DONE 2026-09-09.**
+`pipeline/usage.py` and `pipeline/startsit.py`, surfaced as
+`combine startsit <league> [week]`, `combine compare <league> A B`, and inside
+the app's Week mode.
 
-What it now has to work with: the weekly lineup with slot eligibility and
-opponents, a blended season projection per player, PFF ids on 559 players, and
-PFF's usage and efficiency behind those ids. Week 1 leans on last season's
-grades as a prior, which the client already resolves and reports. The obvious
-first extension after that is team defense strength for the opponent, from
-`defense/summary` or the `versus` table in coverage_matchup.
+The design decision worth keeping: **the projection and the usage are never
+blended.** ESPN's weekly projection is the only weekly number in the system, so
+it sets the direction. PFF's usage says whether that number rests on a role the
+player actually has, which is what a projection cannot tell you. When they
+agree the call is CLEAR; when they disagree that is the finding and it prints
+as COIN FLIP, rather than being averaged into a single confident-looking number
+that means nothing. Same rule as opinion and news on the draft side.
+
+`usage.py` renders a position-appropriate role line: routes, route rate,
+targets a game, YPRR and aDOT for pass catchers; touches, routes, yards after
+contact and breakaway rate for backs; dropbacks, YPA, big-time-throw and
+turnover-worthy rates for quarterbacks; snaps, tackles, sacks and pressures for
+IDP, which RCL needs for half its lineup.
+
+**Opportunities only compare inside a position family.** A tight end's 5.6
+targets a game minus a back's 15.9 touches is not a number, and printing it
+produced exactly the kind of confident nonsense the VORP fix was about. Across
+families the tool says so and falls back to the projection alone.
+
+**A ruled-out starter is worth zero, not his projection.** ESPN keeps
+projecting players it has already marked OUT, and an 11-point ghost beats every
+healthy bench player, which suppressed the one swap most worth being told
+about. `lineup.effective()` is where that lives.
+
+Two constants are picked rather than derived, and are the first things to
+recalibrate once there are a few weeks of projected-against-actual: a 3-point
+gap counts as CLEAR, a 1-point gap as the floor worth mentioning at all.
+
+Output is deliberately small. Only slots with a real question print, so an
+already-correct lineup produces one line saying so. A report you have to scan
+is one you stop reading by week 3.
+
+Still owed here: opponent defense strength. The schedule gives us who, not how
+hard. `defense/summary` aggregated by team, or the `versus` table inside
+coverage_matchup, is where that comes from.
 
 **4. Persist to SQLite.** Still created and unused. The `actual` table wants
 weekly writes from week 1 onward, and that is the only path to weighting the

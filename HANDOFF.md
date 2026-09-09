@@ -46,10 +46,17 @@ That last part runs on ESPN's weekly projection alone and is not yet the
 start/sit call.
 
 The PFF API client is built too (`pipeline/providers/pff_api.py`), and the
-crosswalk now resolves ESPN ids onto PFF ids: `combine pffids <league>`, stored
-in `data/crosswalk_pff_ids.csv`, 100% on both leagues and 559 players. Next up
-is start/sit and player comparison, which is what William actually asked for
-and is now unblocked.
+crosswalk resolves ESPN ids onto PFF ids: `combine pffids <league>`, stored in
+`data/crosswalk_pff_ids.csv`, 100% on both leagues and 559 players.
+
+Start/sit and comparison are built on top: `combine startsit <league> [week]`
+and `combine compare <league> A B`, plus the same calls inside the app's Week
+mode. The projection and the usage are deliberately never blended, and
+opportunities only compare inside a position family. See the build guide.
+
+Next up: opponent defense strength (the schedule says who, not how hard), then
+persisting actuals to SQLite from week 1 onward, which is the only route to
+weighting the blend by measured accuracy rather than by opinion.
 
 ## The PFF API, correctly
 

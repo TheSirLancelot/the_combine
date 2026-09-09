@@ -32,7 +32,9 @@ class Swap:
 
     @property
     def edge(self) -> float:
-        return self.bench.projected - self.starter.projected
+        """Against the starter's effective value, so a ruled-out starter shows
+        the full gain rather than a gap against points he will never score."""
+        return self.bench.projected - effective(self.starter)
 
 
 def split(lineup: list[WeeklyPlayer]) -> tuple[list[WeeklyPlayer], list[WeeklyPlayer]]:
@@ -56,6 +58,20 @@ def problems(starters: list[WeeklyPlayer]) -> list[WeeklyPlayer]:
     return [p for p in starters if p.on_bye or p.status in BAD_STATUS]
 
 
+def effective(p: WeeklyPlayer) -> float:
+    """What a starter is really worth this week.
+
+    ESPN keeps projecting players it has already marked OUT: a ruled-out back
+    still carries 11 points, which is enough to beat every healthy bench
+    player and suppress the one swap you most need to be told about. So a
+    starter who cannot play is worth zero regardless of what the projection
+    says. Status beats projection, the same rule problems() uses.
+    """
+    if p.on_bye or p.status in BAD_STATUS:
+        return 0.0
+    return p.projected
+
+
 def swaps(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
           min_edge: float = MIN_EDGE) -> list[Swap]:
     """Bench players outprojecting a starter whose slot they are eligible for.
@@ -75,12 +91,12 @@ def swaps(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
             s for s in starters
             if s.player_id not in taken
             and s.slot in b.eligible_slots
-            and (b.projected - s.projected) >= min_edge
+            and (b.projected - effective(s)) >= min_edge
             and not s.locked          # his game kicked off, the call is made
         ]
         if not cands:
             continue
-        worst = min(cands, key=lambda s: s.projected)
+        worst = min(cands, key=effective)
         taken.add(worst.player_id)
         out.append(Swap(bench=b, starter=worst, slot=worst.slot))
     return sorted(out, key=lambda s: -s.edge)

@@ -211,6 +211,92 @@ def pff_ids() -> int:
     return 0
 
 
+def start_sit() -> int:
+    """combine startsit <league> [week]
+
+    Only the slots with a real question: bench players outprojecting a starter
+    they can legally replace, with PFF usage on both sides, plus anyone who
+    cannot play and is still in the lineup.
+    """
+    from .pipeline.crosswalk import load_ids
+    from .pipeline.providers.pff_api import PffApi
+    from .pipeline.startsit import render, review
+    from .pipeline.usage import load as load_usage
+    from .platforms import client_for
+
+    args = sys.argv[2:]
+    if not args:
+        print("usage: combine startsit <league> [week]", file=sys.stderr)
+        return 2
+    league = args[0]
+    wk = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
+
+    ids = load_ids()
+    if not ids:
+        print("no PFF id crosswalk yet. run: combine pffids " + league, file=sys.stderr)
+        return 2
+    api = PffApi()
+    state = api.season_state()
+    usage = load_usage(api)
+    c = client_for(league)
+    m = c.matchup(wk)
+    calls, hurt = review(m, usage, ids)
+    print(render(m, calls, hurt, usage, ids, state.in_season,
+                 config.get_league(league).name))
+    if not state.in_season:
+        print(f"\nusage is {state.stats_season}, read it as a prior")
+    return 0
+
+
+def compare() -> int:
+    """combine compare <league> "Player A" "Player B" [week]
+
+    Head to head for two players in one league, whether or not they are a legal
+    swap for each other. Looks in your lineup first, then the free agent pool.
+    """
+    from .pipeline.crosswalk import load_ids
+    from .pipeline.providers.pff_api import PffApi
+    from .pipeline.startsit import head_to_head
+    from .pipeline.usage import load as load_usage
+    from .platforms import client_for
+
+    args = sys.argv[2:]
+    if len(args) < 3:
+        print('usage: combine compare <league> "Player A" "Player B" [week]',
+              file=sys.stderr)
+        return 2
+    league, want_a, want_b = args[0], args[1], args[2]
+    wk = int(args[3]) if len(args) > 3 and args[3].isdigit() else None
+
+    c = client_for(league)
+    m = c.matchup(wk)
+    pool = m.my_lineup + m.their_lineup
+
+    def find(want: str):
+        needle = want.strip().lower()
+        hits = [p for p in pool if needle in p.name.lower()]
+        if len(hits) == 1:
+            return hits[0], ""
+        if len(hits) > 1:
+            return None, f"'{want}' matches {len(hits)}: " + ", ".join(p.name for p in hits)
+        return None, (f"'{want}' is not in this week's matchup. compare works on "
+                      f"rostered players; free agents need the draft board")
+
+    a, err_a = find(want_a)
+    b, err_b = find(want_b)
+    for err in (err_a, err_b):
+        if err:
+            print(err, file=sys.stderr)
+    if a is None or b is None:
+        return 2
+
+    ids = load_ids()
+    api = PffApi()
+    state = api.season_state()
+    print(head_to_head(a, b, load_usage(api), ids, state.in_season, m.week))
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "doctor"
     if cmd == "doctor":
@@ -219,6 +305,10 @@ def main() -> int:
         return week()
     if cmd == "pffids":
         return pff_ids()
+    if cmd == "startsit":
+        return start_sit()
+    if cmd == "compare":
+        return compare()
     if cmd == "init":
         return init()
     if cmd == "try":
@@ -229,7 +319,8 @@ def main() -> int:
         serve()
         return 0
     print("usage: combine [doctor [--live] | init | week <league> [week] | "
-          "pffids <league> | try ... | serve]",
+          "pffids <league> | startsit <league> [week] | "
+          "compare <league> A B | try ... | serve]",
           file=sys.stderr)
     return 2
 

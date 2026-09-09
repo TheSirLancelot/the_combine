@@ -27,9 +27,10 @@ uv run streamlit run app.py
 Two modes, picked at the top of the sidebar.
 
 **Week** is the in-season view and the default. Your matchup, both projected
-totals, starters and bench side by side, anyone hurt or on bye who is still in
-your lineup, and any bench player outprojecting a starter whose slot he can
-fill. The week selector defaults to whatever week the league says it is; set a
+totals, starters and bench with a PFF role line on each, anyone hurt or on bye
+who is still in your lineup, and the same start/sit calls the CLI gives you.
+If the PFF crosswalk has never been built it degrades to the projection alone
+and tells you which command fixes it. The week selector defaults to whatever week the league says it is; set a
 number to look back.
 
 **Draft** is the old page and is dormant until next August: needs at the top,
@@ -91,6 +92,38 @@ gitignored, so a fresh clone rebuilds it with those two commands.
 Before kickoff this reads last season's PFF data on purpose. A season that has
 not started still returns rows and they are preseason camp snaps, so the client
 asks PFF where the calendar is and says which season it used.
+
+## Start/sit (CLI)
+
+```bash
+uv run combine startsit rcl
+uv run combine startsit dmwd 3
+uv run combine compare dmwd "Nabers" "Golden"
+```
+
+`startsit` prints only the slots with a real question: a bench player
+outprojecting a starter he can legally replace, and anyone who cannot play and
+is still in your lineup. A lineup that is already right gets one line saying
+so. That is the intended output, not a failure.
+
+Each call shows both players with their PFF role line, the projection gap, and
+the usage gap, then a verdict:
+
+* **SWAP** — the projection and the usage agree, and the gap is 3+ points.
+* **LEAN** — they agree but the gap is small, or there is no usage to check.
+* **COIN FLIP** — they disagree. That is the finding. The two are not averaged
+  into one number, because averaging a points projection with a grade produces
+  something that means nothing.
+
+`compare` does the same for any two players in the week's matchup, whether or
+not they are a legal swap for each other.
+
+Opportunities only compare within a position family. A tight end's targets and
+a running back's touches are different units, so across positions the tool says
+so and falls back to the projection alone.
+
+Before kickoff the usage is last season's, which every output labels as a prior.
+Both commands need the id crosswalk, so run `combine pffids <league>` first.
 
 ## Draft day (CLI)
 

@@ -68,6 +68,30 @@ Projections come off the box score, which is the only place weekly numbers
 exist. Before week 1 kicks off every actual reads 0, which is correct rather
 than broken.
 
+## PFF ids
+
+```bash
+uv run combine pffids rcl
+uv run combine pffids dmwd
+```
+
+Resolves your league's players onto PFF's stable `player_id` and stores the
+mapping in `data/crosswalk_pff_ids.csv`. Run it once, and again when rosters
+churn. Everything that reads PFF usage or efficiency joins on that id instead
+of re-matching names on every call.
+
+Both leagues resolve at 100%. It prints how each player was matched, and the
+only expected miss is D/ST, because PFF has no team-defense entity. A player it
+genuinely cannot place lands in `data/unmatched_pff_ids_<league>.csv` for you
+to resolve by hand in `config/crosswalk_overrides.csv`.
+
+The file merges across leagues, since ESPN player ids are global. `data/` is
+gitignored, so a fresh clone rebuilds it with those two commands.
+
+Before kickoff this reads last season's PFF data on purpose. A season that has
+not started still returns rows and they are preseason camp snaps, so the client
+asks PFF where the calendar is and says which season it used.
+
 ## Draft day (CLI)
 
 Three commands do everything. Run them from `~/the_combine`.

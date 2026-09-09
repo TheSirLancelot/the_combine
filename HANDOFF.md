@@ -45,9 +45,11 @@ and points out bench players outprojecting a starter whose slot they can fill.
 That last part runs on ESPN's weekly projection alone and is not yet the
 start/sit call.
 
-Next up, in order: a PFF API client with the crosswalk extended to PFF player
-ids, then start/sit and player comparison, which is what William actually
-asked for.
+The PFF API client is built too (`pipeline/providers/pff_api.py`), and the
+crosswalk now resolves ESPN ids onto PFF ids: `combine pffids <league>`, stored
+in `data/crosswalk_pff_ids.csv`, 100% on both leagues and 559 players. Next up
+is start/sit and player comparison, which is what William actually asked for
+and is now unblocked.
 
 ## The PFF API, correctly
 
@@ -62,9 +64,10 @@ Verified working, tier `pro`.
   needed. Receiving gave 792 rows with player_id, name, team, position, grades,
   EPA, routes, route_rate, slot_rate, aDOT, contested catch, drops. Build here.
 - `/v1/player/<area>/<report>` requires an explicit `player_id`.
-- `/v1/players?name=` is name lookup and yields PFF's `player_id`, which is the
-  anchor for extending the crosswalk to a third source.
-- 2026 shows `default_week: -4` (preseason) until games are played.
+- `/v1/players?name=` is a SUBSTRING name lookup and yields PFF's `player_id`.
+- `defense/coverage_matchup` is shaped differently: three lists, and `versus`
+  is the receiver-against-defender table. Use `facet_groups()`, not `facet()`.
+- Responses run to 4MB and 22s, so the client caches to `data/pff_api/`.
 
 Opponent does not come from the box score. ESPN sends opponent pro-team id 0
 there, which espn-api renders as the string `"None"`. The real schedule is the
@@ -74,16 +77,17 @@ bye is now derived from a team having no game rather than from ESPN's flag.
 Defensive matchup strength is still owed and should come from PFF's team
 defense facets.
 
-PFF's 2026 data is preseason only until games are played. `season=2026&week=1`
-returns zero rows; `season=2025` is full. Week 1 start/sit leans on 2025 grades
-as a prior, and the client needs an explicit season/week policy rather than
-defaulting to the current season.
+PFF's 2026 data is preseason only until games are played, and nothing in a row
+says so. `/v1/leagues` does: `default_week` below 1 means preseason. The client
+uses that (`season_state().stats_season`) and falls back to last season, which
+is why week 1 start/sit leans on 2025 grades as a prior. It reports which
+season it used rather than deciding quietly.
 
-**Do the crosswalk before start/sit.** Right now ESPN and PFF are matched by
-name, conservatively, at about 97%. The API gives a stable `player_id`, so
-resolve ESPN players to PFF ids once and store the mapping rather than adding a
-third name-matched source. Doing this after start/sit is built means unpicking
-it later.
+**The crosswalk is done.** `combine pffids <league>` resolves ESPN player ids
+onto PFF ids and stores them in `data/crosswalk_pff_ids.csv`, merged across
+leagues because ESPN ids are global. 100% on both, 559 players. Every D/ST is
+unmatched by design, since PFF has no team-defense entity. The projection CSVs
+are still matched by name, which is a separate join and unchanged.
 
 ## Hard-won gotchas
 

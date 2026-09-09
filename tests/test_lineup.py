@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from combine.pipeline.lineup import order_starters, problems, split, swaps
 from combine.platforms import ProGame, WeeklyPlayer
 
-
 # Kickoff times either side of "now", so `locked` is deterministic in tests.
 PAST = 1_000_000_000_000
 FUTURE = 4_000_000_000_000

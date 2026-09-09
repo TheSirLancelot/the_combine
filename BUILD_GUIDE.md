@@ -167,33 +167,74 @@ team defense facets.
 No games have been played yet, so every `actual` is 0 and item 4 below has
 nothing to log until week 1 finishes.
 
-**2. PFF API client.** Auth is a bearer token, `PFF_API_KEY=ak_...` in `.env`,
-base URL `https://api.pff.com`. Two endpoint families that behave differently:
-  * `/v1/facet/<area>/<report>` returns every player at once, no id needed.
-    `?league=nfl&season=2025` gave 792 rows of receiving with player_id, name,
-    team, position, grades and charted stats. This is the one to build on.
-  * `/v1/player/<area>/<report>` needs an explicit `player_id`.
-  * `/v1/players?name=` is name lookup, and returns PFF's `player_id`. That id
-    is the anchor for extending the crosswalk to a third source.
-Probe first, adapter second, same as ESPN. Do not build against the docs.
+**2. PFF API client and PFF ids. DONE 2026-09-09.**
+`pipeline/providers/pff_api.py`, plus the crosswalk extension below. Auth is a
+bearer token, `PFF_API_KEY=ak_...` in `.env`, base `https://api.pff.com`.
 
-**The season parameter is a trap.** Probed 2026-09-09:
-`facet/receiving/summary?season=2026` returns 602 rows, but they are PRESEASON
-only, the target leaders are camp bodies at ~24 targets.
-`season=2026&week=1` returns 0 rows. `season=2025` returns 792 for the season
-and 251 for `week=1`, so the `week` parameter does work. Meaning: week 1
-start/sit gets its PFF signal from 2025 full-season grades as a prior, real
-2026 data only exists from week 2 on, and the client needs an explicit
-season/week policy. Defaulting to the current season silently serves noise in
-September and real data in October, which is the worst possible failure mode.
+Four things the probe taught us that the docs do not say:
 
-Extend the crosswalk to PFF ids as part of this step, not after. ESPN and PFF
-are currently matched by name at ~97%, and the API hands us a stable id. Doing
-it later means unpicking start/sit code that was built on name matching.
+  * **The envelope key is not mechanical, and neither is the shape.**
+    receiving/summary is a list under `receiving_summary`, but
+    defense/coverage_matchup answers under `receiving_coverage_stats` as a
+    dict of three lists: `defenders` (1003), `receivers` (792) and `versus`
+    (14099 receiver-against-defender rows keyed by `player_id` and
+    `coverage_player_id`). So the client takes the first value in the payload
+    rather than constructing the key, and flat and grouped reports have
+    separate accessors. `versus` is the WR-against-CB table start/sit will
+    want.
+  * **Season is a trap, and `/v1/leagues` is the way out.** A season that has
+    not kicked off still returns rows and they are preseason: `season=2026`
+    gave 602 receiving rows led by camp bodies at 24 targets, while
+    `season=2026&week=1` gave zero. Nothing in a row says which it is.
+    `/v1/leagues` reports `default_season` and `default_week`, where a week
+    below 1 is preseason (Hall of Fame is -1, preseason week 1 is -2). So
+    `season_state().stats_season` is last season until kickoff, and the client
+    says which season it is using rather than silently serving noise in
+    September and real data in October.
+  * **Calls vary from 1s to 22s.** passing/summary is 142 rows in 2s,
+    defense/summary is 1456 rows and 1.7MB in 15s, coverage_matchup is 4MB in
+    22s. The client caches to `data/pff_api/` with a 12h TTL. That is not an
+    optimisation, it is what makes the Streamlit page usable.
+  * **`/v1/players?name=` is a substring search.** "Josh Allen" also returns
+    Josh Hines-Allen, so callers must filter rather than take the first hit.
 
-**3. Start/sit and player comparison.** The reason for all of this. Compare two
-players on blended projection plus the PFF usage and efficiency stats, scoped
-to a league and a week. Needs 1 and 2 first.
+**The crosswalk now resolves ESPN ids onto PFF ids**, stored in
+`data/crosswalk_pff_ids.csv` and rebuilt with `combine pffids <league>`. Both
+leagues resolve at 100%, 559 players stored. Three passes, each more
+conservative than the last:
+
+  1. A directory built from five facet reports (passing, rushing, receiving,
+     defense, field_goal), 2393 charted players, matched with the same rules
+     the CSV crosswalk uses. That alone got 92%.
+  2. `/v1/players?name=` for the leftovers, requiring a full normalized name
+     match. Almost all of these are rookies: the directory only contains
+     players PFF charted last season, so anyone without snaps is absent from
+     it but still has an id.
+  3. A surname query requiring surname plus NFL team plus position, for
+     nicknames the substring search cannot reach. Riq / Tariq Woolen and Chig
+     / Chigoziem Okonkwo are both this case, and both moved teams, which is
+     why pass 1's nickname rule missed them too.
+
+One name needed a manual override (Hollywood Brown is PFF's Marquise Brown,
+different first initials, so no rule can safely match them) and it lives in
+`config/crosswalk_overrides.csv`, which is now a real file. Every D/ST is
+unmatched by design: PFF has no team-defense entity in these facets, so they
+are counted separately rather than reported as failures.
+
+The file is merged rather than overwritten, because ESPN player ids are global
+and both leagues share it. It is in `data/`, which is gitignored, so a fresh
+clone rebuilds it with two commands.
+
+**3. Start/sit and player comparison. NEXT.** The reason for all of this.
+Compare two players on blended projection plus the PFF usage and efficiency
+stats, scoped to a league and a week. 1 and 2 are done, so this is unblocked.
+
+What it now has to work with: the weekly lineup with slot eligibility and
+opponents, a blended season projection per player, PFF ids on 559 players, and
+PFF's usage and efficiency behind those ids. Week 1 leans on last season's
+grades as a prior, which the client already resolves and reports. The obvious
+first extension after that is team defense strength for the opponent, from
+`defense/summary` or the `versus` table in coverage_matchup.
 
 **4. Persist to SQLite.** Still created and unused. The `actual` table wants
 weekly writes from week 1 onward, and that is the only path to weighting the

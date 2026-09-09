@@ -145,12 +145,80 @@ def week() -> int:
     return 0
 
 
+def pff_ids() -> int:
+    """combine pffids <league> [pool-size]
+
+    Resolve this league's players onto PFF's stable player_id and store the
+    mapping. Run it once, and again when rosters churn. Start/sit joins on the
+    stored id rather than re-matching names on every call.
+    """
+    from .pipeline.crosswalk import (
+        PFF_IDS,
+        directory,
+        resolve_by_lookup,
+        resolve_ids,
+        save_ids,
+        write_unmatched,
+    )
+    from .pipeline.providers.pff_api import PffApi
+    from .platforms import client_for
+
+    args = sys.argv[2:]
+    if not args:
+        print("usage: combine pffids <league> [pool-size]", file=sys.stderr)
+        return 2
+    league = args[0]
+    pool_size = int(args[1]) if len(args) > 1 and args[1].isdigit() else 300
+
+    api = PffApi()
+    state = api.season_state()
+    print(f"pff calendar: {state.describe()}")
+
+    people = directory(api)
+    print(f"pff directory: {len(people)} charted players")
+
+    c = client_for(league)
+    espn = c.my_roster() + c.free_agents(position=None, limit=pool_size)
+    rows, misses = resolve_ids(espn, people)
+    # Second pass: anyone PFF never charted last season is absent from the
+    # directory but still has an id. Rookies, mostly.
+    found, misses = resolve_by_lookup(api, misses)
+    rows += found
+    stored = save_ids(rows)
+
+    total = len(rows) + len([m for m in misses
+                             if m["espn_pos"].upper() not in ("D/ST", "DST", "DEF")])
+    print(f"{league}: {len(rows)} of {total} resolved "
+          f"({100 * len(rows) / total:.0f}%), {stored} stored -> {PFF_IDS}")
+    by_how: dict[str, int] = {}
+    for r in rows:
+        by_how[r["how"]] = by_how.get(r["how"], 0) + 1
+    for how, n in sorted(by_how.items(), key=lambda kv: -kv[1]):
+        print(f"  {how:10s} {n}")
+    # PFF has no team-defense entity in these facets, so every D/ST is
+    # absent by design rather than by failure. Counting them as misses would
+    # bury the real ones.
+    dst = [m for m in misses if m["espn_pos"].upper() in ("D/ST", "DST", "DEF")]
+    misses = [m for m in misses if m not in dst]
+    if dst:
+        print(f"  {'d/st':10s} {len(dst)} skipped, PFF has no team-defense player")
+    if misses:
+        out = config.DATA_DIR / f"unmatched_pff_ids_{league}.csv"
+        write_unmatched(misses, out)
+        print(f"  unmatched  {len(misses)}  -> {out}")
+        for m in misses[:10]:
+            print(f"    {m['reason']:10s} {m['espn_name']} ({m['espn_pos']} {m['espn_team']})")
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "doctor"
     if cmd == "doctor":
         return doctor()
     if cmd == "week":
         return week()
+    if cmd == "pffids":
+        return pff_ids()
     if cmd == "init":
         return init()
     if cmd == "try":
@@ -160,7 +228,8 @@ def main() -> int:
 
         serve()
         return 0
-    print("usage: combine [doctor [--live] | init | week <league> [week] | try ... | serve]",
+    print("usage: combine [doctor [--live] | init | week <league> [week] | "
+          "pffids <league> | try ... | serve]",
           file=sys.stderr)
     return 2
 

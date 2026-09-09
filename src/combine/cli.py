@@ -124,10 +124,33 @@ def try_tools() -> int:
     return 0
 
 
+def week() -> int:
+    """combine week <league> [week]
+
+    The in-season view: my starters and bench for one week with ESPN's weekly
+    projections, problem starters, and any bench player outprojecting a starter
+    he is slot eligible for.
+    """
+    from .pipeline.lineup import render
+    from .platforms import client_for
+
+    args = sys.argv[2:]
+    if not args:
+        print("usage: combine week <league> [week]", file=sys.stderr)
+        return 2
+    league = args[0]
+    wk = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
+    c = client_for(league)
+    print(render(c.matchup(wk), c.roster_slots(), config.get_league(league).name))
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "doctor"
     if cmd == "doctor":
         return doctor()
+    if cmd == "week":
+        return week()
     if cmd == "init":
         return init()
     if cmd == "try":
@@ -137,7 +160,8 @@ def main() -> int:
 
         serve()
         return 0
-    print("usage: combine [doctor [--live] | init | try ... | serve]", file=sys.stderr)
+    print("usage: combine [doctor [--live] | init | week <league> [week] | try ... | serve]",
+          file=sys.stderr)
     return 2
 
 

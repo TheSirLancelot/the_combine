@@ -1,4 +1,4 @@
-"""The Combine — draft day UI.
+"""The Combine — draft day and in-season UI.
 
 Streamlit front end over the same code the MCP tools use. It calls build_board
 directly and renders DataFrames rather than parsing the CLI's text tables, so
@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from combine import config  # noqa: E402
 from combine.pipeline.board import build as build_board  # noqa: E402
 from combine.pipeline.draftplan import next_pick, partition, snake_picks  # noqa: E402
+from combine.pipeline.lineup import order_starters, problems, split, swaps  # noqa: E402
 from combine.pipeline.needs import compute as compute_needs  # noqa: E402
 from combine.platforms import client_for  # noqa: E402
 
@@ -146,6 +147,44 @@ COL_CONFIG = {
 }
 
 
+@st.cache_data(ttl=60, show_spinner="pulling this week's lineup...")
+def load_week(league: str, week: int, _nonce: int) -> dict:
+    """One box-score round trip. Much cheaper than the draft loader: no
+    250-player pool, no crosswalk, no draft-pick scrape.
+
+    Weekly projections only exist on the box score. The season-level roster
+    object returns projected_points=None, which is why this does not reuse
+    load() above.
+    """
+    c = client_for(league)
+    m = c.matchup(week or None)
+    starters, bench = split(m.my_lineup)
+    return {
+        "matchup": m,
+        "slots": c.roster_slots(),
+        "starters": order_starters(starters, c.roster_slots()),
+        "bench": bench,
+        "problems": problems(starters),
+        "swaps": swaps(starters, bench),
+    }
+
+
+def lineup_frame(players, show_actual: bool) -> pd.DataFrame:
+    df = pd.DataFrame([{
+        "SLOT": p.slot,
+        "POS": p.pos,
+        "Player": p.name,
+        "TM": p.team or "",
+        "PROJ": round(p.projected, 1),
+        "ACT": round(p.actual, 1),
+        "NOTE": " ".join(x for x in ("BYE" if p.on_bye else "",
+                                     p.status if p.status != "OK" else "") if x),
+    } for p in players])
+    if not show_actual and not df.empty:
+        df = df.drop(columns=["ACT"])
+    return df
+
+
 # --- sidebar --------------------------------------------------------------
 
 leagues = config.leagues()
@@ -156,20 +195,27 @@ if not leagues:
 with st.sidebar:
     st.title("The Combine")
 
-    # Collapsed by default: these are set once and then never touched, while
-    # the pick-history paste box below gets used every few picks.
-    with st.expander("League & draft slot", expanded=False):
-        league = st.radio("League", list(leagues),
-                          format_func=lambda s: f"{s} · {leagues[s].name}")
-        cfg = leagues[league]
-        slot = st.number_input("Your draft slot", 1, 32,
-                               value=cfg.draft_slot or 1,
-                               help="Defaults to <SLUG>_DRAFT_POS in .env")
+    # Draft is dormant outside August, so Week leads.
+    mode = st.radio("Mode", ["Week", "Draft"], horizontal=True)
 
-    on_clock = st.number_input("Pick on the clock", 1, 400, value=1)
+    league = st.radio("League", list(leagues),
+                      format_func=lambda s: f"{s} · {leagues[s].name}")
+    cfg = leagues[league]
+
+    slot, on_clock, week_no = cfg.draft_slot or 1, 1, 0
+    if mode == "Draft":
+        with st.expander("Draft slot", expanded=False):
+            slot = st.number_input("Your draft slot", 1, 32,
+                                   value=cfg.draft_slot or 1,
+                                   help="Defaults to <SLUG>_DRAFT_POS in .env")
+        on_clock = st.number_input("Pick on the clock", 1, 400, value=1)
+    else:
+        week_no = st.number_input("Week", 0, 18, value=0,
+                                  help="0 follows the league's current week")
 
     with st.expander("Refresh", expanded=False):
-        auto = st.toggle("Auto refresh", value=True)
+        # A draft moves every few seconds; a lineup does not.
+        auto = st.toggle("Auto refresh", value=mode == "Draft")
         every = st.select_slider("Every", [15, 30, 45, 60], value=30,
                                  disabled=not auto, format_func=lambda n: f"{n}s")
         if st.button("Refresh now", use_container_width=True, type="primary"):
@@ -369,4 +415,58 @@ def page():
             st.info(f"Analysts: {row['Analysts']}")
 
 
-page()
+@st.fragment(run_every=f"{every}s" if auto else None)
+def week_page():
+    try:
+        data = load_week(league, int(week_no), st.session_state.nonce)
+    except Exception as exc:
+        st.error(f"{type(exc).__name__}: {exc}")
+        st.info("If this is a 401 or an empty league, the ESPN cookies expired. "
+                "Run `python scripts/refresh_espn_cookies.py`.")
+        return
+
+    m = data["matchup"]
+    played = any(p.played for p in m.my_lineup)
+    final = all(p.played for p in m.my_lineup if p.starting)
+
+    st.subheader(f"Week {m.week} · {m.my_team} vs {m.their_team}")
+    cols = st.columns(4)
+    cols[0].metric("My projection", f"{m.my_proj:.1f}")
+    cols[1].metric("Their projection", f"{m.their_proj:.1f}",
+                   delta=f"{m.my_proj - m.their_proj:+.1f} me", delta_color="normal")
+    if played:
+        cols[2].metric("My actual", f"{m.my_score:.1f}")
+        cols[3].metric("Their actual", f"{m.their_score:.1f}")
+    else:
+        cols[2].metric("State", "pregame")
+
+    for p in data["problems"]:
+        st.error(f"{p.slot}: {p.name} is {'on bye' if p.on_bye else p.status}"
+                 f" and still in your lineup")
+
+    if data["swaps"]:
+        st.warning("Bench outprojects a starter. ESPN's weekly projection only, "
+                   "not yet a start/sit call.")
+        for sw in data["swaps"]:
+            st.markdown(f"- `{sw.slot}` **{sw.bench.name}** {sw.bench.projected:.1f} "
+                        f"over {sw.starter.name} {sw.starter.projected:.1f} "
+                        f"(+{sw.edge:.1f})")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Starters**")
+        st.dataframe(lineup_frame(data["starters"], played), hide_index=True,
+                     use_container_width=True)
+    with right:
+        st.markdown("**Bench**")
+        st.dataframe(lineup_frame(data["bench"], played), hide_index=True,
+                     use_container_width=True)
+
+    if final:
+        st.caption("week is final")
+
+
+if mode == "Draft":
+    page()
+else:
+    week_page()

@@ -4,7 +4,7 @@ Companion to `fantasy-copilot-brief.md` (the architecture) and `README.md` (how
 to use it). This is what got built, where it diverged from the original plan
 and why, and what is still owed.
 
-Last updated 2026-09-09, drafts done, season starting.
+Last updated 2026-09-09, drafts done, week 1 lineup view built, season starting.
 
 ---
 
@@ -14,9 +14,9 @@ Last updated 2026-09-09, drafts done, season starting.
 (board, VORP, tiers, ADP, timing, targets by pick) worked and is committed. It
 is now off-season code until next August.
 
-**The season is what matters now.** Roster and matchup tools were deliberately
+**The season is what matters now.** Roster and matchup were deliberately
 skipped pre-draft because ESPN returns an empty roster and 404s on box scores
-in preseason. Both are unblocked once week 1 has data.
+in preseason. Both are now built, see item 1 below.
 
 **PFF API is live and we have a working key.** It is NOT what the original
 brief assumed, see below.
@@ -137,9 +137,27 @@ scripts/
 
 ## What is still owed, in order
 
-**1. Roster and matchup, now unblocked.** `get_my_roster` works but had nothing
-to show. `matchup` raises on purpose because `box_scores()` 404s in preseason.
-Both are testable the moment week 1 has real data. Smallest, highest value.
+**1. Roster and matchup. DONE 2026-09-09**, branch `season/weekly-lineup`.
+They turned out to be one thing, not two. `box_scores()` works from week 1 and
+is the *only* place weekly projections live: players off `team.roster` come
+back with `projected_points=None` and `points=None`. So the in-season path
+reads box scores and the draft path keeps reading the roster, and they use
+different objects (`WeeklyPlayer` vs `PlayerState`) rather than one object with
+more fields filled in.
+
+`WeeklyPlayer` carries `eligible_slots`, which is the field start/sit needs:
+it is what makes a bench-over-starter swap legal or not. `pipeline/lineup.py`
+splits starters from bench, flags problem starters, and lists bench players
+outprojecting a starter whose slot they can fill. That last one is deliberately
+*not* the optimizer: it is greedy, one for one, and runs on ESPN's weekly
+projection alone, because that is the only weekly number the system has until
+the PFF client lands. `tests/test_lineup.py` covers the slot logic.
+
+Two things ESPN does not give us here. `pro_opponent` comes back as the string
+`"None"` and `pro_pos_rank` is 0 on box players, so **opponent and defensive
+matchup need their own source**, and that probe belongs before start/sit rather
+than inside it. And no games have been played yet, so every `actual` is 0 and
+item 4 below has nothing to log until week 1 finishes.
 
 **2. PFF API client.** Auth is a bearer token, `PFF_API_KEY=ak_...` in `.env`,
 base URL `https://api.pff.com`. Two endpoint families that behave differently:
@@ -150,6 +168,16 @@ base URL `https://api.pff.com`. Two endpoint families that behave differently:
   * `/v1/players?name=` is name lookup, and returns PFF's `player_id`. That id
     is the anchor for extending the crosswalk to a third source.
 Probe first, adapter second, same as ESPN. Do not build against the docs.
+
+**The season parameter is a trap.** Probed 2026-09-09:
+`facet/receiving/summary?season=2026` returns 602 rows, but they are PRESEASON
+only, the target leaders are camp bodies at ~24 targets.
+`season=2026&week=1` returns 0 rows. `season=2025` returns 792 for the season
+and 251 for `week=1`, so the `week` parameter does work. Meaning: week 1
+start/sit gets its PFF signal from 2025 full-season grades as a prior, real
+2026 data only exists from week 2 on, and the client needs an explicit
+season/week policy. Defaulting to the current season silently serves noise in
+September and real data in October, which is the worst possible failure mode.
 
 Extend the crosswalk to PFF ids as part of this step, not after. ESPN and PFF
 are currently matched by name at ~97%, and the API hands us a stable id. Doing

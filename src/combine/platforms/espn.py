@@ -10,7 +10,8 @@ real leagues, not from documentation. Notes that cost us time:
   * espn-api's friendly names in the season-level breakdown are not trustworthy
     (rushingYards came back as 81.7 against 286 carries). Weekly stats[week]
     looks sane. Prefer weekly, and prefer already-scored point totals.
-  * Preseason: team.roster is [] and box_scores() raises KeyError.
+  * Preseason: team.roster is [] and box_scores() raises KeyError. From week 1
+    box_scores() works and is the only place weekly projections live.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import os
 from functools import lru_cache
 
 from ..config import SEASON, LeagueConfig
-from . import Matchup, PlayerState
+from . import Matchup, PlayerState, WeeklyPlayer
 
 # ESPN uses these on injuryStatus; we shorten for output width.
 _STATUS = {
@@ -159,5 +160,65 @@ class EspnClient:
     def player(self, name: str):
         return self.league.player_info(name=name)
 
+    # --- weekly ---------------------------------------------------------
+
+    def _weekly(self, p) -> WeeklyPlayer:
+        """One box-score player. Field notes from the live probe on 2026-09-09:
+          * projected_points and points exist HERE and are None on the
+            season-level roster object, which is why the weekly path reads box
+            scores rather than team.roster.
+          * pro_opponent comes back as the string "None", not the value, so it
+            is normalized away. Opponent still needs a separate source.
+          * game_played is 0 before kickoff and 100 when final.
+        """
+        opp = getattr(p, "pro_opponent", None)
+        if not opp or str(opp).lower() in ("none", "bye", "--"):
+            opp = None
+        return WeeklyPlayer(
+            player_id=str(getattr(p, "playerId", "")),
+            name=getattr(p, "name", "?"),
+            team=getattr(p, "proTeam", None),
+            pos=getattr(p, "position", "?"),
+            slot=getattr(p, "slot_position", None) or "BE",
+            eligible_slots=frozenset(getattr(p, "eligibleSlots", ()) or ()),
+            status=_status(p),
+            opponent=opp,
+            projected=float(getattr(p, "projected_points", 0.0) or 0.0),
+            actual=float(getattr(p, "points", 0.0) or 0.0),
+            played=bool(getattr(p, "game_played", 0)),
+            on_bye=bool(getattr(p, "on_bye", False)),
+        )
+
     def matchup(self, week: int | None = None) -> Matchup:
-        raise NotImplementedError("box_scores() 404s in preseason; wire up after week 1")
+        """My box score for one week, both lineups.
+
+        box_scores() 404s in preseason and worked from week 1 onward, verified
+        live 2026-09-09. A bye-week matchup hands back an int 0 in place of a
+        team object, hence the getattr guards.
+        """
+        wk = int(week or self.week)
+        for b in self.league.box_scores(wk):
+            for side in ("home", "away"):
+                team = getattr(b, f"{side}_team", None)
+                if team is None or str(getattr(team, "team_id", "")) != str(self.cfg.team_id):
+                    continue
+                other = getattr(b, "away_team" if side == "home" else "home_team", None)
+                return Matchup(
+                    week=wk,
+                    home_team=getattr(b.home_team, "team_name", "?")
+                    if side == "home" else getattr(other, "team_name", "BYE"),
+                    away_team=getattr(other, "team_name", "BYE")
+                    if side == "home" else getattr(b.away_team, "team_name", "?"),
+                    home_proj=float(getattr(b, "home_projected", 0.0) or 0.0),
+                    away_proj=float(getattr(b, "away_projected", 0.0) or 0.0),
+                    home_lineup=[self._weekly(p) for p in (b.home_lineup or [])],
+                    away_lineup=[self._weekly(p) for p in (b.away_lineup or [])],
+                    home_score=float(getattr(b, "home_score", 0.0) or 0.0),
+                    away_score=float(getattr(b, "away_score", 0.0) or 0.0),
+                    mine=side,
+                )
+        raise LookupError(f"team_id {self.cfg.team_id} has no box score in week {wk}")
+
+    def weekly_lineup(self, week: int | None = None) -> list[WeeklyPlayer]:
+        """My full roster for one week, starters and bench, with weekly numbers."""
+        return self.matchup(week).my_lineup

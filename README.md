@@ -24,11 +24,20 @@ Every command takes a slug. One league per call, always.
 uv run streamlit run app.py
 ```
 
-One page: needs at the top, timing against your next pick in the middle, the
-full board below, player detail at the bottom. League radio, draft slot and
-pick-on-the-clock live in the sidebar.
+Two modes, picked at the top of the sidebar.
 
-Auto refresh is on by default and polls every 30s, with a pause toggle and a
+**Week** is the in-season view and the default. Your matchup, both projected
+totals, starters and bench side by side, anyone hurt or on bye who is still in
+your lineup, and any bench player outprojecting a starter whose slot he can
+fill. The week selector defaults to whatever week the league says it is; set a
+number to look back.
+
+**Draft** is the old page and is dormant until next August: needs at the top,
+timing against your next pick in the middle, the full board below, player
+detail at the bottom. Draft slot and pick-on-the-clock appear in the sidebar
+only in this mode.
+
+Auto refresh follows the mode, on for Draft and off for Week, and polls every 30s, with a pause toggle and a
 Refresh now button that clears the cache. Data is cached for 25s so clicking
 around costs nothing; one ESPN round trip feeds every section on the page.
 
@@ -38,6 +47,26 @@ data without the mouse.
 
 The CLI still works and is documented below. The app is a front end over the
 identical code, not a reimplementation.
+
+## The week (CLI)
+
+```bash
+uv run combine week dmwd        # current week
+uv run combine week rcl 3       # a specific week
+```
+
+Starters in the league's own slot order, bench sorted by projection, then two
+call-outs: starters who are hurt or on bye, and bench players who outproject a
+starter they are slot eligible for.
+
+That second list is not a start/sit recommendation. It compares ESPN's weekly
+projection and nothing else, one for one, ignoring edges under a point. The
+real call, blended projections plus PFF usage and efficiency, arrives with the
+PFF API client. Treat it as a "look at this" list, not an answer.
+
+Projections come off the box score, which is the only place weekly numbers
+exist. Before week 1 kicks off every actual reads 0, which is correct rather
+than broken.
 
 ## Draft day (CLI)
 
@@ -298,7 +327,8 @@ uv run combine try health      # same check, as Claude sees it
 uv run combine try leagues     # slugs
 uv run combine try plan rcl 1 1 # league, slot, pick on the clock
 uv run combine try needs dmwd   # roster-aware, use from round 4 on
-uv run combine try roster dmwd # empty until the draft happens
+uv run combine try roster dmwd # season roster, no weekly numbers
+uv run combine week dmwd       # the in-season view, weekly numbers
 uv run combine serve           # MCP server on 127.0.0.1:8787/mcp
 ```
 

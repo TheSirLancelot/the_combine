@@ -38,9 +38,16 @@ Run it: `uv run combine doctor --live`, `uv run combine try board dmwd 20`,
 Drafts are done. The draft path (board, VORP, tiers, ADP, timing, targets) is
 finished and now dormant until next August. **The season is the work now.**
 
-Next up, in order: roster and matchup tools (unblocked now that week 1 has
-data), then a PFF API client, then start/sit and player comparison, which is
-what William actually asked for.
+The weekly lineup view is built on branch `season/weekly-lineup`:
+`combine week <league> [week]`, and a Week/Draft mode switch in the Streamlit
+app. It reads box scores, splits starters from bench, flags problem starters,
+and points out bench players outprojecting a starter whose slot they can fill.
+That last part runs on ESPN's weekly projection alone and is not yet the
+start/sit call.
+
+Next up, in order: a PFF API client with the crosswalk extended to PFF player
+ids, then start/sit and player comparison, which is what William actually
+asked for. Opponent data needs its own probe first, see below.
 
 ## The PFF API, correctly
 
@@ -58,6 +65,15 @@ Verified working, tier `pro`.
 - `/v1/players?name=` is name lookup and yields PFF's `player_id`, which is the
   anchor for extending the crosswalk to a third source.
 - 2026 shows `default_week: -4` (preseason) until games are played.
+
+ESPN gives us no opponent. On box-score players `pro_opponent` is the string
+`"None"` and `pro_pos_rank` is 0. Start/sit wants opponent and defensive
+matchup, so that needs its own probe before step 3.
+
+PFF's 2026 data is preseason only until games are played. `season=2026&week=1`
+returns zero rows; `season=2025` is full. Week 1 start/sit leans on 2025 grades
+as a prior, and the client needs an explicit season/week policy rather than
+defaulting to the current season.
 
 **Do the crosswalk before start/sit.** Right now ESPN and PFF are matched by
 name, conservatively, at about 97%. The API gives a stable `player_id`, so

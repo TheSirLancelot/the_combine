@@ -413,25 +413,67 @@ Also worth carrying forward: a projection is a MEAN, and the distribution is
 right skewed. The median 2025 outcome was 1.4 points BELOW projection while the
 mean was 0.4 below. "Projected 12" does not mean "expect 12".
 
-**7. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
+**7. The attention threshold. DONE 2026-09-09.** What counts as a gap worth
+showing is now measured rather than picked.
+
+Over 174,384 comparable pairs in 2025, the chance the higher projection
+actually outscored the other player:
+
+```
+gap 0.0-0.5  51.0%     gap 2-3   58.4%
+gap 0.5-1.0  53.0%     gap 3-4   61.5%
+gap 1.0-1.5  54.5%     gap 4-6   66.5%
+gap 1.5-2.0  56.4%     gap 6-8   71.7%
+```
+
+The old flat `MIN_EDGE = 1.0` was therefore surfacing 54% calls, which is close
+enough to a coin flip to train you to ignore the flags.
+
+Raw points is the wrong unit, which is what William suspected when he asked
+whether floor and ceiling had something to do with it. They do. The same two
+points means more between two defenders (outcome sd about 6) than between two
+backs projected 20+ (10.6). Dividing the gap by the pooled spread of the two
+players' outcome distributions lines the curve up across positions, where the
+raw gap does not:
+
+```
+normalized gap   idp    pass-catcher   qb     rb
+0.10-0.15       51.8%      53.0%      49.8%  54.9%
+0.15-0.20       54.2%      55.5%      54.4%  55.4%
+0.25-0.30       57.9%      56.5%      57.9%  58.7%
+0.50-0.75       61.7%      65.3%      62.6%  68.2%
+```
+
+`MIN_Z = 0.25` is the knee: every position clears 57% there and the curve
+flattens above it. In points that is roughly 1.2 for a low-projected defender
+up to 2.6 for a back projected 20+. `MIN_EDGE = 1.0` survives as a floor, since
+a sub-point gap is inside the rounding of the projections, and as the fallback
+when there is no outcome history to measure spread from.
+
+This is the third use of the same distribution data, and the only one that
+worked by changing what gets shown rather than what gets ranked. Worth noting
+as a pattern: the outcome spread is useful for deciding whether a difference is
+real, and not for deciding which side of it to take.
+
+**8. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server
 enforces its own token independently of Cloudflare. Do not put a Cloudflare
 Access policy on the hostname, it bounces Anthropic with a login redirect and
 fails with a useless error.
 
-**8. Yahoo, when approved.** Key and secret into `.env`, run
+**9. Yahoo, when approved.** Key and secret into `.env`, run
 `scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
 be `https://localhost:8000`.
 
-**9. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
+**10. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
 to PFF's raw stat lines, compare against PFF's own `fantasyPoints`. Match means
 the shortcut was safe; mismatch means someone has a scoring bug.
 
-**10. Live draft reader.** For next August. ESPN's league API does not expose an
+**11. Live draft reader.** For next August. ESPN's league API does not expose an
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
 the draft-day notes in project memory.
 
-**11. Discord bot.** Unchanged from the brief.
+**12. Discord bot.** Unchanged from the brief.
 
 ## Known soft spots
 

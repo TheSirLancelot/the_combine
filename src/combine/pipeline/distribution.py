@@ -61,6 +61,7 @@ class Band:
     ceiling: float           # 90th percentile outcome
     boom: float              # P(20+ points)
     bust: float              # P(under half the projection)
+    spread: float            # sd of the outcome around the projection
     n: int
     basis: str               # which cell this came from, so thin cells are visible
 
@@ -83,6 +84,7 @@ def _cell(rows: pd.DataFrame, proj: float, basis: str) -> Band:
         ceiling=proj + float(resid.quantile(0.90)),
         boom=float((rows["actual"] >= BOOM).mean()),
         bust=float((rows["actual"] < rows["espn_proj"] * BUST_FRACTION).mean()),
+        spread=float(resid.std()) if len(rows) > 1 else 0.0,
         n=len(rows),
         basis=basis,
     )

@@ -210,3 +210,48 @@ def test_optimizer_does_not_move_a_player_whose_game_started():
               p("better", "RB", "BE", 15, elig=("RB", "BE"))]
     add, drop, _gain = optimal_moves(lineup, {"RB": 1})
     assert add == [] and drop == []
+
+
+# --- how big a gap has to be before it is worth reading -------------------
+
+class FakeDist:
+    """Stands in for the outcome history. Only `spread` matters here."""
+
+    def __init__(self, spread):
+        self.spread = spread
+
+    def for_player(self, family, proj):
+        from combine.pipeline.distribution import Band
+        return Band(floor=0, median=proj, ceiling=0, boom=0, bust=0,
+                    spread=self.spread, n=999, basis="fake")
+
+
+def test_required_edge_scales_with_how_noisy_the_outcomes_are():
+    """Two points means more between two defenders than between two backs
+    projected 20+, whose outcomes scatter nearly twice as widely."""
+    from combine.pipeline.lineup import MIN_Z, required_edge
+    quiet, noisy = p("a", "LB", "LB", 10), p("b", "LB", "BE", 12)
+    assert required_edge(quiet, noisy, FakeDist(6.0)) == MIN_Z * 6.0
+    assert required_edge(quiet, noisy, FakeDist(10.6)) == MIN_Z * 10.6
+
+
+def test_required_edge_never_drops_below_the_floor():
+    """A gap under a point is inside the rounding of the projections."""
+    from combine.pipeline.lineup import MIN_EDGE, required_edge
+    a, b = p("a", "WR", "WR", 4), p("b", "WR", "BE", 5)
+    assert required_edge(a, b, FakeDist(1.0)) == MIN_EDGE
+
+
+def test_required_edge_falls_back_when_there_is_no_history():
+    from combine.pipeline.lineup import MIN_EDGE, required_edge
+    a, b = p("a", "WR", "WR", 10), p("b", "WR", "BE", 12)
+    assert required_edge(a, b, None) == MIN_EDGE
+
+
+def test_a_noisy_pair_needs_a_bigger_gap_to_be_flagged():
+    """The same 2 point gap is worth surfacing between two quiet players and
+    not between two noisy ones."""
+    starters = [p("starter", "RB", "RB", 10)]
+    bench = [p("bench", "RB", "BE", 12, elig=("RB", "BE"))]
+    assert len(swaps(starters, bench, dist=FakeDist(6.0))) == 1     # needs 1.5
+    assert swaps(starters, bench, dist=FakeDist(10.6)) == []        # needs 2.65

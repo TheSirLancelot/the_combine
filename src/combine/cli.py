@@ -253,7 +253,7 @@ def start_sit() -> int:
     except Exception:
         dist = None
 
-    calls, hurt = review(m, usage, ids)
+    calls, hurt = review(m, usage, ids, dist=dist)
     print(render(m, calls, hurt, usage, ids, state.in_season,
                  config.get_league(league).name, slots=c.roster_slots(), dist=dist))
     if not state.in_season:

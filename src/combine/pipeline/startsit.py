@@ -81,12 +81,12 @@ def _verdict(proj_edge: float, opp_edge: float | None) -> tuple[str, tuple[str, 
 
 
 def review(m: Matchup, usage: dict[int, usage_mod.Usage], ids: dict[str, int],
-           ) -> tuple[list[Call], list[WeeklyPlayer]]:
+           dist=None) -> tuple[list[Call], list[WeeklyPlayer]]:
     """(calls worth making, starters who cannot play). Both can be empty, and
     an empty report is the correct output for a lineup that is already right."""
     starters, bench = split(m.my_lineup)
     calls: list[Call] = []
-    for sw in swaps(starters, bench):
+    for sw in swaps(starters, bench, dist=dist):
         opp_edge, why = opportunity_edge(sw.bench, sw.starter, usage, ids)
         verdict, reasons = _verdict(sw.edge, opp_edge)
         if why:

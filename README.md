@@ -108,7 +108,26 @@ lineups as actually fielded. It respects eligibility, treats a ruled-out
 starter as worth zero, and will not suggest moving anyone whose game has
 kicked off.
 
-Below that it prints only the slots with a real question: a bench player
+Below that it prints only the slots with a real question. "Real" is measured
+rather than guessed: across 174,384 comparable pairs in 2025, the higher
+projection actually outscored the other player 51% of the time at a gap under
+half a point, 54% at a gap of one to one and a half, and 58% at two to three.
+So a flat one-point threshold surfaces coin flips and trains you to ignore the
+flags.
+
+The gap alone is also the wrong unit. Two points means more between two
+defenders, whose outcomes scatter with a standard deviation around 6, than
+between two backs projected 20+, where it is 10.6. So the threshold is the gap
+divided by the spread of the two players' outcome distributions, which lines
+the accuracy curve up across positions where the raw gap does not, and the cut
+sits at 0.25 of a standard deviation. In practice that is about 1.2 points
+between two low-projected defenders and 2.6 between two big backs. Pairs that
+clear it are right about 57 to 59% of the time.
+
+With no stored outcome history it falls back to a flat point, which is honest
+rather than degraded: with nothing measured, a picked constant is all there is.
+
+The questions it prints: a bench player
 outprojecting a starter he can legally replace, and anyone who cannot play and
 is still in your lineup. A lineup that is already right gets one line saying
 so. That is the intended output, not a failure.

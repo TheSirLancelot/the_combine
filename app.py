@@ -188,7 +188,7 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
         api = PffApi()
         in_season = api.season_state().in_season
         usage = load_usage(api)
-        calls, _ = review(m, usage, ids)
+        calls, _ = review(m, usage, ids, dist=outcome_distribution(config.SEASON - 1))
     except Exception as exc:
         pff_err = f"{type(exc).__name__}: {exc}"
 
@@ -198,7 +198,8 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
         "starters": order_starters(starters, c.roster_slots()),
         "bench": bench,
         "problems": problems(starters),
-        "swaps": swaps(starters, bench),
+        "swaps": swaps(starters, bench,
+                       dist=outcome_distribution(config.SEASON - 1)),
         "calls": calls,
         "optimal": optimal_moves(m.my_lineup, c.roster_slots()),
         "dist": outcome_distribution(config.SEASON - 1),

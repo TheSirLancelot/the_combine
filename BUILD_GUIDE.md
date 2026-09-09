@@ -455,6 +455,45 @@ worked by changing what gets shown rather than what gets ranked. Worth noting
 as a pattern: the outcome spread is useful for deciding whether a difference is
 real, and not for deciding which side of it to take.
 
+**Should the threshold be per player? Tested 2026-09-09, no.** Recorded so it
+does not get re-tested.
+
+The bar already moves with the two players being compared, through their
+projection level rather than their identity:
+
+```
+rb   0-6    spread  4.8  edge 1.2      pass-catcher 0-6    spread 5.6  edge 1.4
+rb   6-10   spread  6.8  edge 1.7      pass-catcher 6-10   spread 6.2  edge 1.6
+rb   10-14  spread  7.8  edge 2.0      pass-catcher 10-14  spread 7.3  edge 1.8
+rb   14-20  spread  9.1  edge 2.3      pass-catcher 14-20  spread 8.6  edge 2.2
+rb   20+    spread 10.6  edge 2.6      idp   10-14         spread 6.3  edge 1.6
+```
+
+Two questions were asked of the 2025 data about going further.
+
+*Does a player's own past volatility predict his future volatility?* Splitting
+each player into the calmer or wilder half of his position and band by prior
+residual spread, then measuring what he did next: 7.80 against 7.26. Real but
+small, and inconsistent in sign. Backs show +1.59, quarterbacks REVERSE at
+-0.94. It also needs five or more prior weeks, so it does nothing in September,
+which is when the tool is least sure of itself anyway.
+
+*Do structural traits predict spread within a projection band?* Thirteen tests
+across the four families. One clears two standard errors convincingly, RB grade
+at +0.99 +-0.30, which is roughly what thirteen tests produce by chance. The
+notable null is aDOT for pass catchers at +0.23 +-0.21: the textbook boom-bust
+marker does nothing here.
+
+That null explains the whole result. Conditioning on the projection has already
+absorbed the trait, because ESPN projects the deep threat differently from the
+possession receiver in the first place. It is the same reason the residual model
+failed, arriving from the variance side instead of the mean side.
+
+Even taking the one real effect at face value, RB grade would move the bar from
+1.89 to 2.14. A quarter of a point, against a band effect already spanning 1.2
+to 2.6, in exchange for a per-player dependency that needs half a season to
+warm up. Not worth it.
+
 **8. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server
 enforces its own token independently of Cloudflare. Do not put a Cloudflare

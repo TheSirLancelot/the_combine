@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Run the Streamlit app as a background agent on the Mac mini.
+
+  This box is also a Plex server, so the app is deliberately launched under
+  macOS background QoS via `taskpolicy -b`. That puts it in the lowest
+  scheduling and I/O band, so any Plex transcode always wins contention and the
+  app yields instead of competing. Measured cost when idle is a Python process
+  with pandas loaded and effectively no CPU; the outcome history it reads builds
+  in about a second.
+
+  Bound to 0.0.0.0 so it is reachable over Tailscale from a phone. There is no
+  authentication in front of it, which is exactly why it should be reachable
+  ONLY over the tailnet: do not port-forward this, and do not expose it to the
+  public internet. It holds no secrets itself, but it acts as your ESPN session.
+
+  Install:
+    cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
+    # edit the two paths below first
+    launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
+  Check:      launchctl list | grep thecombine
+  Stop:       launchctl unload -w ~/Library/LaunchAgents/com.thecombine.app.plist
+  Logs:       tail -f <REPO>/logs/app.out
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.thecombine.app</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/taskpolicy</string>
+    <string>-b</string>
+    <string>/bin/sh</string>
+    <string>-lc</string>
+    <!-- REPLACE <REPO> with the absolute path to the checkout, e.g.
+         /Users/williamweir/the_combine -->
+    <string>cd &lt;REPO&gt; &amp;&amp; exec uv run streamlit run app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --browser.gatherUsageStats false</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>&lt;REPO&gt;</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>&lt;REPO&gt;/logs/app.out</string>
+  <key>StandardErrorPath</key>
+  <string>&lt;REPO&gt;/logs/app.err</string>
+
+  <!-- Nothing here needs a login session or a GUI. -->
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

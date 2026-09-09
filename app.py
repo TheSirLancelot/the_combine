@@ -209,6 +209,40 @@ def outcome_distribution(season: int):
     return None if dist.empty else dist
 
 
+def missing_inputs(league: str) -> list[tuple[str, str, str]]:
+    """(what is missing, what it costs you, the command that fixes it).
+
+    The app degrades quietly when data/ is absent: columns simply vanish and the
+    comparison threshold falls back to a flat point. Quiet degradation is worse
+    than an error, because the page still looks right. So say it out loud.
+    """
+    from combine import db
+    from combine.pipeline.crosswalk import PFF_IDS
+
+    out = []
+    if not config.DB_PATH.exists():
+        out.append(("outcome history",
+                    "no floor, ceiling, boom or bust columns, and the comparison "
+                    "threshold falls back to a flat point instead of scaling",
+                    f"uv run combine train build {config.SEASON - 1}"))
+    else:
+        try:
+            with db.connect(readonly=True) as conn:
+                n = conn.execute("SELECT COUNT(*) FROM espn_player_week").fetchone()[0]
+            if not n:
+                out.append(("outcome history (the database is empty)",
+                            "no floor, ceiling, boom or bust, and a flat threshold",
+                            f"uv run combine train build {config.SEASON - 1}"))
+        except Exception as exc:
+            out.append((f"outcome history ({type(exc).__name__})",
+                        "no outcome columns", "uv run combine init"))
+    if not PFF_IDS.exists():
+        out.append(("PFF id crosswalk",
+                    "no Role column, so no usage behind the projections",
+                    f"uv run combine pffids {league}"))
+    return out
+
+
 @st.cache_data(ttl=60, show_spinner="pulling this week's lineup...")
 def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
     """One box-score round trip. Much cheaper than the draft loader: no
@@ -610,6 +644,9 @@ def week_page():
     for p in data["problems"]:
         st.error(f"{p.slot}: {p.name} is {'on bye' if p.on_bye else p.status}"
                  f" and still in your lineup")
+
+    for what, cost, fix in missing_inputs(league):
+        st.warning(f"Missing {what}. Without it: {cost}. Fix: `{fix}`")
 
     if data["pff_err"]:
         st.info(f"PFF usage unavailable ({data['pff_err']}). Lineup below is "

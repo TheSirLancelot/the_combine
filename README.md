@@ -49,6 +49,37 @@ data without the mouse.
 The CLI still works and is documented below. The app is a front end over the
 identical code, not a reimplementation.
 
+## Reaching it from a phone
+
+The app runs on the Mac mini, which is always on. Access is over Tailscale
+rather than the public internet: install Tailscale on the mini and on the phone,
+then browse to `http://<mini-tailnet-name>:8501`.
+
+There is no login in front of the app, which is exactly why it must only be
+reachable on the tailnet. Do not port-forward it. It stores no secrets itself,
+but every page load acts as your ESPN session, so a public URL means strangers
+driving your account.
+
+To keep it running across reboots without competing with Plex:
+
+```bash
+cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
+# edit the <REPO> paths inside first
+launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
+```
+
+That launches under `taskpolicy -b`, macOS background QoS, so any Plex transcode
+wins CPU and I/O contention and the app yields instead of competing. Measured
+cost when idle is a Python process with pandas loaded and effectively no CPU;
+the outcome history it reads builds in about a second and occupies 4.4MB. Auto
+refresh is off by default in Week mode, so it is not polling ESPN for nobody.
+
+Hosted options were considered and rejected. `data/` is gitignored and holds the
+33MB outcome database, the PFF caches, the projection exports and the id
+crosswalk, so a deploy from the repo would silently lose the outcome columns,
+the Role column and the scaling comparison threshold. And it would mean putting
+ESPN session cookies in a third party's secret store.
+
 ## The week (CLI)
 
 ```bash

@@ -304,6 +304,7 @@ def train() -> int:
               into SQLite, then resolve any new players onto PFF ids
     status    what is already stored
     baseline  score ESPN and the no-model baselines, which is the bar
+    model     fit the residual model and score it on held-out weeks
 
     Resumable: it skips whatever is already there, so run it again after an
     interruption. A full season is around a hundred requests and some of them
@@ -355,8 +356,41 @@ def train() -> int:
         print(by_family(frame).to_string(index=False))
         return 0
 
+    if what == "model":
+        from .pipeline.evaluate import flip_test
+        from .pipeline.model import HOLDOUT_WEEKS, _usable, apply, train_and_score
+        from .pipeline.training import build as build_frame
+        with db.connect() as conn:
+            frame = build_frame(conn, season)
+        if frame.empty:
+            print(f"nothing stored for {season}. run: combine train build {season}",
+                  file=sys.stderr)
+            return 2
+        table, models = train_and_score(frame)
+        print(f"season {season}: ridge on the residual, trained on weeks "
+              f"1-13, scored on {min(HOLDOUT_WEEKS)}-{max(HOLDOUT_WEEKS)}\n")
+        print(table.to_string(index=False))
+
+        print("\nFLIP TEST: of the close calls where the model disagrees with "
+              "ESPN,\nhow often is the model right? Below 50% means it is "
+              "noise, not advice.")
+        for fam, model in models.items():
+            group = frame[frame["family"] == fam]
+            hold = _usable(group[group["week"].isin(HOLDOUT_WEEKS)])
+            hold = hold.assign(model_pred=apply(model, hold))
+            f = flip_test(hold, "model_pred")
+            print(f"  {fam:<14} espn {f['base_acc'] * 100:5.1f}%  "
+                  f"flips {f['flips']:>5} ({f['flip_rate'] * 100:4.1f}% of pairs)  "
+                  f"flip accuracy {f['flip_acc'] * 100:5.1f}% "
+                  f"+-{f['flip_se'] * 100:.1f}")
+
+        print("\nA model ships only if it beats ESPN on MAE AND on close-call "
+              "ordering,\nand its flips are right more than half the time.")
+        return 0
+
     if what != "build":
-        print("usage: combine train <build|status|baseline> [season]", file=sys.stderr)
+        print("usage: combine train <build|status|baseline|model> [season]",
+              file=sys.stderr)
         return 2
 
     leagues = [s for s, c in config.leagues().items() if c.platform == "espn"]
@@ -413,7 +447,7 @@ def main() -> int:
         return 0
     print("usage: combine [doctor [--live] | init | week <league> [week] | "
           "pffids <league> | startsit <league> [week] | "
-          "compare <league> A B | train <build|status|baseline> | "
+          "compare <league> A B | train <build|status|baseline|model> | "
           "try ... | serve]",
           file=sys.stderr)
     return 2

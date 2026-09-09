@@ -146,6 +146,16 @@ pairs within 3 projected points, which is where the real decisions are.
 ESPN currently sits at MAE 5.67 and 55.1% on close calls. Any model has to beat
 both out of sample or it does not ship.
 
+```bash
+uv run combine train model      # fit the residual model and score it honestly
+```
+
+This currently prints a rejection. A ridge model on the residual was built and
+held out properly, and when it overrules ESPN on a close call it is right 47.5%
+of the time against ESPN's 55.6%. The command stays because the harness is
+reusable and because the flip test it prints is the standard any future model
+has to clear.
+
 ## Draft day (CLI)
 
 Three commands do everything. Run them from `~/the_combine`.

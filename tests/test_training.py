@@ -154,3 +154,51 @@ def test_score_reports_the_sample_it_used():
 
 def test_close_threshold_is_where_the_decisions_are():
     assert CLOSE == 3.0
+
+
+def test_flip_test_measures_only_the_disagreements():
+    """Two close pairs. The model agrees on one and flips the other, and only
+    the flipped one should count toward flip accuracy."""
+    from combine.pipeline.evaluate import flip_test
+    df = pd.DataFrame({
+        "league": ["x"] * 4, "week": [1, 1, 2, 2], "family": ["rb"] * 4,
+        "espn_proj": [10.0, 9.0, 10.0, 9.0],
+        # week 1: model keeps ESPN's order. week 2: model flips it, and is right.
+        "model_pred": [11.0, 8.0, 8.0, 11.0],
+        "actual": [15.0, 5.0, 5.0, 15.0],
+    })
+    f = flip_test(df, "model_pred")
+    assert f["close_pairs"] == 2
+    assert f["flips"] == 1
+    assert f["flip_acc"] == 1.0
+    assert f["base_acc"] == 0.5      # espn got week 1 right and week 2 wrong
+
+
+def test_flip_test_ignores_pairs_the_projection_already_separates():
+    from combine.pipeline.evaluate import flip_test
+    df = pd.DataFrame({
+        "league": ["x"] * 2, "week": [1] * 2, "family": ["rb"] * 2,
+        "espn_proj": [20.0, 5.0], "model_pred": [5.0, 20.0], "actual": [1.0, 30.0],
+    })
+    assert flip_test(df, "model_pred")["close_pairs"] == 0
+
+
+def test_model_declines_to_speak_without_history():
+    """A prediction built from median-imputed features is a guess dressed as a
+    number, so those rows must come back as ESPN untouched."""
+    from combine.pipeline.model import apply
+    frame = pd.DataFrame({"espn_proj": [10.0, 12.0], "prior_weeks": [0, 5]})
+
+    class Stub:
+        def predict(self, df):
+            return pd.Series([5.0] * len(df)).to_numpy()
+
+    out = apply(Stub(), frame)
+    assert out.iloc[0] == 10.0       # no history, ESPN stands
+    assert out.iloc[1] == 17.0
+
+
+def test_no_model_means_espn_untouched():
+    from combine.pipeline.model import apply
+    frame = pd.DataFrame({"espn_proj": [10.0], "prior_weeks": [9]})
+    assert apply(None, frame).iloc[0] == 10.0

@@ -67,11 +67,16 @@ The bar is measured and lives in `combine train baseline`. ESPN is MAE 5.67 and
 decisions are hard. That is the opportunity and the warning: there is room, but
 anything claiming 70% is leaking.
 
-No model exists yet, on purpose. The metric was written before the model.
+**The model was built and rejected on 2026-09-09.** Ridge on the residual, per
+position family, properly held out. When it overrules ESPN on a close call it
+is right 47.5% of the time, against ESPN's 55.6% on the same pairs, and it
+disagrees on about a quarter of them. It does not ship. The code and the
+harness stay so the result is findable instead of repeatable. See build guide
+item 5 for the numbers and for what would change the answer.
 
-**ARGUE, not override.** William's call. The model never reorders anything; it
-flags where it disagrees with ESPN and says why, and he decides. It graduates
-to overriding once the `prediction` table shows it has earned it.
+**ARGUE, not override**, if a model ever does ship. William's call. It never
+reorders anything, it flags where it disagrees and says why. Nothing is wired
+in today, because nothing earned it.
 
 **The leakage rule.** Every feature for week W comes from weeks strictly before
 W. `training._prior` is the only function that slices weeks, and

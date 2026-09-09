@@ -117,3 +117,40 @@ def by_family(df: pd.DataFrame, pred_col: str = "espn_proj") -> pd.DataFrame:
                      "pair_acc": round(s.pair_acc, 3),
                      "close_acc": round(s.pair_acc_close, 3), "n_close": s.n_close})
     return pd.DataFrame(rows).sort_values("n", ascending=False)
+
+
+def flip_test(df: pd.DataFrame, pred_col: str, base_col: str = "espn_proj",
+              close: float = CLOSE) -> dict:
+    """The metric that actually answers "should I start the lower-projected guy".
+
+    Global MAE and pairwise accuracy both average over pairs where the model
+    agrees with ESPN, and agreement is most of them, so a model can look level
+    while being useless at the only thing it was built for. This looks only at
+    the pairs where the model DISAGREES: close calls where it puts the
+    lower-projected player ahead. If those flips are not right more than half
+    the time, the model is not advice, it is noise with a confident voice.
+
+    Returns the base rate to compare against, since ESPN's own accuracy on the
+    same pairs is the thing being beaten or not.
+    """
+    pairs = flips = flips_right = base_right = 0
+    for _, group in df.groupby(["league", "week", "family"], sort=False):
+        rows = group[[base_col, pred_col, "actual"]].to_numpy()
+        for (ea, pa, aa), (eb, pb, ab) in combinations(rows, 2):
+            if abs(ea - eb) > close or ea == eb or aa == ab:
+                continue
+            pairs += 1
+            base_right += (ea > eb) == (aa > ab)
+            if (pa > pb) != (ea > eb):
+                flips += 1
+                flips_right += (pa > pb) == (aa > ab)
+    return {
+        "close_pairs": pairs,
+        "base_acc": base_right / pairs if pairs else 0.0,
+        "flips": flips,
+        "flip_rate": flips / pairs if pairs else 0.0,
+        "flip_acc": flips_right / flips if flips else 0.0,
+        # One standard error on a coin-flip null, so a reader can see at a
+        # glance whether a number near 50% means anything.
+        "flip_se": (0.25 / flips) ** 0.5 if flips else float("nan"),
+    }

@@ -293,56 +293,69 @@ The build is resumable, since it is about a hundred requests and some are slow.
 Every step skips what is already stored. Resolving 2025's rosters also grew the
 id crosswalk from 559 to 796, because rosters churn between seasons.
 
-**5. The residual model. NEXT, and gated.**
-`pipeline/training.py` builds the frame, `pipeline/evaluate.py` holds the bar.
-No model exists yet, deliberately: the metric was written first, because a
-model built first and measured afterwards gets graded against whichever metric
-flatters it.
+**5. The residual model. BUILT AND REJECTED 2026-09-09.** It does not ship.
+The code stays (`pipeline/model.py`, `combine train model`) because the harness
+is reusable and because the next person to have this idea should find the
+result rather than repeat the work.
 
-**Target is the residual, `actual - espn_proj`, not the raw score.** ESPN's
-projection already absorbs what we cannot see: Vegas lines, beat reporting,
-depth chart churn. Trying to out-project it from a few thousand rows loses.
-Predicting where it is *wrong* is a much smaller problem, and a model that
-learns nothing predicts a zero residual and lands exactly on ESPN, which is the
-right failure mode.
+The setup was right. Target is the residual, `actual - espn_proj`, so a model
+that learns nothing predicts zero and lands exactly on ESPN. Ridge per position
+family, weeks 1-13 to train, lambda chosen on an inner split of weeks 11-13,
+scored on weeks 14-18 which were never touched. It declines to predict for
+players with under two weeks of history, since a median-imputed feature vector
+is a guess dressed as a number.
 
-**The leakage rule lives in one function.** Every feature for week W comes from
-weeks strictly before W, and `training._prior` is the only thing that slices
-weeks. A frame that quietly includes W scores brilliantly and is worthless on
-Sunday, so `tests/test_training.py` checks it directly.
-
-**The bar, measured on 2025:**
+**Holdout, 2025:**
 
 ```
-ESPN projection        MAE  5.67  RMSE 7.25  pairs 62.5%  close 55.1%
-own last 3 weeks       MAE  6.50  RMSE 8.58  pairs 58.4%  close 52.3%
-ESPN + recent bias     MAE  6.35  RMSE 8.28  pairs 59.8%  close 52.4%
+      family  n_train  n_hold  lambda  espn_mae  model_mae  espn_close  model_close
+         idp      661     330     300     4.975      4.810       0.566        0.584
+pass-catcher    1370     670     300     5.751      5.573       0.566        0.558
+          qb     388     200     100     6.931      7.875       0.515        0.529
+          rb     850     435      30     6.937      7.098       0.548        0.558
 ```
 
-Two metrics because they answer different questions. MAE is how close a number
-is. Pairwise decision accuracy is how often the player you were told to prefer
-outscored the other, inside one league, week and position family, and that is
-the actual job. The CLOSE column is the one that matters: pairs within 3
-projected points, where the decision is real. Everyone gets Chase over a backup
-right, so overall pairwise accuracy mostly measures how many easy pairs are in
-the sample.
+Two families improve MAE, two get worse. Bootstrapping over players (not rows,
+because one player's weeks are correlated) puts every one of those deltas
+inside or barely outside a 95% interval containing zero. Lambda pinning to the
+top of the grid for the two biggest families is the same story from another
+angle: the fit wants to shrink almost everything to zero, because there is
+almost nothing to learn.
 
-**55.1% on close calls is the number to keep in mind.** ESPN is barely better
-than a coin flip exactly where the decisions are hard, which is both the
-opportunity and the warning. There is room. But anything claiming 70% is
-leaking, and the honest ceiling here is a few points, not a transformation.
+**The finding that settles it is the flip test**, which is in `evaluate.py` and
+is the metric this project should have reached for first. Global MAE and
+pairwise accuracy both average over the pairs where the model AGREES with ESPN,
+and agreement is most of them, so a useless model can look level. The flip test
+looks only at close calls where the model disagrees and puts the lower-projected
+player ahead, which is the entire feature William asked for:
 
-By family, ESPN is worst at QB (MAE 6.69, close 52.1%) and best at IDP
-(MAE 5.07), which is where to look first.
+```
+  idp            espn 55.7%   flips 1101 (16.7%)   flip accuracy 46.6% +-1.5
+  pass-catcher   espn 56.2%   flips 2675 (24.5%)   flip accuracy 48.6% +-1.0
+  qb             espn 51.5%   flips  303 (25.9%)   flip accuracy 52.5% +-2.9
+  rb             espn 54.8%   flips  990 (31.2%)   flip accuracy 44.0% +-1.6
+```
 
-Both no-model baselines lose to ESPN, which is the sanity check that the
-harness works.
+When it overrules ESPN it is right 47.5% of the time overall, worse than a coin
+flip and far worse than ESPN's own 55.6% on the same pairs. It disagrees on
+roughly a quarter of close calls. Shipping that in ARGUE mode would mean
+flagging 1 in 4 decisions with advice that is wrong more often than right.
 
-Still to do: train per-position models on weeks 1-13, validate on 14-18, and
-ship only if both metrics beat ESPN out of sample. Then wire it in ARGUE mode
-(William's call, 2026-09-09): ESPN's order stands, the model only adds a flag
-where it disagrees and why. It graduates to overriding the order once the
-`prediction` table says it has earned it.
+Where the pass-catcher MAE gain comes from is worth understanding: the model
+shrinks projections toward the mean, which improves the average error and
+destroys the ordering, and ordering is the whole job. Better number, worse
+decisions. That is why MAE alone was never going to be the gate.
+
+**What would change the answer.** More seasons: one season of two leagues is
+~3300 usable rows across four families, and the effect being chased is a couple
+of points inside a distribution whose weekly noise is 7 points RMSE. The
+2026 `prediction` table also has to accumulate before any of this is worth
+retrying on live data. And the features are all volume and efficiency; nothing
+here knows about snap-count news, injury designations on teammates, or Vegas
+totals, which is plausibly where the actual edge is and is not in PFF's data.
+
+**What stays useful.** The measurement harness, the leakage-safe frame, and the
+flip test itself, which is now the standard any future model gets held to.
 
 **6. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server

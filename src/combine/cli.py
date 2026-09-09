@@ -240,9 +240,22 @@ def start_sit() -> int:
     usage = load_usage(api)
     c = client_for(league)
     m = c.matchup(wk)
+
+    # Outcome spread, shown as context and never used to rank. Ranking by it was
+    # backtested and lost; see build guide item 6.
+    dist = None
+    try:
+        from . import db
+        from .pipeline.distribution import load as load_dist
+        with db.connect(readonly=True) as conn:
+            candidate = load_dist(conn, config.SEASON - 1)
+        dist = None if candidate.empty else candidate
+    except Exception:
+        dist = None
+
     calls, hurt = review(m, usage, ids)
     print(render(m, calls, hurt, usage, ids, state.in_season,
-                 config.get_league(league).name))
+                 config.get_league(league).name, slots=c.roster_slots(), dist=dist))
     if not state.in_season:
         print(f"\nusage is {state.stats_season}, read it as a prior")
     return 0
@@ -305,6 +318,8 @@ def train() -> int:
     status    what is already stored
     baseline  score ESPN and the no-model baselines, which is the bar
     model     fit the residual model and score it on held-out weeks
+    backtest  replay a season and test posture-aware lineups against expected
+              points, using the same optimizer for both
 
     Resumable: it skips whatever is already there, so run it again after an
     interruption. A full season is around a hundred requests and some of them
@@ -356,6 +371,30 @@ def train() -> int:
         print(by_family(frame).to_string(index=False))
         return 0
 
+    if what == "backtest":
+        from .pipeline.backtest import (optimizer_result, posture_modes,
+                                        posture_sweep, replay)
+        with db.connect() as conn:
+            r = replay(conn, season)
+        if not r.n:
+            print(f"nothing stored for {season}", file=sys.stderr)
+            return 2
+        print(f"season {season}: {r.n} team-weeks, real matchups, only my side "
+              f"changed.\none standard error on a win-rate delta is "
+              f"{r.se:.1f}pp, so read anything smaller as noise.\n")
+        print("OPTIMAL SLOT ASSIGNMENT (no forecasting, just arithmetic)")
+        print(optimizer_result(r).to_string(index=False,
+                                            float_format=lambda v: f"{v:.3f}"))
+        print("\nPOSTURE: ceiling when projected to lose, floor when projected "
+              "to win,\nagainst the same optimizer run on expected points.")
+        print(posture_sweep(r).to_string(index=False,
+                                         float_format=lambda v: f"{v:.3f}"))
+        print("\nEach ranking applied unconditionally, which isolates the "
+              "ranking from the threshold:")
+        print(posture_modes(r).to_string(index=False,
+                                         float_format=lambda v: f"{v:.3f}"))
+        return 0
+
     if what == "model":
         from .pipeline.evaluate import flip_test
         from .pipeline.model import HOLDOUT_WEEKS, _usable, apply, train_and_score
@@ -389,7 +428,7 @@ def train() -> int:
         return 0
 
     if what != "build":
-        print("usage: combine train <build|status|baseline|model> [season]",
+        print("usage: combine train <build|status|baseline|model|backtest> [season]",
               file=sys.stderr)
         return 2
 

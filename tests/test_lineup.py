@@ -160,3 +160,53 @@ def test_the_ruled_out_starter_is_preferred_over_a_merely_weak_one():
     starters = [p("weak", "RB", "RB", 5), p("out", "RB", "RB", 14, status="O")]
     bench = [p("healthy", "RB", "BE", 9, elig=("RB", "BE"))]
     assert swaps(starters, bench)[0].starter.name == "out"
+
+
+# --- optimal assignment ---------------------------------------------------
+
+def test_optimizer_finds_the_move_a_pairwise_check_cannot():
+    """Put the receiver in the flex so the second back can take the RB slot.
+    No single swap gets there, which is the whole reason for an exact solver."""
+    from combine.pipeline.optimize import best_lineup
+    def c(name, pos, elig, proj):
+        return {"espn_id": name, "name": name, "pos": pos,
+                "eligible": set(elig), "proj": proj, "playable": True}
+    roster = [c("RB1", "RB", ["RB", "FLEX"], 14), c("RB2", "RB", ["RB", "FLEX"], 11),
+              c("WR1", "WR", ["WR", "FLEX"], 13), c("WR2", "WR", ["WR", "FLEX"], 9)]
+    got = best_lineup(roster, ["RB", "WR", "FLEX"], key=lambda p: p["proj"])
+    assert {p["name"] for p in got} == {"RB1", "WR1", "RB2"}
+    assert sum(p["proj"] for p in got) == 38
+
+
+def test_optimizer_will_not_fill_a_slot_illegally():
+    from combine.pipeline.optimize import best_lineup
+    kicker = {"espn_id": "k", "pos": "K", "eligible": {"K"}, "proj": 9.0,
+              "playable": True}
+    assert best_lineup([kicker], ["QB"], key=lambda p: p["proj"]) == []
+
+
+def test_optimizer_leaves_an_already_correct_lineup_alone():
+    from combine.pipeline.lineup import optimal_moves
+    lineup = [p("rb", "RB", "RB", 14), p("wr", "WR", "WR", 12),
+              p("sub", "WR", "BE", 5, elig=("WR", "BE"))]
+    add, drop, gain = optimal_moves(lineup, {"RB": 1, "WR": 1})
+    assert add == [] and drop == [] and gain == 0
+
+
+def test_optimizer_benches_a_ruled_out_starter_for_anyone_healthy():
+    from combine.pipeline.lineup import optimal_moves
+    lineup = [p("out", "RB", "RB", 16, status="O"),
+              p("fit", "RB", "BE", 6, elig=("RB", "BE"))]
+    add, drop, gain = optimal_moves(lineup, {"RB": 1})
+    assert [x.name for x in add] == ["fit"]
+    assert [x.name for x in drop] == ["out"]
+    assert gain == 6
+
+
+def test_optimizer_does_not_move_a_player_whose_game_started():
+    """A suggestion you cannot act on is noise."""
+    from combine.pipeline.lineup import optimal_moves
+    lineup = [p("playing", "RB", "RB", 4, kickoff=PAST),
+              p("better", "RB", "BE", 15, elig=("RB", "BE"))]
+    add, drop, _gain = optimal_moves(lineup, {"RB": 1})
+    assert add == [] and drop == []

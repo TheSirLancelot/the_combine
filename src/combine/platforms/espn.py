@@ -267,22 +267,27 @@ class EspnClient:
         """My full roster for one week, starters and bench, with weekly numbers."""
         return self.matchup(week).my_lineup
 
-    def player_weeks(self, week: int) -> list[tuple[str, WeeklyPlayer]]:
-        """(fantasy team name, player) for EVERY rostered player in the league
-        that week, not just mine.
+    def player_weeks(self, week: int) -> list[tuple[str, str, WeeklyPlayer]]:
+        """(fantasy team, the team it faced, player) for EVERY rostered player
+        in the league that week, not just mine.
+
+        The opponent is carried because a backtest that has to guess who played
+        whom is measuring a matchup that never happened.
 
         This is the training population: the players someone actually had to
         make a decision about. Free agents are excluded on purpose, since
         nobody was choosing whether to start them.
         """
         schedule = self.pro_schedule(week)
-        out: list[tuple[str, WeeklyPlayer]] = []
+        out: list[tuple[str, str, WeeklyPlayer]] = []
         for b in self.league.box_scores(week):
             for side in ("home", "away"):
                 team = getattr(b, f"{side}_team", None)
                 name = getattr(team, "team_name", None)
                 if not name:
                     continue  # bye weeks hand back an int 0 here
+                other = getattr(b, "away_team" if side == "home" else "home_team", None)
+                versus = getattr(other, "team_name", "") or ""
                 for p in getattr(b, f"{side}_lineup", None) or []:
-                    out.append((name, self._weekly(p, schedule)))
+                    out.append((name, versus, self._weekly(p, schedule)))
         return out

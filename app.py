@@ -21,7 +21,7 @@ from combine import config
 from combine.pipeline.board import build as build_board
 from combine.pipeline.crosswalk import load_ids
 from combine.pipeline.draftplan import next_pick, snake_picks
-from combine.pipeline.lineup import order_starters, problems, split, swaps
+from combine.pipeline.lineup import optimal_moves, order_starters, problems, split, swaps
 from combine.pipeline.needs import compute as compute_needs
 from combine.pipeline.providers.pff_api import PffApi
 from combine.pipeline.startsit import review
@@ -185,6 +185,7 @@ def load_week(league: str, week: int, _nonce: int) -> dict:
         "problems": problems(starters),
         "swaps": swaps(starters, bench),
         "calls": calls,
+        "optimal": optimal_moves(m.my_lineup, c.roster_slots()),
         "usage": usage,
         "ids": ids,
         "in_season": in_season,
@@ -474,6 +475,17 @@ def week_page():
         st.info(f"PFF usage unavailable ({data['pff_err']}). Lineup below is "
                 f"ESPN's projection only. If the crosswalk has never been built, "
                 f"run `combine pffids {league}`.")
+
+    add, drop, gain = data["optimal"]
+    if gain > 0.05 and add:
+        st.error(f"Lineup is {gain:.1f} projected points short of optimal")
+        for a in add:
+            st.markdown(f"START &nbsp; **{a.name}** ({a.pos}) {a.projected:.1f} "
+                        f"{a.opponent}")
+        for d in drop:
+            st.markdown(f"BENCH &nbsp; {d.name} ({d.pos}) {d.projected:.1f}")
+        st.caption("Exact slot assignment, not a prediction. Worth about +3.5pp "
+                   "of win rate in the 2025 backtest.")
 
     if data["calls"]:
         st.warning("Start/sit questions this week")

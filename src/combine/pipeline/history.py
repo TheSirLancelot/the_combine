@@ -58,18 +58,19 @@ def pull_espn(conn, league: str, season: int, weeks=REGULAR_SEASON,
     written = 0
     for wk in todo:
         rows = []
-        for fantasy_team, p in c.player_weeks(wk):
+        for fantasy_team, versus, p in c.player_weeks(wk):
             rows.append((
-                league, season, wk, p.player_id, fantasy_team, p.name, p.pos,
-                p.slot, int(starting(p.slot)), p.team, p.opponent or None,
+                league, season, wk, p.player_id, fantasy_team, versus, p.name, p.pos,
+                p.slot, ",".join(sorted(p.eligible_slots)),
+                int(starting(p.slot)), p.team, p.opponent or None,
                 None if p.game is None else int(p.game.home),
                 p.projected, p.actual, int(p.played), p.status, db.now(),
             ))
         conn.executemany(
             "INSERT OR REPLACE INTO espn_player_week (league, season, week, espn_id,"
-            " fantasy_team, name, pos, slot, started, team, opponent, is_home,"
-            " projected, actual, played, status, pulled_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+            " fantasy_team, versus, name, pos, slot, eligible, started, team,"
+            " opponent, is_home, projected, actual, played, status, pulled_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
         conn.commit()
         written += len(rows)
         log(f"  {league} {season} wk{wk}: {len(rows)} player-weeks")

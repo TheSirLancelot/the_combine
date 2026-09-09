@@ -97,9 +97,11 @@ CREATE TABLE IF NOT EXISTS espn_player_week (
   week       INTEGER NOT NULL,
   espn_id    TEXT NOT NULL,
   fantasy_team TEXT NOT NULL,       -- who rostered him that week
+  versus     TEXT,                  -- the fantasy team they faced
   name       TEXT NOT NULL,
   pos        TEXT NOT NULL,
   slot       TEXT NOT NULL,         -- lineup slot: a real slot, or BE/IR
+  eligible   TEXT,                  -- comma separated slots he may legally fill
   started    INTEGER NOT NULL,      -- 1 when the slot was a starting slot
   team       TEXT,                  -- NFL team
   opponent   TEXT,                  -- 'vs KC' / '@ KC' / 'BYE'

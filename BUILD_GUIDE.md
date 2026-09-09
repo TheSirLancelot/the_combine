@@ -357,25 +357,81 @@ totals, which is plausibly where the actual edge is and is not in PFF's data.
 **What stays useful.** The measurement harness, the leakage-safe frame, and the
 flip test itself, which is now the standard any future model gets held to.
 
-**6. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
+**6. Distribution, posture and the optimizer. SPLIT RESULT 2026-09-09.**
+One of the three ships.
+
+**The optimizer ships.** `pipeline/optimize.py`, wired into `combine startsit`
+and the app's Week mode. Exact maximum-weight assignment of players to slots by
+DP over slot subsets, not the greedy one-for-one check in `lineup.py`, so it
+sees moves like "put the receiver in the flex so the second back takes the RB
+slot and the tight end comes off the bench". Backtested on 2025 against lineups
+as actually fielded:
+
+```
+as actually set             406 team-weeks   50.0% win rate   129.3 pts/wk
+optimizer on projections    406 team-weeks   53.7% win rate   132.0 pts/wk
+```
+
++3.5pp of win rate and +2.5 points a week, moving someone in 57% of weeks and
+worth +4.5 points on those. On William's own 2025 teams it was +52 points in
+RCL and +22 in DMWD, one extra win in each. No forecasting is involved: the
+same players are valued the same way, they are just assigned better. Locked
+players are pinned, since a suggestion you cannot act on is noise, and a
+ruled-out starter is worth zero via `effective()`.
+
+**Posture does not ship.** `pipeline/posture.py` and the sweep in
+`backtest.py` are kept because the result is worth not rediscovering. The idea
+was to rank by ceiling when projected to lose and by floor when projected to
+win. It loses at every threshold, and loses monotonically more the more often
+it fires:
+
+```
+threshold  fired   vs optimizer
+      +-4  74.4%      -1.7pp
+      +-8  55.7%      -1.0pp
+     +-16  27.6%      -0.5pp
+     +-25   9.9%      -0.2pp
+```
+
+Applying each ranking unconditionally isolates why. Ranking by median is
+identical to ranking by projection (+0.0pp), because within a position band the
+distribution shift is nearly constant, so it is a monotone transform and cannot
+reorder anything. Ranking by ceiling is -1.2pp and by floor -4.7pp. The only
+reordering posture can produce is ACROSS position families, and cross-family
+calibration was separately measured at about 0.4 points with a standard error
+nearly as large. So posture trades away certain expected points for a tail
+difference too small to pay for them.
+
+**The distribution itself is kept and displayed**, just never used to rank.
+`pipeline/distribution.py` gives empirical floor, median, ceiling, boom and bust
+rates by position family and projection band, and start/sit prints them beside
+the projection. They are real and informative: at 8 to 16 projected points a
+back booms (20+) 15.4% of the time against a receiver's 11.8% and a defender's
+9.8%, while the defender busts least. Worth knowing, not worth sorting by.
+
+Also worth carrying forward: a projection is a MEAN, and the distribution is
+right skewed. The median 2025 outcome was 1.4 points BELOW projection while the
+mean was 0.4 below. "Projected 12" does not mean "expect 12".
+
+**7. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server
 enforces its own token independently of Cloudflare. Do not put a Cloudflare
 Access policy on the hostname, it bounces Anthropic with a login redirect and
 fails with a useless error.
 
-**7. Yahoo, when approved.** Key and secret into `.env`, run
+**8. Yahoo, when approved.** Key and secret into `.env`, run
 `scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
 be `https://localhost:8000`.
 
-**8. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
+**9. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
 to PFF's raw stat lines, compare against PFF's own `fantasyPoints`. Match means
 the shortcut was safe; mismatch means someone has a scoring bug.
 
-**9. Live draft reader.** For next August. ESPN's league API does not expose an
+**10. Live draft reader.** For next August. ESPN's league API does not expose an
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
 the draft-day notes in project memory.
 
-**10. Discord bot.** Unchanged from the brief.
+**11. Discord bot.** Unchanged from the brief.
 
 ## Known soft spots
 

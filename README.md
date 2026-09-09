@@ -101,7 +101,14 @@ uv run combine startsit dmwd 3
 uv run combine compare dmwd "Nabers" "Golden"
 ```
 
-`startsit` prints only the slots with a real question: a bench player
+`startsit` leads with the optimal lineup when yours is not it. That check is
+exact slot assignment on ESPN's projections, no prediction involved, and in the
+2025 backtest it was worth +3.5pp of win rate and +2.5 points a week against
+lineups as actually fielded. It respects eligibility, treats a ruled-out
+starter as worth zero, and will not suggest moving anyone whose game has
+kicked off.
+
+Below that it prints only the slots with a real question: a bench player
 outprojecting a starter he can legally replace, and anyone who cannot play and
 is still in your lineup. A lineup that is already right gets one line saying
 so. That is the intended output, not a failure.
@@ -148,9 +155,15 @@ both out of sample or it does not ship.
 
 ```bash
 uv run combine train model      # fit the residual model and score it honestly
+uv run combine train backtest   # replay a season: optimizer and posture
 ```
 
-This currently prints a rejection. A ridge model on the residual was built and
+`backtest` replays a season with real matchups, changing only your side and
+only with legal moves. It is what established that the optimizer is worth
++3.5pp of win rate, and that posture (ranking by ceiling when projected to lose)
+loses at every threshold and so is not wired in.
+
+`model` currently prints a rejection. A ridge model on the residual was built and
 held out properly, and when it overrules ESPN on a close call it is right 47.5%
 of the time against ESPN's 55.6%. The command stays because the harness is
 reusable and because the flip test it prints is the standard any future model

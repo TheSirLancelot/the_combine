@@ -83,6 +83,17 @@ W. `training._prior` is the only function that slices weeks, and
 `tests/test_training.py` checks it. A frame that includes W backtests
 beautifully and is worthless on Sunday.
 
+**What actually worked was arithmetic, not prediction.** Exact slot assignment
+(`pipeline/optimize.py`) is worth +3.5pp of win rate and +2.5 points a week on
+the 2025 backtest, against lineups as actually fielded. It is wired into
+`combine startsit` and the app. Posture, ranking by ceiling when losing and
+floor when winning, was built and rejected: it loses at every threshold. The
+outcome distribution is kept and shown beside projections but never used to
+rank. Build guide item 6 has the numbers and the reason.
+
+Pattern worth noticing: two prediction ideas failed and one arithmetic idea
+worked. `combine train backtest` is the harness for testing the next one.
+
 ## The PFF API, correctly
 
 The brief assumed it was a projections source. It is not. 70 endpoints of

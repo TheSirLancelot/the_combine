@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from ..platforms import Matchup, WeeklyPlayer
 from . import usage as usage_mod
-from .lineup import problems, split, swaps
+from .lineup import BAD_STATUS, optimal_moves, problems, split, swaps
 
 # Both picked, not derived, and both worth revisiting once we have a few weeks
 # of projected-versus-actual to calibrate against. A point is inside the noise
@@ -98,7 +98,7 @@ def review(m: Matchup, usage: dict[int, usage_mod.Usage], ids: dict[str, int],
 
 
 def _player_block(p: WeeklyPlayer, u: usage_mod.Usage | None, in_season: bool,
-                  indent: str = "    ") -> list[str]:
+                  indent: str = "    ", band=None) -> list[str]:
     tags = [t for t in (p.status if p.status != "OK" else "",
                         "LOCKED" if p.locked else "") if t]
     head = (f"{indent}{p.name} ({p.pos} {p.team or '--'}) {p.opponent or ''}".rstrip()
@@ -111,14 +111,30 @@ def _player_block(p: WeeklyPlayer, u: usage_mod.Usage | None, in_season: bool,
     out.append(f"{indent}  {u.line(p.pos)}")
     for note in u.caveats(in_season):
         out.append(f"{indent}  ({note})")
+    if band is not None:
+        out.append(f"{indent}  {band.describe()}")
     return out
 
 
 def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
            usage: dict[int, usage_mod.Usage], ids: dict[str, int],
-           in_season: bool, league_name: str = "") -> str:
+           in_season: bool, league_name: str = "",
+           slots: dict[str, int] | None = None, dist=None) -> str:
     out = [f"{league_name or 'start/sit'} — week {m.week}",
            f"{m.my_team} {m.my_proj:.1f} vs {m.their_team} {m.their_proj:.1f}"]
+
+    # The one thing here that is arithmetic rather than judgement, so it leads.
+    if slots:
+        add, drop, gain = optimal_moves(m.my_lineup, slots)
+        if gain > 0.05 and add:
+            out.append(f"\nLINEUP IS {gain:.1f} PROJECTED POINTS SHORT OF OPTIMAL")
+            for a in add:
+                out.append(f"  START  {a.name} ({a.pos}) {a.projected:.1f}")
+            for d in drop:
+                reason = " (cannot play)" if d.on_bye or d.status in BAD_STATUS else ""
+                out.append(f"  BENCH  {d.name} ({d.pos}) {d.projected:.1f}{reason}")
+            out.append("  exact slot assignment, not a prediction. worth about "
+                       "+3.5pp of win rate in the 2025 backtest.")
 
     if hurt:
         out.append("\nCANNOT PLAY, STILL STARTING")
@@ -134,12 +150,15 @@ def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
         # In a lineup the CLEAR case is an instruction, so say the instruction.
         label = "SWAP" if c.verdict == "CLEAR" else c.verdict
         out.append(f"\n{label}  {c.slot}  +{c.proj_edge:.1f} projected")
+        def band_for(p):
+            return dist.for_player(usage_mod.family(p.pos), p.projected) if dist else None
+
         out.append("  IN")
         out += _player_block(c.bench, usage_mod.for_espn(usage, ids, c.bench.player_id),
-                             in_season)
+                             in_season, band=band_for(c.bench))
         out.append("  OUT")
         out += _player_block(c.starter, usage_mod.for_espn(usage, ids, c.starter.player_id),
-                             in_season)
+                             in_season, band=band_for(c.starter))
         if c.opp_edge is not None:
             direction = "more" if c.opp_edge > 0 else "fewer"
             out.append(f"  usage: {abs(c.opp_edge):.1f} {direction} opportunities "

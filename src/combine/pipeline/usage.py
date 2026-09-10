@@ -90,9 +90,23 @@ class Usage:
             return _per_game(carries + catches, g) or None
         return _per_game(_num(self.rows.get("receiving"), "targets"), g)
 
+    @property
+    def tag(self) -> str:
+        """Which season these numbers are, and how much of it.
+
+        On every line, not only the doubtful ones. Early in a year the table
+        mixes seasons by design -- last season for most, this season for anyone
+        with enough games -- and an untagged row leaves you guessing which you
+        are looking at.
+        """
+        return f"{self.season} {self.games}g" if self.games else str(self.season)
+
     def line(self, pos: str) -> str:
         """A compact, position-appropriate role line. Volume first, because
-        volume is what projects; efficiency second, because it explains."""
+        volume is what projects; efficiency second, because it explains.
+
+        Tagged with the season it describes, since the table mixes them.
+        """
         g = self.games
         pos = pos.upper()
         if pos == "QB":
@@ -134,14 +148,22 @@ class Usage:
             ("grade", _num(r, "grades_pass_route"), 1),
         ])
 
-    @staticmethod
-    def _fmt(parts) -> str:
-        return "  ".join(f"{label} {value:.{dp}f}"
+    def _fmt(self, parts) -> str:
+        body = "  ".join(f"{label} {value:.{dp}f}"
                          for label, value, dp in parts if value is not None)
+        return f"{self.tag}  {body}" if body else ""
 
-    def caveats(self, in_season: bool) -> list[str]:
+    def caveats(self, in_season: bool, season: int | None = None) -> list[str]:
+        """`in_season` is kept for callers that only know that much.
+
+        The real question is whether these numbers are from the season being
+        played, which is not the same thing now that the table falls back to
+        last season per player: in week 3 the calendar is in season and the row
+        is still last year's.
+        """
         out = []
-        if not in_season:
+        stale = self.season < season if season is not None else not in_season
+        if stale:
             out.append(f"{self.season} numbers, a prior and not evidence about this week")
         if 0 < self.games < SMALL_SAMPLE:
             out.append(f"only {self.games} games charted")
@@ -150,13 +172,20 @@ class Usage:
         return out
 
 
-def load(api, season: int | None = None, areas=AREAS) -> dict[int, Usage]:
-    """{pff player_id: Usage}. One cached request per area."""
-    if season is None:
-        season = api.season_state().stats_season
+def _one_season(api, season: int, areas) -> dict[int, Usage]:
+    """{pff player_id: Usage} for one season, REGULAR SEASON ONLY.
+
+    Never a bare season total. PFF folds preseason and playoff snaps into those,
+    which is not a rounding error: Drake Maye's 2025 total is 23 games and 770
+    dropbacks against a regular season of 17 and 601, and his passing grade
+    reads 75.2 instead of 87.8.
+    """
+    weeks = api.regular_weeks(season)
+    if not weeks:
+        return {}                      # preseason: no regular-season rows exist
     merged: dict[int, Usage] = {}
     for area in areas:
-        for row in api.facet(area, "summary", season=season):
+        for row in api.facet(area, "summary", season=season, week=weeks):
             pid = row.get("player_id")
             if not pid:
                 continue
@@ -166,6 +195,37 @@ def load(api, season: int | None = None, areas=AREAS) -> dict[int, Usage]:
                 cur = Usage(pff_id=pid, name=row.get("player") or "?", season=season)
                 merged[pid] = cur
             cur.rows[area] = row
+    return merged
+
+
+def load(api, season: int | None = None, areas=AREAS) -> dict[int, Usage]:
+    """{pff player_id: Usage}, this season where it says anything, last season
+    where it does not.
+
+    A player with two games charted has rates built on two games, and in week 1
+    most starters have none at all because they sat out the preseason. Last
+    season is the better prior until this season has enough games that the
+    small-sample caveat would stop firing, so SMALL_SAMPLE is the switch: the
+    tool starts trusting a number at exactly the point it would stop warning
+    about it. That threshold is inherited rather than measured, and it is one
+    constant in one place if it turns out to be wrong.
+
+    Every Usage carries the season it came from, so a role line is never
+    ambiguous about which year it is describing.
+    """
+    if season is not None:
+        return _one_season(api, season, areas)
+
+    state = api.season_state()
+    prior = _one_season(api, state.season - 1, areas)
+    if not state.in_season:
+        return prior
+
+    current = _one_season(api, state.season, areas)
+    merged = dict(prior)
+    for pid, usage in current.items():
+        if usage.games >= SMALL_SAMPLE or pid not in merged:
+            merged[pid] = usage
     return merged
 
 
@@ -180,6 +240,12 @@ def for_espn(usage: dict[int, Usage], ids: dict[str, int], espn_id: str) -> Usag
 # renders those lines, so the explanation cannot drift from the output. The CLI
 # prints it via `combine glossary`; the app shows it under the week tables.
 GLOSSARY = (
+    ("Every role line", (
+        ("2025 17g", (
+            "the season these numbers describe and how many games are charted. "
+            "Early in a year most rows are last season, because this season has "
+            "too few games to read")),
+    )),
     ("Pass catchers (WR, TE)", (
         ("route/g", "routes run per game. The opportunity everything else "
                     "multiplies against"),

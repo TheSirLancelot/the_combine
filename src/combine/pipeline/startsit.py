@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .. import config
 from ..platforms import Matchup, WeeklyPlayer
 from . import usage as usage_mod
 from .lineup import BAD_STATUS, near_misses, optimal_moves, problems, split, swaps
@@ -109,7 +110,7 @@ def _player_block(p: WeeklyPlayer, u: usage_mod.Usage | None, in_season: bool,
         out.append(f"{indent}  no PFF usage on file")
         return out
     out.append(f"{indent}  {u.line(p.pos)}")
-    for note in u.caveats(in_season):
+    for note in u.caveats(in_season, season=config.SEASON):
         out.append(f"{indent}  ({note})")
     if band is not None:
         out.append(f"{indent}  {band.describe()}")

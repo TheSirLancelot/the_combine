@@ -316,6 +316,18 @@ Projections come off the box score, which is the only place weekly numbers
 exist. Before week 1 kicks off every actual reads 0, which is correct rather
 than broken.
 
+## Role numbers and which season they are
+
+Every role line is tagged with the season and how many games are charted, like
+`2025 17g`. Early in a year most rows are last season on purpose: two games of
+this season is a rate built on two games, so the tool keeps last year until a
+player has enough games that it would stop warning about the sample.
+
+All of these are regular season only. PFF's season totals quietly include
+preseason and playoff snaps, which is not cosmetic: Drake Maye's 2025 total is
+23 games and 770 dropbacks against a real regular season of 17 and 601, and his
+passing grade reads 75.2 instead of 87.8.
+
 ## PFF ids
 
 ```bash

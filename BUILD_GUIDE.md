@@ -832,6 +832,54 @@ default inside it: seeding zeros first makes every `min()` zero and turns the
 filter off completely, which is a quiet way to go back to returning 94
 candidates. Both directions are tested now.
 
+## PFF season totals include preseason
+
+Found 2026-09-11, from "why is the Role column mostly empty". It was two bugs
+stacked, and neither one ever raised an error.
+
+The visible one: PFF's `default_week` flipped to 1, so `stats_season` became
+2026 and the tool started reading a season nobody had played. Most starters sit
+out preseason, so they had no row at all and the Role column went blank. The
+handful that DID show a row were worse than the blanks, because a preseason
+sample was rendered identically to a full charted season -- Brock Purdy's line
+was 7 dropbacks in one preseason game, T.J. Edwards' was 12 snaps.
+
+The one underneath, which had been wrong all along: PFF's season-level totals
+fold in preseason AND playoff snaps. Drake Maye 2025, season-level, is 23 games
+and 770 dropbacks. His regular season, weeks 1-18, is 17 and 601. His passing
+grade reads 75.2 against a real 87.8, so this is a 12-point swing on a grade,
+not a rounding error. Every usage number the tool has ever displayed was
+contaminated.
+
+Nothing validated is affected, which is worth stating plainly: calibration and
+the waiver backtest run off ESPN actuals in the local database, and
+`history.py` already pulled PFF per week. The damage was confined to displayed
+role context and the opportunity-edge line in start/sit.
+
+**The fix.** A comma-separated week list is aggregated SERVER SIDE:
+`week="1,2,3"` returns one row of three games. That matters more than it looks,
+because summing weekly rows locally would mean re-deriving rates and grades, and
+a PFF grade cannot be recombined from its parts. Verified against the known
+answer: `week=1,...,18` reproduces 17 games, 601 dropbacks, grade 87.8 exactly.
+`season_type=REG` is not supported and is silently ignored, so it is not an
+option. `PffApi.regular_weeks()` builds the list and `usage.load()` is the only
+caller that needs it; `crosswalk.py` still uses season totals on purpose, since
+it only wants names and ids and more rows is better there.
+
+**The fallback.** In week 2 a player with two games has rates built on two
+games, so `load()` keeps last season per player until this season reaches
+`SMALL_SAMPLE` games. The threshold is self-consistent rather than measured: the
+tool starts trusting a number at exactly the point it would stop printing "only
+N games charted" beside it. It is inherited, not derived, and it is one constant
+in one place. A rookie with no prior season keeps his thin current-season row,
+since one real regular-season game beats a blank.
+
+Because the table now mixes seasons by design, every role line is tagged with
+the season and game count it describes (`2025 17g`). And `caveats()` compares
+the row's season against the season being played rather than asking whether the
+calendar is in season -- keyed off the calendar, the "prior, not evidence"
+warning went silent in exactly the weeks it was needed.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

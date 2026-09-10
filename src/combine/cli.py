@@ -536,7 +536,7 @@ def main() -> int:
     if cmd == "bot":
         from .bot import main as run_bot
 
-        run_bot()
+        run_bot(sys.argv[2:])
         return 0
     if cmd == "compare":
         return compare()

@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 from datetime import UTC, datetime
 from datetime import time as dtime
 
@@ -312,17 +313,57 @@ async def weekly_check(bot: discord.Client):
             await channel.send(message)
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        raise SystemExit("DISCORD_TOKEN is unset. put it in .env, nowhere else.")
+def preflight() -> list[str]:
+    """Everything checkable without touching the network. Returns complaints."""
+    problems = []
+    if not os.environ.get("DISCORD_TOKEN"):
+        problems.append("DISCORD_TOKEN is unset. it belongs in .env and nowhere else.")
     if not OWNER_ID:
-        raise SystemExit("DISCORD_OWNER_ID is unset. refusing to run a bot that "
-                         "answers to anyone.")
-    client.run(token, log_handler=None)
+        problems.append("DISCORD_OWNER_ID is unset. refusing to run a bot that "
+                        "answers to anyone.")
+    if not GUILD_ID:
+        problems.append("DISCORD_GUILD_ID is unset. commands would register "
+                        "globally and take an hour to appear.")
+    if not CHANNEL_ID:
+        problems.append("DISCORD_CHANNEL_ID is unset. the scheduled check has "
+                        "nowhere to post; slash commands would still work.")
+    if not config.leagues():
+        problems.append("no leagues configured. check .env against .env.example.")
+    return problems
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run the bot, or with --check just validate and exit.
+
+    The first thing this does is log, before anything can fail. An empty log file
+    used to be ambiguous between "never started" and "started and said nothing",
+    and that ambiguity cost a debugging round: launchd had created the log files,
+    so the job had clearly run, but there was nothing in them to say why it
+    stopped. A banner on line one makes the next failure readable.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        # force, because something upstream may already have configured the root
+        # logger, in which case basicConfig is silently a no-op.
+        force=True,
+    )
+    log.info("combine bot starting: python %s, cwd %s",
+             sys.version.split()[0], os.getcwd())
+    log.info("leagues: %s", ", ".join(config.leagues()) or "NONE")
+
+    problems = preflight()
+    for complaint in problems:
+        log.error("%s", complaint)
+    if any("refusing" in c or "unset. it belongs" in c for c in problems):
+        raise SystemExit(1)
+
+    if argv and "--check" in argv:
+        log.info("--check: configuration is usable, not connecting")
+        return
+
+    client.run(os.environ["DISCORD_TOKEN"], log_handler=None)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

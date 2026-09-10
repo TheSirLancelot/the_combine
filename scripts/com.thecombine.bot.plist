@@ -29,6 +29,15 @@
   <key>WorkingDirectory</key>
   <string>&lt;REPO&gt;</string>
 
+  <!-- Python block-buffers stdout when it is a file rather than a terminal, so
+       a crash can be lost in an unflushed buffer. Logging goes to stderr, which
+       is line buffered, but this removes the question entirely. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

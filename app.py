@@ -741,12 +741,8 @@ def week_page():
         if data["near"]:
             with st.expander("Closest comparisons, none of them close enough"):
                 for c in data["near"]:
-                    st.markdown(
-                        f"**{c.bench.name}** {c.bench.projected:.1f} would need "
-                        f"**{c.short_by:.1f} more** to be worth weighing against "
-                        f"{c.starter.name} {c.starter.projected:.1f} "
-                        f"(`{c.starter.slot}`) &nbsp;·&nbsp; that pair needs a "
-                        f"{c.needed:.1f} point edge")
+                    st.markdown(f"{c.explain()} &nbsp;·&nbsp; "
+                                f"`{c.starter.slot}`")
                 st.caption(
                     "A bench player has to be AHEAD by the edge shown, not level. "
                     "The edge differs per pair: it scales with how widely those "

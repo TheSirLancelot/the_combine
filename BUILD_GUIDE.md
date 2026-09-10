@@ -958,6 +958,41 @@ rostered Chiefs at 5.31, a gain of 1.49 against a measured bar of 1.62. It falls
 short by 0.13 and reports nothing, which is the threshold working rather than
 the feature failing.
 
+## The near-miss line, third attempt
+
+Worth recording because the same sentence has now confused William twice, in
+two different ways, and both times the number was correct.
+
+First version printed a signed gap next to the threshold: `-1.6` beside `1.6`,
+which reads as a match when it is the opposite. Rewritten as "needs X more".
+
+That fixed the sign and created the second problem. "Jonathon Brooks 11.3 needs
+2.4 more to weigh against Courtland Sutton 11.8" puts 2.4 next to two numbers
+0.5 apart, with no way to see where 2.4 came from. `short_by` folds two separate
+quantities together -- the gap he has to close, and the lead he then has to
+build -- so it cannot be read off the two projections shown beside it.
+
+`NearMiss.explain()` now shows the addition, and it is the one renderer for all
+three surfaces:
+
+```
+Jonathon Brooks 11.3 is 0.5 behind Courtland Sutton 11.8 and would
+need to lead by 1.9, so 2.4 more
+```
+
+with the other direction handled too, since a bench player can be ahead and
+still short: "leads S 11.8 by 0.7 but would need to lead by 1.9, so 1.2 more".
+
+One detail that is not fussiness: the total is computed from the ROUNDED parts.
+Two real DMWD rows displayed identical inputs and different totals (2.2 + 1.8
+showing as 4.0 and 4.1) because the underlying values differed in the second
+decimal. A sentence written specifically to show its arithmetic, that then does
+not add up, is worse than the bare number it replaced. Tested across cases
+chosen to land on rounding boundaries.
+
+William asked for this while learning the tool and expects to want the terse
+version back later, so it is one method with three call sites.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

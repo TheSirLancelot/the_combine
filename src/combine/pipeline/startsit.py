@@ -153,11 +153,7 @@ def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
         if close:
             out.append("\nCLOSEST COMPARISONS, none of them close enough")
             for c in close:
-                out.append(
-                    f"  {c.bench.name} {c.bench.projected:.1f} would need "
-                    f"{c.short_by:.1f} more to be worth weighing against "
-                    f"{c.starter.name} {c.starter.projected:.1f} "
-                    f"({c.starter.slot}); that pair needs a {c.needed:.1f} point edge")
+                out.append(f"  {c.explain()} ({c.starter.slot})")
             out.append("  the edge required differs per pair, because it scales "
                        "with how widely\n  those two positions actually scatter "
                        "at those projections. see: combine glossary")

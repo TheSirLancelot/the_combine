@@ -239,10 +239,9 @@ def startsit_embeds(m: Matchup, calls, hurt, usage, ids, in_season: bool,
         close = near_misses(starters, bench, dist)
         if close:
             field(e, "Closest to a question",
-                  "\n".join(f"**{c.bench.name}** {c.bench.projected:.1f} needs "
-                            f"**{c.short_by:.1f} more** to weigh against "
-                            f"{c.starter.name} {c.starter.projected:.1f} "
-                            f"(that pair needs {c.needed:.1f})" for c in close))
+                  "\n".join(
+                      c.explain().replace(c.bench.name, f"**{c.bench.name}**", 1)
+                      for c in close))
 
     if not in_season:
         e.set_footer(text="usage numbers are last season's, a prior rather than "

@@ -99,3 +99,68 @@ def test_preseason_usage_is_labelled_as_a_prior():
     notes = wr_usage(1, 510, 119).caveats(in_season=False)
     assert any("prior" in n for n in notes)
     assert wr_usage(1, 510, 119).caveats(in_season=True) == []
+
+
+def test_a_near_miss_shows_its_arithmetic():
+    """`short_by` folds two things together -- the gap to close and the lead to
+    then build -- so on its own it looks wrong. 11.3 against 11.8 reads as half
+    a point and the answer is 2.4. The sentence has to show the addition."""
+    from combine.pipeline.lineup import NearMiss
+    from combine.platforms import WeeklyPlayer
+
+    def wp(name, proj):
+        return WeeklyPlayer(player_id=name, name=name, team="KC", pos="WR",
+                            slot="WR", projected=proj)
+
+    miss = NearMiss(bench=wp("Jonathon Brooks", 11.3),
+                    starter=wp("Courtland Sutton", 11.8), needed=1.9)
+    assert round(miss.short_by, 1) == 2.4
+    said = miss.explain()
+    assert "0.5 behind" in said            # the gap
+    assert "lead by 1.9" in said           # the edge on top of it
+    assert "so 2.4 more" in said           # and the sum of the two
+
+
+def test_a_near_miss_that_is_already_ahead_reads_correctly():
+    """The other half. Ahead by 0.7 but needing 1.9 is not 'behind by' anything,
+    and saying so would be worse than the number it replaced."""
+    from combine.pipeline.lineup import NearMiss
+    from combine.platforms import WeeklyPlayer
+
+    def wp(name, proj):
+        return WeeklyPlayer(player_id=name, name=name, team="KC", pos="WR",
+                            slot="WR", projected=proj)
+
+    miss = NearMiss(bench=wp("Ahead Guy", 12.5), starter=wp("Starter", 11.8),
+                    needed=1.9)
+    said = miss.explain()
+    assert "leads" in said and "by 0.7" in said
+    assert "behind" not in said
+    assert "so 1.2 more" in said
+
+
+def test_the_displayed_numbers_add_up():
+    """A sentence written to show its arithmetic that then fails to add up is
+    worse than the bare number it replaced. 2.2 + 1.8 must read as 4.0 even
+    when the exact values sum to 4.05."""
+    import re
+
+    from combine.pipeline.lineup import NearMiss
+    from combine.platforms import WeeklyPlayer
+
+    def wp(name, proj):
+        return WeeklyPlayer(player_id=name, name=name, team="KC", pos="WR",
+                            slot="WR", projected=proj)
+
+    for bench_proj, starter_proj, needed in ((10.05, 12.28, 1.83),
+                                             (11.3, 11.8, 1.9),
+                                             (12.5, 11.8, 1.9),
+                                             (9.96, 12.31, 1.75)):
+        said = NearMiss(bench=wp("B", bench_proj), starter=wp("S", starter_proj),
+                        needed=needed).explain()
+        behind = "behind" in said
+        pattern = r"is (\d+\.\d) behind" if behind else r"by (\d+\.\d) but"
+        gap = float(re.search(pattern, said).group(1))
+        lead = float(re.search(r"need to lead by (\d+\.\d)", said).group(1))
+        total = float(re.search(r"so (\d+\.\d) more", said).group(1))
+        assert abs((gap + lead if behind else lead - gap) - total) < 0.001, said

@@ -229,6 +229,40 @@ class NearMiss:
         question. Always positive: these are the ones that did not qualify."""
         return (effective(self.starter) + self.needed) - self.bench.projected
 
+    @property
+    def behind_by(self) -> float:
+        """Projected points behind the starter. Negative means he is ahead but
+        not far enough ahead to be worth acting on."""
+        return effective(self.starter) - self.bench.projected
+
+    def explain(self) -> str:
+        """The whole sum in one sentence, plain text.
+
+        `short_by` folds two separate things together -- the gap he has to close
+        and the lead he then has to build -- so on its own it looks wrong: 11.3
+        against 11.8 reads as half a point, and the answer says 2.4. Both
+        numbers are correct and the sentence has to show the addition or it just
+        looks like a bug.
+        """
+        gap = self.behind_by
+        # Add the DISPLAYED parts, not the underlying ones. 2.2 + 1.8 has to
+        # read as 4.0 even when the exact values sum to 4.05 and round to 4.1;
+        # a sentence written to show its arithmetic that then fails to add up is
+        # worse than the bare number it replaced.
+        total = abs(round(gap, 1)) + round(self.needed, 1)
+        if gap <= 0:
+            total = round(self.needed, 1) - abs(round(gap, 1))
+        if gap > 0:
+            head = (f"{self.bench.name} {self.bench.projected:.1f} is {gap:.1f} "
+                    f"behind {self.starter.name} "
+                    f"{effective(self.starter):.1f} and would need to lead by "
+                    f"{self.needed:.1f}")
+        else:
+            head = (f"{self.bench.name} {self.bench.projected:.1f} leads "
+                    f"{self.starter.name} {effective(self.starter):.1f} by "
+                    f"{-gap:.1f} but would need to lead by {self.needed:.1f}")
+        return f"{head}, so {total:.1f} more"
+
 
 def near_misses(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
                 dist=None, limit: int = 3) -> list[NearMiss]:

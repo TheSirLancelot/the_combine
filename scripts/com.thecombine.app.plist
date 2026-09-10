@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Run the Streamlit app as a background agent on the Mac mini.
+
+  This box is also a Plex server, so the app is deliberately launched under
+  macOS background QoS via `taskpolicy -b`. That puts it in the lowest
+  scheduling and I/O band, so any Plex transcode always wins contention and the
+  app yields instead of competing. Measured cost when idle is a Python process
+  with pandas loaded and effectively no CPU; the outcome history it reads builds
+  in about a second.
+
+  Bound to 127.0.0.1, because access goes through the Cloudflare tunnel already
+  running on this box for the *arr stack. The tunnel connects to localhost, so
+  nothing needs to listen on the LAN.
+
+  The app has NO authentication of its own. Every page load acts as your ESPN
+  session, so the hostname MUST have a Cloudflare Access policy in front of it.
+  A tunnel without Access is a public URL. If you would rather not rely on
+  Access, bind 0.0.0.0 instead and reach it over Tailscale, which is not
+  publicly routable at all.
+
+  Install:
+    cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
+    # edit the two paths below first
+    launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
+  Check:      launchctl list | grep thecombine
+  Stop:       launchctl unload -w ~/Library/LaunchAgents/com.thecombine.app.plist
+  Logs:       tail -f <REPO>/logs/app.out
+
+  The CORS and XSRF flags are for running behind a reverse proxy. Streamlit is a
+  websocket app, and behind a proxy without them it serves the page and then
+  hangs on "Please wait...", which looks like a tunnel problem and is not. They
+  are safe here only because Access is doing the authentication.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.thecombine.app</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/taskpolicy</string>
+    <string>-b</string>
+    <string>/bin/sh</string>
+    <string>-lc</string>
+    <!-- REPLACE <REPO> with the absolute path to the checkout, e.g.
+         /Users/williamweir/the_combine -->
+    <string>cd &lt;REPO&gt; &amp;&amp; exec uv run streamlit run app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>&lt;REPO&gt;</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>&lt;REPO&gt;/logs/app.out</string>
+  <key>StandardErrorPath</key>
+  <string>&lt;REPO&gt;/logs/app.err</string>
+
+  <!-- Nothing here needs a login session or a GUI. -->
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

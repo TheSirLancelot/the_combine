@@ -10,16 +10,16 @@ real leagues, not from documentation. Notes that cost us time:
   * espn-api's friendly names in the season-level breakdown are not trustworthy
     (rushingYards came back as 81.7 against 286 carries). Weekly stats[week]
     looks sane. Prefer weekly, and prefer already-scored point totals.
-  * Preseason: team.roster is [] and box_scores() raises KeyError.
+  * Preseason: team.roster is [] and box_scores() raises KeyError. From week 1
+    box_scores() works and is the only place weekly projections live.
 """
 
 from __future__ import annotations
 
 import os
-from functools import lru_cache
 
 from ..config import SEASON, LeagueConfig
-from . import Matchup, PlayerState
+from . import Matchup, PlayerState, ProGame, WeeklyPlayer
 
 # ESPN uses these on injuryStatus; we shorten for output width.
 _STATUS = {
@@ -33,10 +33,14 @@ def _status(p) -> str:
 
 
 class EspnClient:
-    def __init__(self, cfg: LeagueConfig):
+    def __init__(self, cfg: LeagueConfig, season: int = SEASON):
         self.slug = cfg.slug
         self.cfg = cfg
+        # Past seasons are readable and carry both the weekly projection and
+        # the actual, which is what makes a training set possible at all.
+        self.season = int(season)
         self._league = None
+        self._schedule_cache: dict[int, dict[str, ProGame]] = {}
 
     @property
     def league(self):
@@ -45,7 +49,7 @@ class EspnClient:
 
             self._league = League(
                 league_id=int(self.cfg.league_id),
-                year=SEASON,
+                year=self.season,
                 espn_s2=os.environ["ESPN_S2"],
                 swid=os.environ["ESPN_SWID"],
             )
@@ -95,7 +99,7 @@ class EspnClient:
         import requests
 
         url = (f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"
-               f"{SEASON}/segments/0/leagues/{self.cfg.league_id}")
+               f"{self.season}/segments/0/leagues/{self.cfg.league_id}")
         r = requests.get(url, params={"view": "mDraftDetail"},
                          cookies={"espn_s2": os.environ["ESPN_S2"],
                                   "SWID": os.environ["ESPN_SWID"]}, timeout=15)
@@ -159,5 +163,131 @@ class EspnClient:
     def player(self, name: str):
         return self.league.player_info(name=name)
 
+    # --- weekly ---------------------------------------------------------
+
+    def pro_schedule(self, week: int | None = None) -> dict[str, ProGame]:
+        """{NFL team abbrev: that team's game this week}. Missing key = bye.
+
+        The box score does NOT carry this. It reports opponent pro-team id 0,
+        which espn-api renders as the string "None", which is what made the
+        first cut of the weekly view opponent-blind. The real schedule lives on
+        a separate season-level view, proTeamSchedules_wl, one request for all
+        32 teams and every week. Probed 2026-09-09.
+
+        Cached per client instance: the schedule for a given week does not
+        change, and the weekly view asks for it once per player otherwise.
+        """
+        wk = int(week or self.week)
+        if wk in self._schedule_cache:
+            return self._schedule_cache[wk]
+
+        from espn_api.football.constant import PRO_TEAM_MAP
+
+        data = self.league.espn_request.get_pro_schedule()
+        out: dict[str, ProGame] = {}
+        for team in data.get("settings", {}).get("proTeams", []) or []:
+            tid = team.get("id")
+            if not tid:  # id 0 is ESPN's placeholder team
+                continue
+            games = (team.get("proGamesByScoringPeriod") or {}).get(str(wk)) or []
+            if not games:
+                continue  # bye
+            g = games[0]
+            home = g.get("homeProTeamId") == tid
+            opp_id = g.get("awayProTeamId") if home else g.get("homeProTeamId")
+            abbrev = PRO_TEAM_MAP.get(tid)
+            opp = PRO_TEAM_MAP.get(opp_id)
+            if not abbrev or not opp:
+                continue
+            out[abbrev] = ProGame(opponent=opp, home=home,
+                                  kickoff_ms=int(g.get("date") or 0))
+        self._schedule_cache[wk] = out
+        return out
+
+    def _weekly(self, p, schedule: dict[str, ProGame]) -> WeeklyPlayer:
+        """One box-score player. Field notes from the live probe on 2026-09-09:
+          * projected_points and points exist HERE and are None on the
+            season-level roster object, which is why the weekly path reads box
+            scores rather than team.roster.
+          * pro_opponent is the string "None" because ESPN sends opponent id 0
+            here. Opponent comes from pro_schedule() instead.
+          * game_played is 0 before kickoff and 100 when final.
+        A player whose NFL team has no game this week is on bye, which is a
+        stronger signal than ESPN's own on_bye flag because it is derived from
+        the schedule rather than reported.
+        """
+        game = schedule.get((getattr(p, "proTeam", None) or "").upper())
+        return WeeklyPlayer(
+            player_id=str(getattr(p, "playerId", "")),
+            name=getattr(p, "name", "?"),
+            team=getattr(p, "proTeam", None),
+            pos=getattr(p, "position", "?"),
+            slot=getattr(p, "slot_position", None) or "BE",
+            eligible_slots=frozenset(getattr(p, "eligibleSlots", ()) or ()),
+            status=_status(p),
+            game=game,
+            projected=float(getattr(p, "projected_points", 0.0) or 0.0),
+            actual=float(getattr(p, "points", 0.0) or 0.0),
+            played=bool(getattr(p, "game_played", 0)),
+            on_bye=game is None or bool(getattr(p, "on_bye", False)),
+        )
+
     def matchup(self, week: int | None = None) -> Matchup:
-        raise NotImplementedError("box_scores() 404s in preseason; wire up after week 1")
+        """My box score for one week, both lineups.
+
+        box_scores() 404s in preseason and worked from week 1 onward, verified
+        live 2026-09-09. A bye-week matchup hands back an int 0 in place of a
+        team object, hence the getattr guards.
+        """
+        wk = int(week or self.week)
+        schedule = self.pro_schedule(wk)
+        for b in self.league.box_scores(wk):
+            for side in ("home", "away"):
+                team = getattr(b, f"{side}_team", None)
+                if team is None or str(getattr(team, "team_id", "")) != str(self.cfg.team_id):
+                    continue
+                other = getattr(b, "away_team" if side == "home" else "home_team", None)
+                return Matchup(
+                    week=wk,
+                    home_team=getattr(b.home_team, "team_name", "?")
+                    if side == "home" else getattr(other, "team_name", "BYE"),
+                    away_team=getattr(other, "team_name", "BYE")
+                    if side == "home" else getattr(b.away_team, "team_name", "?"),
+                    home_proj=float(getattr(b, "home_projected", 0.0) or 0.0),
+                    away_proj=float(getattr(b, "away_projected", 0.0) or 0.0),
+                    home_lineup=[self._weekly(p, schedule) for p in (b.home_lineup or [])],
+                    away_lineup=[self._weekly(p, schedule) for p in (b.away_lineup or [])],
+                    home_score=float(getattr(b, "home_score", 0.0) or 0.0),
+                    away_score=float(getattr(b, "away_score", 0.0) or 0.0),
+                    mine=side,
+                )
+        raise LookupError(f"team_id {self.cfg.team_id} has no box score in week {wk}")
+
+    def weekly_lineup(self, week: int | None = None) -> list[WeeklyPlayer]:
+        """My full roster for one week, starters and bench, with weekly numbers."""
+        return self.matchup(week).my_lineup
+
+    def player_weeks(self, week: int) -> list[tuple[str, str, WeeklyPlayer]]:
+        """(fantasy team, the team it faced, player) for EVERY rostered player
+        in the league that week, not just mine.
+
+        The opponent is carried because a backtest that has to guess who played
+        whom is measuring a matchup that never happened.
+
+        This is the training population: the players someone actually had to
+        make a decision about. Free agents are excluded on purpose, since
+        nobody was choosing whether to start them.
+        """
+        schedule = self.pro_schedule(week)
+        out: list[tuple[str, str, WeeklyPlayer]] = []
+        for b in self.league.box_scores(week):
+            for side in ("home", "away"):
+                team = getattr(b, f"{side}_team", None)
+                name = getattr(team, "team_name", None)
+                if not name:
+                    continue  # bye weeks hand back an int 0 here
+                other = getattr(b, "away_team" if side == "home" else "home_team", None)
+                versus = getattr(other, "team_name", "") or ""
+                for p in getattr(b, f"{side}_lineup", None) or []:
+                    out.append((name, versus, self._weekly(p, schedule)))
+        return out

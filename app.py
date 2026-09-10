@@ -1,4 +1,4 @@
-"""The Combine — draft day UI.
+"""The Combine — draft day and in-season UI.
 
 Streamlit front end over the same code the MCP tools use. It calls build_board
 directly and renders DataFrames rather than parsing the CLI's text tables, so
@@ -9,7 +9,9 @@ sorting and filtering come from Streamlit instead of from me.
 
 from __future__ import annotations
 
+import hashlib
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -17,21 +19,52 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from combine import config  # noqa: E402
-from combine.pipeline.board import build as build_board  # noqa: E402
-from combine.pipeline.draftplan import next_pick, partition, snake_picks  # noqa: E402
-from combine.pipeline.needs import compute as compute_needs  # noqa: E402
-from combine.platforms import client_for  # noqa: E402
+from combine import config
+from combine.pipeline.board import build as build_board
+from combine.pipeline.crosswalk import load_ids
+from combine.pipeline.distribution import Distribution
+from combine.pipeline.draftplan import next_pick, snake_picks
+from combine.pipeline.lineup import (
+    near_misses,
+    optimal_moves,
+    order_starters,
+    problems,
+    split,
+    swaps,
+)
+from combine.pipeline.needs import compute as compute_needs
+from combine.pipeline.providers.pff_api import PffApi
+from combine.pipeline.startsit import review
+from combine.pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY, family, for_espn
+from combine.pipeline.usage import load as load_usage
+from combine.platforms import client_for
 
 st.set_page_config(page_title="The Combine", page_icon="🏈", layout="wide")
 
 POOL_SIZE = 250
 
 
+def _code_version() -> str:
+    """A token that changes whenever the combine package changes on disk.
+
+    Every cached function below takes it as an argument, so editing any module
+    invalidates every cache. Without this, Streamlit re-executes app.py on save
+    but keeps already-imported modules and their cached return values, so new
+    code runs against objects built by the old code. That is not a hypothetical:
+    adding a field to the Band dataclass produced exactly that, an
+    AttributeError for a field the running code had just introduced.
+
+    Cheap enough to do on every rerun: a stat call per module, no reads.
+    """
+    root = Path(__file__).resolve().parent / "src" / "combine"
+    stamps = sorted(f"{p.name}:{p.stat().st_mtime_ns}" for p in root.rglob("*.py"))
+    return hashlib.sha1("|".join(stamps).encode()).hexdigest()[:12]
+
+
 # --- data -----------------------------------------------------------------
 
 @st.cache_data(ttl=25, show_spinner="pulling live league state...")
-def load(league: str, _nonce: int) -> dict:
+def load(league: str, _nonce: int, _version: str) -> dict:
     """One ESPN round trip per refresh, shared by every section on the page.
 
     _nonce is a cache buster the Refresh button increments; ttl keeps the
@@ -146,6 +179,197 @@ COL_CONFIG = {
 }
 
 
+@st.cache_data(show_spinner="reading outcome history...")
+def outcome_frame(season: int, _version: str):
+    """Past outcomes as a plain DataFrame.
+
+    A DataFrame on purpose, not a Distribution. Streamlit re-executes this
+    script on every edit but keeps already-imported modules, and a cached
+    OBJECT built by an older version of a module survives that reload while the
+    code around it moves on. That is how a stale `Band` ends up in front of new
+    code that expects a field it does not have. Caching plain data and
+    rebuilding the object each run makes the whole class of bug impossible.
+    """
+    from combine import db
+    from combine.pipeline.training import build as build_frame
+
+    try:
+        with db.connect(readonly=True) as conn:
+            return build_frame(conn, season)
+    except Exception:
+        return None
+
+
+def outcome_distribution(season: int):
+    """Rebuilt per run from the cached frame. Cheap: a filter and a column."""
+    frame = outcome_frame(season, _code_version())
+    if frame is None or frame.empty:
+        return None
+    dist = Distribution(frame)
+    return None if dist.empty else dist
+
+
+def missing_inputs(league: str) -> list[tuple[str, str, str]]:
+    """(what is missing, what it costs you, the command that fixes it).
+
+    The app degrades quietly when data/ is absent: columns simply vanish and the
+    comparison threshold falls back to a flat point. Quiet degradation is worse
+    than an error, because the page still looks right. So say it out loud.
+    """
+    from combine import db
+    from combine.pipeline.crosswalk import PFF_IDS
+
+    out = []
+    if not config.DB_PATH.exists():
+        out.append(("outcome history",
+                    "no floor, ceiling, boom or bust columns, and the comparison "
+                    "threshold falls back to a flat point instead of scaling",
+                    f"uv run combine train build {config.SEASON - 1}"))
+    else:
+        try:
+            with db.connect(readonly=True) as conn:
+                n = conn.execute("SELECT COUNT(*) FROM espn_player_week").fetchone()[0]
+            if not n:
+                out.append(("outcome history (the database is empty)",
+                            "no floor, ceiling, boom or bust, and a flat threshold",
+                            f"uv run combine train build {config.SEASON - 1}"))
+        except Exception as exc:
+            out.append((f"outcome history ({type(exc).__name__})",
+                        "no outcome columns", "uv run combine init"))
+    if not PFF_IDS.exists():
+        out.append(("PFF id crosswalk",
+                    "no Role column, so no usage behind the projections",
+                    f"uv run combine pffids {league}"))
+    return out
+
+
+@st.cache_data(ttl=60, show_spinner="pulling this week's lineup...")
+def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
+    """One box-score round trip. Much cheaper than the draft loader: no
+    250-player pool, no crosswalk, no draft-pick scrape.
+
+    Weekly projections only exist on the box score. The season-level roster
+    object returns projected_points=None, which is why this does not reuse
+    load() above.
+    """
+    c = client_for(league)
+    m = c.matchup(week or None)
+    pulled_at = datetime.now().astimezone().strftime("%H:%M:%S %Z")
+    starters, bench = split(m.my_lineup)
+
+    # PFF is optional here on purpose: an expired key or an unbuilt crosswalk
+    # should cost you the usage column, not the lineup.
+    calls, usage, ids, in_season, pff_err = [], {}, {}, True, ""
+    try:
+        ids = load_ids()
+        api = PffApi()
+        in_season = api.season_state().in_season
+        usage = load_usage(api)
+        calls, _ = review(m, usage, ids, dist=outcome_distribution(config.SEASON - 1))
+    except Exception as exc:
+        pff_err = f"{type(exc).__name__}: {exc}"
+
+    return {
+        "matchup": m,
+        "pulled_at": pulled_at,
+        "slots": c.roster_slots(),
+        "starters": order_starters(starters, c.roster_slots()),
+        "bench": bench,
+        "problems": problems(starters),
+        "swaps": swaps(starters, bench,
+                       dist=outcome_distribution(config.SEASON - 1)),
+        "near": near_misses(starters, bench,
+                            dist=outcome_distribution(config.SEASON - 1)),
+        "calls": calls,
+        "optimal": optimal_moves(m.my_lineup, c.roster_slots()),
+        "dist": outcome_distribution(config.SEASON - 1),
+        "usage": usage,
+        "ids": ids,
+        "in_season": in_season,
+        "pff_err": pff_err,
+    }
+
+
+def lineup_frame(players, show_actual: bool, usage=None, ids=None,
+                 dist=None) -> pd.DataFrame:
+    rows = []
+    for p in players:
+        role = for_espn(usage, ids, p.player_id) if usage and ids else None
+        band = dist.for_player(family(p.pos), p.projected) if dist else None
+        rows.append({
+            "SLOT": p.slot,
+            "POS": p.pos,
+            "Player": p.name,
+            "TM": p.team or "",
+            "OPP": p.opponent,
+            "PROJ": round(p.projected, 1),
+            "ACT": round(p.actual, 1),
+            "ROLE": role.line(p.pos) if role else "",
+            "FLOOR": round(band.floor, 1) if band else None,
+            "CEIL": round(band.ceiling, 1) if band else None,
+            "BOOM": round(band.boom * 100) if band else None,
+            "BUST": round(band.bust * 100) if band else None,
+            "NOTE": " ".join(x for x in (p.status if p.status != "OK" else "",
+                                         "LOCK" if p.locked and not p.played else "")
+                             if x),
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    if not show_actual:
+        df = df.drop(columns=["ACT"])
+    if dist is None:
+        df = df.drop(columns=["FLOOR", "CEIL", "BOOM", "BUST"])
+    return df
+
+
+WEEK_COLS = {
+    "PROJ": st.column_config.NumberColumn(
+        "Proj", help="ESPN's weekly projection. A mean, not a typical outcome.",
+        format="%.1f"),
+    "ACT": st.column_config.NumberColumn("Act", format="%.1f"),
+    "FLOOR": st.column_config.NumberColumn(
+        "Floor", help="10th percentile outcome for comparable players", format="%.1f"),
+    "CEIL": st.column_config.NumberColumn(
+        "Ceil", help="90th percentile outcome for comparable players", format="%.1f"),
+    "BOOM": st.column_config.NumberColumn(
+        "Boom", help="Chance of a 20+ point game", format="%d%%", width="small"),
+    "BUST": st.column_config.NumberColumn(
+        "Bust", help="Chance of under half the projection", format="%d%%",
+        width="small"),
+    "ROLE": st.column_config.TextColumn(
+        "Role (PFF)", help="See the glossary below the tables", width="large"),
+}
+
+
+def role_legend(in_season: bool, dist_season: int | None):
+    with st.expander("What the Role and outcome columns mean"):
+        st.caption(
+            "Role is PFF usage and efficiency, shown beside the projection and "
+            "deliberately never blended into it. Grades and rates are on scales "
+            "that have nothing to do with fantasy points."
+            + ("" if in_season else " Before kickoff these are last season's "
+                                    "numbers, a prior rather than evidence about "
+                                    "this week."))
+        for title, entries in GLOSSARY:
+            st.markdown(f"**{title}**")
+            for token, meaning in entries:
+                st.markdown(f"&nbsp;&nbsp;`{token}` &nbsp; {meaning}",
+                            unsafe_allow_html=True)
+        if dist_season:
+            st.markdown("**Outcome columns**")
+            for token, meaning in OUTCOME_GLOSSARY:
+                st.markdown(f"&nbsp;&nbsp;`{token}` &nbsp; {meaning}",
+                            unsafe_allow_html=True)
+            st.caption(
+                f"Outcome columns are measured on {dist_season}. "
+                "These describe the spread around a projection, which ESPN does "
+                "not give you: at 8 to 16 projected points a back booms 15.4% of "
+                "the time against a receiver's 11.8% and a defender's 9.8%. They "
+                "are context for a close call, not a ranking. Sorting a lineup by "
+                "ceiling or floor was backtested and lost at every threshold.")
+
+
 # --- sidebar --------------------------------------------------------------
 
 leagues = config.leagues()
@@ -156,20 +380,27 @@ if not leagues:
 with st.sidebar:
     st.title("The Combine")
 
-    # Collapsed by default: these are set once and then never touched, while
-    # the pick-history paste box below gets used every few picks.
-    with st.expander("League & draft slot", expanded=False):
-        league = st.radio("League", list(leagues),
-                          format_func=lambda s: f"{s} · {leagues[s].name}")
-        cfg = leagues[league]
-        slot = st.number_input("Your draft slot", 1, 32,
-                               value=cfg.draft_slot or 1,
-                               help="Defaults to <SLUG>_DRAFT_POS in .env")
+    # Draft is dormant outside August, so Week leads.
+    mode = st.radio("Mode", ["Week", "Draft"], horizontal=True)
 
-    on_clock = st.number_input("Pick on the clock", 1, 400, value=1)
+    league = st.radio("League", list(leagues),
+                      format_func=lambda s: f"{s} · {leagues[s].name}")
+    cfg = leagues[league]
+
+    slot, on_clock, week_no = cfg.draft_slot or 1, 1, 0
+    if mode == "Draft":
+        with st.expander("Draft slot", expanded=False):
+            slot = st.number_input("Your draft slot", 1, 32,
+                                   value=cfg.draft_slot or 1,
+                                   help="Defaults to <SLUG>_DRAFT_POS in .env")
+        on_clock = st.number_input("Pick on the clock", 1, 400, value=1)
+    else:
+        week_no = st.number_input("Week", 0, 18, value=0,
+                                  help="0 follows the league's current week")
 
     with st.expander("Refresh", expanded=False):
-        auto = st.toggle("Auto refresh", value=True)
+        # A draft moves every few seconds; a lineup does not.
+        auto = st.toggle("Auto refresh", value=mode == "Draft")
         every = st.select_slider("Every", [15, 30, 45, 60], value=30,
                                  disabled=not auto, format_func=lambda n: f"{n}s")
         if st.button("Refresh now", use_container_width=True, type="primary"):
@@ -191,7 +422,7 @@ st.session_state.setdefault("mine", [])
 @st.fragment(run_every=f"{every}s" if auto else None)
 def page():
     try:
-        data = load(league, st.session_state.nonce)
+        data = load(league, st.session_state.nonce, _code_version())
     except Exception as exc:  # cookies die mid-season; say so plainly
         st.error(f"{type(exc).__name__}: {exc}")
         st.info("If this is a 401 or an empty league, the ESPN cookies expired. "
@@ -369,4 +600,131 @@ def page():
             st.info(f"Analysts: {row['Analysts']}")
 
 
-page()
+@st.fragment(run_every=f"{every}s" if auto else None)
+def week_page():
+    try:
+        data = load_week(league, int(week_no), st.session_state.nonce,
+                         _code_version())
+    except Exception as exc:
+        st.error(f"{type(exc).__name__}: {exc}")
+        st.info("If this is a 401 or an empty league, the ESPN cookies expired. "
+                "Run `python scripts/refresh_espn_cookies.py`.")
+        return
+
+    m = data["matchup"]
+    played = any(p.played for p in m.my_lineup)
+    final = all(p.played for p in m.my_lineup if p.starting)
+
+    # A hand-entered league has no opponent, so a matchup line would be fiction.
+    have_opponent = bool(m.their_lineup)
+    st.subheader(f"Week {m.week} · {m.my_team}"
+                 + (f" vs {m.their_team}" if have_opponent else ""))
+    st.caption(f"ESPN projections as of {data['pulled_at']}. ESPN moves these "
+               f"through the day, so small differences against the site are a "
+               f"different moment rather than different arithmetic."
+               if leagues[league].platform == "espn" else
+               f"Projections computed at {data['pulled_at']} from ESPN stat lines "
+               f"priced by your scoring table, so they will not match Yahoo's "
+               f"display.")
+    cols = st.columns(4)
+    cols[0].metric("My projection", f"{m.my_proj:.1f}")
+    if have_opponent:
+        cols[1].metric("Their projection", f"{m.their_proj:.1f}",
+                       delta=f"{m.my_proj - m.their_proj:+.1f} me", delta_color="normal")
+        if played:
+            cols[2].metric("My actual", f"{m.my_score:.1f}")
+            cols[3].metric("Their actual", f"{m.their_score:.1f}")
+        else:
+            cols[2].metric("State", "pregame")
+    else:
+        cols[1].metric("Opponent", "not entered",
+                       help="Hand-entered league: no opponent data until the "
+                            "Yahoo API is approved")
+
+    for p in data["problems"]:
+        st.error(f"{p.slot}: {p.name} is {'on bye' if p.on_bye else p.status}"
+                 f" and still in your lineup")
+
+    for what, cost, fix in missing_inputs(league):
+        st.warning(f"Missing {what}. Without it: {cost}. Fix: `{fix}`")
+
+    if data["pff_err"]:
+        st.info(f"PFF usage unavailable ({data['pff_err']}). Lineup below is "
+                f"ESPN's projection only. If the crosswalk has never been built, "
+                f"run `combine pffids {league}`.")
+
+    add, drop, gain = data["optimal"]
+    if gain > 0.05 and add:
+        st.error(f"Lineup is {gain:.1f} projected points short of optimal")
+        for a in add:
+            st.markdown(f"START &nbsp; **{a.name}** ({a.pos}) {a.projected:.1f} "
+                        f"{a.opponent}")
+        for d in drop:
+            st.markdown(f"BENCH &nbsp; {d.name} ({d.pos}) {d.projected:.1f}")
+        st.caption("Exact slot assignment, not a prediction. Worth about +3.5pp "
+                   "of win rate in the 2025 backtest.")
+
+    if data["calls"]:
+        st.warning("Start/sit questions this week")
+        for c in sorted(data["calls"], key=lambda x: -x.proj_edge):
+            label = "SWAP" if c.verdict == "CLEAR" else c.verdict
+            with st.container(border=True):
+                st.markdown(f"**{label}** &nbsp; `{c.slot}` &nbsp; "
+                            f"+{c.proj_edge:.1f} projected")
+                st.markdown(f"IN &nbsp; **{c.bench.name}** {c.bench.projected:.1f} "
+                            f"{c.bench.opponent}")
+                st.markdown(f"OUT &nbsp; {c.starter.name} {c.starter.projected:.1f} "
+                            f"{c.starter.opponent}")
+                if c.opp_edge is not None:
+                    word = "more" if c.opp_edge > 0 else "fewer"
+                    st.caption(f"usage: {abs(c.opp_edge):.1f} {word} opportunities a "
+                               f"game for {c.bench.name}")
+                for r in c.reasons:
+                    st.caption(r)
+    elif not data["pff_err"]:
+        st.success("No start/sit questions: no bench player is projected far "
+                   "enough ahead of a starter he could replace.")
+        if data["near"]:
+            with st.expander("Closest comparisons, none of them close enough"):
+                for c in data["near"]:
+                    st.markdown(
+                        f"**{c.bench.name}** {c.bench.projected:.1f} would need "
+                        f"**{c.short_by:.1f} more** to be worth weighing against "
+                        f"{c.starter.name} {c.starter.projected:.1f} "
+                        f"(`{c.starter.slot}`) &nbsp;·&nbsp; that pair needs a "
+                        f"{c.needed:.1f} point edge")
+                st.caption(
+                    "A bench player has to be AHEAD by the edge shown, not level. "
+                    "The edge differs per pair: it scales with how widely those "
+                    "two positions actually scatter at those projections, so two "
+                    "defenders need less separation than two backs projected 20+. "
+                    "See the glossary.")
+
+    if data["usage"] and not data["in_season"]:
+        st.caption("Usage columns are last season's numbers, a prior rather than "
+                   "evidence about this week.")
+
+    left, right = st.container(), st.container()
+    with left:
+        st.markdown("**Starters**")
+        st.dataframe(
+            lineup_frame(data["starters"], played, data["usage"], data["ids"],
+                         data["dist"]),
+            hide_index=True, use_container_width=True, column_config=WEEK_COLS)
+    with right:
+        st.markdown("**Bench**")
+        st.dataframe(
+            lineup_frame(data["bench"], played, data["usage"], data["ids"],
+                         data["dist"]),
+            hide_index=True, use_container_width=True, column_config=WEEK_COLS)
+
+    role_legend(data["in_season"], config.SEASON - 1 if data["dist"] else None)
+
+    if final:
+        st.caption("week is final")
+
+
+if mode == "Draft":
+    page()
+else:
+    week_page()

@@ -24,11 +24,21 @@ Every command takes a slug. One league per call, always.
 uv run streamlit run app.py
 ```
 
-One page: needs at the top, timing against your next pick in the middle, the
-full board below, player detail at the bottom. League radio, draft slot and
-pick-on-the-clock live in the sidebar.
+Two modes, picked at the top of the sidebar.
 
-Auto refresh is on by default and polls every 30s, with a pause toggle and a
+**Week** is the in-season view and the default. Your matchup, both projected
+totals, starters and bench with a PFF role line on each, anyone hurt or on bye
+who is still in your lineup, and the same start/sit calls the CLI gives you.
+If the PFF crosswalk has never been built it degrades to the projection alone
+and tells you which command fixes it. The week selector defaults to whatever week the league says it is; set a
+number to look back.
+
+**Draft** is the old page and is dormant until next August: needs at the top,
+timing against your next pick in the middle, the full board below, player
+detail at the bottom. Draft slot and pick-on-the-clock appear in the sidebar
+only in this mode.
+
+Auto refresh follows the mode, on for Draft and off for Week, and polls every 30s, with a pause toggle and a
 Refresh now button that clears the cache. Data is cached for 25s so clicking
 around costs nothing; one ESPN round trip feeds every section on the page.
 
@@ -38,6 +48,225 @@ data without the mouse.
 
 The CLI still works and is documented below. The app is a front end over the
 identical code, not a reimplementation.
+
+## Reaching it from a phone
+
+The app runs on the Mac mini, which is always on and is also the Plex server.
+Access goes through the Cloudflare tunnel already running there for the *arr
+stack, so this is one more ingress rule rather than new infrastructure.
+
+```yaml
+# ~/.cloudflared/config.yml, alongside the existing *arr entries
+ingress:
+  - hostname: combine.example.com
+    service: http://localhost:8501
+  # ... existing rules, catch-all stays last
+```
+
+**Put a Cloudflare Access policy on that hostname.** The app has no login of its
+own and every page load acts as your ESPN session, so a tunnel without Access is
+a public URL that drives your ESPN account. Email OTP or Google, same as the
+*arr stack.
+
+Then run it as a launchd agent so it survives reboots and never competes with
+Plex:
+
+```bash
+cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
+# edit the <REPO> paths inside first
+launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
+```
+
+It launches under `taskpolicy -b`, macOS background QoS, so any Plex transcode
+wins CPU and I/O contention and the app yields instead of competing. Measured
+cost when idle is a Python process with pandas loaded and effectively no CPU; the
+outcome history it reads builds in about a second and occupies 4.4MB. Auto
+refresh is off by default in Week mode, so it is not polling ESPN for nobody.
+
+Two gotchas worth knowing before you debug the wrong thing:
+
+Streamlit is a websocket app. Behind a proxy without `--server.enableCORS false
+--server.enableXsrfProtection false` it serves the page and then hangs forever on
+"Please wait...", which reads as a tunnel fault and is not. The plist sets both,
+which is safe only because Access is doing the authentication.
+
+**Do not put Access on the hostname you later use for the MCP server.** Build
+guide item 9 covers this: Access bounces Anthropic's connector with a login
+redirect and fails with a useless error. The browser app wants Access, the MCP
+endpoint wants its own hostname with no Access policy and the bearer token doing
+the work.
+
+Tailscale is the alternative if you would rather not rely on Access: bind
+`0.0.0.0` instead and the app is never publicly routable. It needs the client on
+every device you use.
+
+Hosted options were rejected for two concrete reasons. `data/` is gitignored and
+holds the 33MB outcome database, the PFF caches, the projection exports and the
+id crosswalk, so a deploy from the repo would silently lose the outcome columns,
+the Role column and the scaling comparison threshold. And it would mean putting
+ESPN session cookies in a third party's secret store.
+
+## The week (CLI)
+
+```bash
+uv run combine week dmwd        # current week
+uv run combine week rcl 3       # a specific week
+```
+
+Starters in the league's own slot order, bench sorted by projection, then two
+call-outs: starters who are hurt or on bye, and bench players who outproject a
+starter they are slot eligible for.
+
+That second list is not a start/sit recommendation. It compares ESPN's weekly
+projection and nothing else, one for one, ignoring edges under a point. The
+real call, blended projections plus PFF usage and efficiency, arrives with the
+PFF API client. Treat it as a "look at this" list, not an answer.
+
+Projections come off the box score, which is the only place weekly numbers
+exist. Before week 1 kicks off every actual reads 0, which is correct rather
+than broken.
+
+## PFF ids
+
+```bash
+uv run combine pffids rcl
+uv run combine pffids dmwd
+```
+
+Resolves your league's players onto PFF's stable `player_id` and stores the
+mapping in `data/crosswalk_pff_ids.csv`. Run it once, and again when rosters
+churn. Everything that reads PFF usage or efficiency joins on that id instead
+of re-matching names on every call.
+
+Both leagues resolve at 100%. It prints how each player was matched, and the
+only expected miss is D/ST, because PFF has no team-defense entity. A player it
+genuinely cannot place lands in `data/unmatched_pff_ids_<league>.csv` for you
+to resolve by hand in `config/crosswalk_overrides.csv`.
+
+The file merges across leagues, since ESPN player ids are global. `data/` is
+gitignored, so a fresh clone rebuilds it with those two commands.
+
+Before kickoff this reads last season's PFF data on purpose. A season that has
+not started still returns rows and they are preseason camp snaps, so the client
+asks PFF where the calendar is and says which season it used.
+
+## Start/sit (CLI)
+
+```bash
+uv run combine startsit rcl
+uv run combine startsit dmwd 3
+uv run combine compare dmwd "Nabers" "Golden"
+```
+
+`startsit` leads with the optimal lineup when yours is not it. That check is
+exact slot assignment on ESPN's projections, no prediction involved, and in the
+2025 backtest it was worth +3.5pp of win rate and +2.5 points a week against
+lineups as actually fielded. It respects eligibility, treats a ruled-out
+starter as worth zero, and will not suggest moving anyone whose game has
+kicked off.
+
+Below that it prints only the slots with a real question. "Real" is measured
+rather than guessed: across 174,384 comparable pairs in 2025, the higher
+projection actually outscored the other player 51% of the time at a gap under
+half a point, 54% at a gap of one to one and a half, and 58% at two to three.
+So a flat one-point threshold surfaces coin flips and trains you to ignore the
+flags.
+
+The gap alone is also the wrong unit. Two points means more between two
+defenders, whose outcomes scatter with a standard deviation around 6, than
+between two backs projected 20+, where it is 10.6. So the threshold is the gap
+divided by the spread of the two players' outcome distributions, which lines
+the accuracy curve up across positions where the raw gap does not, and the cut
+sits at 0.25 of a standard deviation. In practice that is about 1.2 points
+between two low-projected defenders and 2.6 between two big backs. Pairs that
+clear it are right about 57 to 59% of the time.
+
+With no stored outcome history it falls back to a flat point, which is honest
+rather than degraded: with nothing measured, a picked constant is all there is.
+
+The questions it prints: a bench player
+outprojecting a starter he can legally replace, and anyone who cannot play and
+is still in your lineup. A lineup that is already right gets one line saying
+so. That is the intended output, not a failure.
+
+Each call shows both players with their PFF role line, the projection gap, and
+the usage gap, then a verdict:
+
+* **SWAP** — the projection and the usage agree, and the gap is 3+ points.
+* **LEAN** — they agree but the gap is small, or there is no usage to check.
+* **COIN FLIP** — they disagree. That is the finding. The two are not averaged
+  into one number, because averaging a points projection with a grade produces
+  something that means nothing.
+
+When nothing qualifies it says so and then shows the closest comparisons it
+rejected, phrased as how many more points the bench player would need. That is
+deliberately not a signed gap next to a threshold: a bench player 1.6 behind a
+starter who needs to be 1.6 ahead is 3.2 short, and printing "-1.6" beside
+"1.6" reads as a match.
+
+`compare` does the same for any two players in the week's matchup, whether or
+not they are a legal swap for each other.
+
+Opportunities only compare within a position family. A tight end's targets and
+a running back's touches are different units, so across positions the tool says
+so and falls back to the projection alone.
+
+Before kickoff the usage is last season's, which every output labels as a prior.
+Both commands need the id crosswalk, so run `combine pffids <league>` first.
+
+## Training data and baselines
+
+```bash
+uv run combine train build          # pull last season into SQLite, resumable
+uv run combine train status         # what is stored
+uv run combine train baseline       # the bar a model has to beat
+```
+
+`build` pulls every rostered player-week from a past season: ESPN's weekly
+projection and the actual score, already under your league's rules, plus PFF's
+charted stat line for the same weeks. 2025 gives 7752 player-weeks. It skips
+whatever is already stored, so it is safe to re-run after an interruption.
+
+`baseline` scores ESPN and two no-model predictors on two metrics. MAE is how
+close the number is. Pairwise accuracy is how often the player you were told to
+prefer actually outscored the other, and the `close` column restricts that to
+pairs within 3 projected points, which is where the real decisions are.
+
+ESPN currently sits at MAE 5.67 and 55.1% on close calls. Any model has to beat
+both out of sample or it does not ship.
+
+```bash
+uv run combine train model      # fit the residual model and score it honestly
+uv run combine train backtest   # replay a season: optimizer and posture
+```
+
+`backtest` replays a season with real matchups, changing only your side and
+only with legal moves. It is what established that the optimizer is worth
++3.5pp of win rate, and that posture (ranking by ceiling when projected to lose)
+loses at every threshold and so is not wired in.
+
+`model` currently prints a rejection. A ridge model on the residual was built and
+held out properly, and when it overrules ESPN on a close call it is right 47.5%
+of the time against ESPN's 55.6%. The command stays because the harness is
+reusable and because the flip test it prints is the standard any future model
+has to clear.
+
+## What the columns mean
+
+```bash
+uv run combine glossary
+```
+
+The same glossary is an expander under the tables in the app's Week mode. Role
+is PFF usage and efficiency shown beside the projection and never blended into
+it, because grades and rates are on scales that have nothing to do with fantasy
+points. Floor, ceiling, boom and bust describe the spread around a projection,
+which ESPN does not give you: a projection is a mean, and in 2025 the median
+outcome landed 1.4 points below it.
+
+Those outcome columns are context for a close call, not a ranking. Sorting a
+lineup by ceiling or floor was backtested and lost at every threshold, so the
+tool shows them and leaves the judgement to you.
 
 ## Draft day (CLI)
 
@@ -298,7 +527,8 @@ uv run combine try health      # same check, as Claude sees it
 uv run combine try leagues     # slugs
 uv run combine try plan rcl 1 1 # league, slot, pick on the clock
 uv run combine try needs dmwd   # roster-aware, use from round 4 on
-uv run combine try roster dmwd # empty until the draft happens
+uv run combine try roster dmwd # season roster, no weekly numbers
+uv run combine week dmwd       # the in-season view, weekly numbers
 uv run combine serve           # MCP server on 127.0.0.1:8787/mcp
 ```
 

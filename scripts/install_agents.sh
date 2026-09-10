@@ -56,26 +56,69 @@ mkdir -p "$AGENTS"
 echo "repo: $REPO"
 echo "uv:   $UV"
 
+UID_NUM="$(id -u)"
+
 for label in "${WANT[@]}"; do
   src="$REPO/scripts/$label.plist"
   dest="$AGENTS/$label.plist"
   [[ -f "$src" ]] || { echo "missing $src" >&2; exit 1; }
-  # Unload an existing copy first: loading over a loaded label is an error, and
+
+  # Remove any existing copy first. Loading over a loaded label is an error, and
   # a stale plist keeps running the old command.
-  [[ -f "$dest" ]] && launchctl unload -w "$dest" 2>/dev/null || true
+  launchctl bootout "gui/$UID_NUM/$label" 2>/dev/null || true
+  launchctl unload -w "$dest" 2>/dev/null || true
+
   sed -e "s|&lt;REPO&gt;|$REPO|g" -e "s|<REPO>|$REPO|g" \
       -e "s|&lt;UV&gt;|$UV|g"     -e "s|<UV>|$UV|g" "$src" > "$dest"
-  launchctl load -w "$dest"
-  echo "loaded $label"
+
+  # Validate before loading. A malformed plist fails at load with a message
+  # that does not say which key is wrong, and a bad substitution is silent.
+  if ! plutil -lint "$dest" >/dev/null; then
+    echo "generated plist is not valid: $dest" >&2
+    exit 1
+  fi
+  if grep -q "<REPO>\|<UV>\|&lt;REPO&gt;\|&lt;UV&gt;" "$dest"; then
+    echo "substitution missed a placeholder in $dest" >&2
+    exit 1
+  fi
+
+  # Everything launchd will exec must exist. When an exec fails, launchd logs to
+  # the system log and writes NOTHING to the job's own log files, which reads as
+  # a program that started and died silently. Catch it here instead.
+  while IFS= read -r prog; do
+    case "$prog" in
+      /*) [[ -x "$prog" ]] || { echo "not executable: $prog" >&2; exit 1; } ;;
+    esac
+  done < <(plutil -extract ProgramArguments json -o - "$dest" \
+           | tr ',' '\n' | tr -d '[]" ' | grep '^/' || true)
+
+  echo "loading $label"
+  echo "  command: $(plutil -extract ProgramArguments.$(( $(plutil -extract ProgramArguments json -o - "$dest" | tr ',' '\n' | wc -l) - 1 )) raw -o - "$dest" 2>/dev/null || echo '?')"
+  if launchctl bootstrap "gui/$UID_NUM" "$dest" 2>/tmp/combine_load_err; then
+    :
+  elif launchctl load -w "$dest" 2>>/tmp/combine_load_err; then
+    :
+  else
+    echo "launchctl refused to load $label:" >&2
+    cat /tmp/combine_load_err >&2
+    exit 1
+  fi
 done
 
+sleep 2
 echo
-echo "status:"
-launchctl list | grep thecombine || echo "  nothing running yet, check the logs"
+echo "status (second column is the last exit code; 0 or - is healthy):"
+launchctl list | grep thecombine || echo "  NOT RUNNING"
 echo
-echo "The second column is the last exit code. 0 or '-' is fine; anything else"
-echo "means it started and died, and logs/ will say why:"
 for label in "${WANT[@]}"; do
   short="${label##*.}"
-  echo "  tail -f $REPO/logs/$short.err"
+  errlog="$REPO/logs/$short.err"
+  echo "--- $short: last lines of $errlog ---"
+  if [[ -s "$errlog" ]]; then
+    tail -5 "$errlog"
+  else
+    echo "  (empty). If the job is also not listed above, launchd could not exec"
+    echo "  it at all; ask the system log:"
+    echo "    log show --predicate 'eventMessage CONTAINS \"$label\"' --last 10m"
+  fi
 done

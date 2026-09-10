@@ -2,10 +2,10 @@
 <!--
   Run the Streamlit app as a background agent on the Mac mini.
 
-  This box is also a Plex server, so the app is deliberately launched under
-  macOS background QoS via `taskpolicy -b`. That puts it in the lowest
-  scheduling and I/O band, so any Plex transcode always wins contention and the
-  app yields instead of competing. Measured cost when idle is a Python process
+  This box is also a Plex server, so the job runs at background QoS via launchd's
+  own ProcessType and LowPriorityIO keys. That puts it in the lowest scheduling
+  and I/O band, so any Plex transcode wins contention and this yields instead of
+  competing. Measured cost when idle is a Python process
   with pandas loaded and effectively no CPU; the outcome history it reads builds
   in about a second.
 
@@ -38,8 +38,6 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/taskpolicy</string>
-    <string>-b</string>
     <string>/bin/sh</string>
     <string>-lc</string>
     <!-- REPLACE <REPO> with the absolute path to the checkout, e.g.

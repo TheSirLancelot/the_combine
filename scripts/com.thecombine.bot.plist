@@ -2,7 +2,12 @@
 <!--
   Run the Discord bot as a background agent on the Mac mini.
 
-  Same background QoS as the Streamlit agent, so Plex always wins contention.
+  Background QoS comes from launchd's own ProcessType and LowPriorityIO keys, so
+  Plex always wins CPU and I/O contention. An earlier version wrapped the command
+  in /usr/bin/taskpolicy for the same effect, which was redundant and put another
+  binary in the exec path; when an exec fails, launchd logs to the system log and
+  writes NOTHING to the job's own log files, which made it look like the bot was
+  starting and dying silently.
   Unlike the app there is nothing to expose: this dials OUT to Discord's gateway
   and holds a websocket, so there is no port, no tunnel and no inbound surface.
 
@@ -19,8 +24,6 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/taskpolicy</string>
-    <string>-b</string>
     <string>/bin/sh</string>
     <string>-lc</string>
     <string>cd &lt;REPO&gt; &amp;&amp; exec &lt;UV&gt; run combine bot</string>

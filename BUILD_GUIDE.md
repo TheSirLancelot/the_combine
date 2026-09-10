@@ -21,9 +21,23 @@ in preseason. Both are now built, see item 1 below.
 **PFF API is live and we have a working key.** It is NOT what the original
 brief assumed, see below.
 
-**Still not built.** Tunnel, Cloudflare WAF rule, connector registration.
-Nothing is reachable from a phone. Everything runs from `uv run combine ...`
-or the Streamlit app.
+**Reachable from a phone, via Discord rather than MCP.** The bot answers slash
+commands from anywhere and posts a check every morning. Everything is also
+available from `uv run combine ...` and the Streamlit app on the Mac mini.
+
+**The in-season plan is finished.** Items 1 through 8 and 13 below are done.
+What remains is one item blocked outside this repo, one that belongs to next
+August, and one decision.
+
+**Dropped, not pending: item 9, remote access over MCP.** The tunnel, the
+Cloudflare WAF rule and the connector registration are not being built. The
+Discord bot replaced that plan rather than deferring it, and it solved the
+actual problem -- reach from a phone -- with no public hostname, no ingress
+rule and no inbound surface at all. Left over from that decision: `server.py`
+still exposes eight MCP tools, all of them draft-only, and `fastmcp` is still
+a dependency. Both are harmless and neither is wired to anything in-season.
+Keep them if next August's draft wants an MCP surface; delete them if not. That
+is a decision, not a task.
 
 **Blocked.** Yahoo. Fantasy Sports API access is behind a manual review,
 applied 2026-09-02, quoted 1-2 weeks. The `work` league shows SKIP in doctor,
@@ -555,7 +569,12 @@ opponent that does not exist; both are now suppressed when there is no opponent
 lineup. Entering an opponent's whole roster every week is more upkeep than the
 matchup line is worth, so that stays empty until the API lands.
 
-**9. Remote access.** Tunnel route, WAF rule pinned to Anthropic's egress range
+**9. Remote access. DROPPED 2026-09-11**, superseded by item 13. The Discord
+bot solved the same problem by dialling out instead of opening a way in. The
+original plan is kept below because the Cloudflare notes are hard-won and would
+be needed again if an MCP surface ever comes back for the draft.
+
+Tunnel route, WAF rule pinned to Anthropic's egress range
 `160.79.104.0/21`, connector registered with a static bearer header. The server
 enforces its own token independently of Cloudflare. Do not put a Cloudflare
 Access policy on the hostname, it bounces Anthropic with a login redirect and
@@ -565,9 +584,12 @@ fails with a useless error.
 `scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
 be `https://localhost:8000`.
 
-**11. Rescore properly.** Write `scoring.py`, apply each league's stat-id scoring
-to PFF's raw stat lines, compare against PFF's own `fantasyPoints`. Match means
-the shortcut was safe; mismatch means someone has a scoring bug.
+**11. Rescore properly. DONE 2026-09-10**, in item 8. `scoring.py` reads each
+league's scoring as ESPN stat ids and validates against ESPN's own scored
+breakdowns: 209/209 on DMWD and 184/185 on RCL. The one miss is a known
+rounding case. Validating against PFF's `fantasyPoints` instead, as written
+here, turned out to be the worse test -- ESPN is the authority for these
+leagues, and PFF does not publish stat lines for K or D/ST at all.
 
 **12. Live draft reader.** For next August. ESPN's league API does not expose an
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See

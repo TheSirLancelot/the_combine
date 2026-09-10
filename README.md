@@ -165,6 +165,26 @@ id crosswalk, so a deploy from the repo would silently lose the outcome columns,
 the Role column and the scaling comparison threshold. And it would mean putting
 ESPN session cookies in a third party's secret store.
 
+## Scoreboard
+
+```bash
+uv run combine scoreboard          # every league, live
+uv run combine scoreboard 3        # a past week
+```
+
+`*` marks your matchup, `F` is final, `>` in progress, `-` not started. PROJ is
+ESPN's projected final, which moves during games, so it is labelled as theirs
+rather than presented as ours. LFT is starters whose game has not ended, which
+is there because a 20 point lead with nine players left is not a lead.
+
+The same view is `/scoreboard` in Discord, narrowed for a phone, and a Scores
+mode in the app where auto refresh defaults to on, since this is the one view
+whose numbers really are moving.
+
+The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
+hand-entered league has none, so it shows as unavailable with the reason rather
+than silently going missing. It joins when the API is approved.
+
 ## The week (CLI)
 
 ```bash

@@ -508,6 +508,28 @@ def check_scoring() -> int:
     return 0
 
 
+def scoreboard() -> int:
+    """combine scoreboard [week] [league...]
+
+    Live scores across every league at once. `*` marks your matchup, `F` a
+    finished one, and the count is starters whose game has not ended, because a
+    20 point lead with nine players left is not a lead.
+    """
+    from .pipeline.scoreboard import build, render
+
+    args = sys.argv[2:]
+    week = next((int(a) for a in args if a.isdigit()), None)
+    slugs = [a for a in args if not a.isdigit()] or None
+    unknown = [lg for lg in (slugs or []) if lg not in config.leagues()]
+    if unknown:
+        print(f"unknown league(s): {', '.join(unknown)}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
+        return 2
+    games, missing = build(week, slugs)
+    print(render(games, missing))
+    return 0
+
+
 def notify() -> int:
     """combine notify [league...] [--force] [--dry-run]
 
@@ -569,6 +591,8 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "scoreboard":
+        return scoreboard()
     if cmd == "notify":
         return notify()
     if cmd == "bot":

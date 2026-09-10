@@ -637,6 +637,30 @@ Silence is the feature in the scheduled check. A correct lineup produces no
 message, because a bot that says "nothing to report" every week gets muted and
 then the one week it matters is missed.
 
+## Scoreboard
+
+`pipeline/scoreboard.py`, added 2026-09-10. Every league's matchups in one place,
+as `combine scoreboard`, `/scoreboard` in Discord and a Scores mode in the app.
+`EspnClient.all_matchups` was added alongside it, since everything before this
+only ever needed my own box score.
+
+Two derived numbers earn their place next to the score. Starters whose game has
+not ended, because a 20 point lead with nine players left is not a lead. And
+ESPN's projected final, which moves during games as their model updates, so it is
+labelled as ESPN's rather than presented as ours.
+
+Three pieces of derived state that are easy to get wrong on a Sunday morning when
+every score is legitimately zero, and are therefore tested directly: started
+comes from points scored OR being final, final comes from players remaining
+rather than from a non-zero score (a defense can score nothing all day), and
+`margin` reads from my side when I am in the game and falls back to home minus
+away when I am not.
+
+The hand-entered Yahoo league cannot appear, because a scoreboard needs the
+opponent's lineup and entering one weekly by hand is more upkeep than a score
+line is worth. It renders as unavailable WITH the reason rather than being
+filtered out, so its absence never reads as a bug.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

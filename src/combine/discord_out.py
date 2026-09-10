@@ -159,3 +159,51 @@ def has_news(calls, hurt, gain: float) -> bool:
     bot you mute.
     """
     return bool(calls or hurt or gain > 0.05)
+
+
+def scoreboard_message(games, missing) -> list[str]:
+    """Scores, narrow enough for a phone.
+
+    The terminal version runs to 100 characters with both teams on one line.
+    That wraps into mush here, so each matchup is two lines with the score
+    right-aligned, and the shared numbers move into a single trailing line.
+    """
+    if not games and not missing:
+        return ["no leagues configured"]
+
+    blocks: list[str] = []
+    mine = [g for g in games if g.involves_me]
+    if mine:
+        lines = ["**Your matchups**"]
+        for g in mine:
+            me, them = g.me, g.them
+            verb = ("won by" if g.final and g.margin > 0 else
+                    "lost by" if g.final and g.margin < 0 else
+                    "tied" if g.final else
+                    "up" if g.margin > 0 else "down" if g.margin < 0 else "level")
+            tail = "" if verb in ("level", "tied") else f" {abs(g.margin):.1f}"
+            lines.append(f"**{g.league_name}** · {verb}{tail}")
+            lines.append(f"`{me.score:>6.1f}` you   ·   `{them.score:>6.1f}` "
+                         f"{them.team[:18]}")
+            if not g.final:
+                lines.append(f"_ESPN projects {me.projected:.1f} to "
+                             f"{them.projected:.1f} ({g.projected_margin:+.1f}), "
+                             f"{me.yet_to_play} of yours left vs "
+                             f"{them.yet_to_play}_")
+        blocks.append("\n".join(lines))
+
+    for slug in dict.fromkeys(g.league for g in games):
+        rows = [g for g in games if g.league == slug]
+        table = [f"{'TEAM':<18} {'SCORE':>6} {'PROJ':>6}"]
+        for g in rows:
+            flag = "*" if g.involves_me else " "
+            for side in (g.home, g.away):
+                table.append(f"{flag}{side.team[:17]:<17} {side.score:>6.1f} "
+                             f"{side.projected:>6.1f}")
+            table.append("")
+        blocks.append(f"**{rows[0].league_name} — week {rows[0].week}**\n"
+                      f"{CODE}\n" + "\n".join(table).rstrip() + f"\n{CODE}")
+
+    for item in missing:
+        blocks.append(f"_{item.league_name}: not on the scoreboard. {item.reason}_")
+    return chunk(blocks)

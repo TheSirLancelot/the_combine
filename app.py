@@ -243,6 +243,17 @@ def missing_inputs(league: str) -> list[tuple[str, str, str]]:
     return out
 
 
+@st.cache_data(ttl=30, show_spinner="pulling live scores...")
+def load_scores(week: int, _nonce: int, _version: str) -> dict:
+    """Every league's matchups. Short ttl because this is the one view where
+    the numbers really are moving."""
+    from combine.pipeline.scoreboard import build as build_scores
+
+    games, missing = build_scores(week or None)
+    return {"games": games, "missing": missing,
+            "pulled_at": datetime.now().astimezone().strftime("%H:%M:%S %Z")}
+
+
 @st.cache_data(ttl=60, show_spinner="pulling this week's lineup...")
 def load_week(league: str, week: int, _nonce: int, _version: str) -> dict:
     """One box-score round trip. Much cheaper than the draft loader: no
@@ -380,11 +391,12 @@ if not leagues:
 with st.sidebar:
     st.title("The Combine")
 
-    # Draft is dormant outside August, so Week leads.
-    mode = st.radio("Mode", ["Week", "Draft"], horizontal=True)
+    # Draft is dormant outside August, so the in-season views lead.
+    mode = st.radio("Mode", ["Week", "Scores", "Draft"], horizontal=True)
 
     league = st.radio("League", list(leagues),
-                      format_func=lambda s: f"{s} · {leagues[s].name}")
+                      format_func=lambda s: f"{s} · {leagues[s].name}",
+                      help="The scoreboard ignores this and shows every league.")
     cfg = leagues[league]
 
     slot, on_clock, week_no = cfg.draft_slot or 1, 1, 0
@@ -399,8 +411,9 @@ with st.sidebar:
                                   help="0 follows the league's current week")
 
     with st.expander("Refresh", expanded=False):
-        # A draft moves every few seconds; a lineup does not.
-        auto = st.toggle("Auto refresh", value=mode == "Draft")
+        # A draft moves every few seconds and so does a scoreboard on Sunday.
+        # A lineup does not.
+        auto = st.toggle("Auto refresh", value=mode in ("Draft", "Scores"))
         every = st.select_slider("Every", [15, 30, 45, 60], value=30,
                                  disabled=not auto, format_func=lambda n: f"{n}s")
         if st.button("Refresh now", use_container_width=True, type="primary"):
@@ -724,7 +737,54 @@ def week_page():
         st.caption("week is final")
 
 
+@st.fragment(run_every=f"{every}s" if auto else None)
+def scores_page():
+    try:
+        data = load_scores(int(week_no), st.session_state.nonce, _code_version())
+    except Exception as exc:
+        st.error(f"{type(exc).__name__}: {exc}")
+        return
+
+    games, missing = data["games"], data["missing"]
+    st.subheader("Scoreboard")
+    st.caption(f"as of {data['pulled_at']}. PROJ is ESPN's projected final, "
+               f"which moves during games. Left is starters whose game has not "
+               f"ended, because a 20 point lead with nine players left is not a "
+               f"lead.")
+
+    mine = [g for g in games if g.involves_me]
+    if mine:
+        cols = st.columns(len(mine))
+        for col, g in zip(cols, mine, strict=False):
+            me, them = g.me, g.them
+            state = "final" if g.final else f"{me.yet_to_play}v{them.yet_to_play} left"
+            col.metric(f"{g.league_name} · {state}",
+                       f"{me.score:.1f} – {them.score:.1f}",
+                       delta=f"{g.margin:+.1f}")
+            col.caption(f"vs {them.team}"
+                        + ("" if g.final else
+                           f" · projected {me.projected:.1f} – {them.projected:.1f}"))
+
+    for slug in dict.fromkeys(g.league for g in games):
+        rows = [g for g in games if g.league == slug]
+        st.markdown(f"**{rows[0].league_name} — week {rows[0].week}**")
+        frame = pd.DataFrame([{
+            "": ("★" if g.involves_me else "") + ("  F" if g.final else
+                                                  "  ●" if g.started else "  ·"),
+            "Team": g.home.team, "Score": round(g.home.score, 1),
+            "Proj": round(g.home.projected, 1), "Left": g.home.yet_to_play,
+            "Opponent": g.away.team, "Score ": round(g.away.score, 1),
+            "Proj ": round(g.away.projected, 1), "Left ": g.away.yet_to_play,
+        } for g in rows])
+        st.dataframe(frame, hide_index=True, use_container_width=True)
+
+    for item in missing:
+        st.info(f"**{item.league_name}** is not on the scoreboard. {item.reason}")
+
+
 if mode == "Draft":
     page()
+elif mode == "Scores":
+    scores_page()
 else:
     week_page()

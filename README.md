@@ -65,7 +65,38 @@ shell: it starts with a minimal PATH and no working directory, so `uv run` alone
 fails with command not found and the job dies at boot with nothing obvious in
 the logs. Run it again after pulling; it reloads rather than duplicating.
 
-Add `--with-app` to also run the Streamlit app, `--uninstall` to remove both.
+`--with-app` also runs the Streamlit app in the background, same low priority,
+same survives-a-reboot. It binds `127.0.0.1` by default, which is what the
+Cloudflare tunnel wants, so it is reachable only on the mini itself. To read it
+from another machine without setting up the tunnel:
+
+```bash
+./scripts/install_agents.sh --with-app --bind 0.0.0.0
+```
+
+Then browse to the mini's address on port 8501, including over Tailscale. The
+app has no login of its own and every page load acts as your ESPN session, so
+anything that can reach it can read your rosters and make requests as you. On a
+home network that is usually a fine trade. The version that actually
+authenticates is `127.0.0.1` plus the tunnel with an Access policy.
+
+`--uninstall` removes both agents.
+
+**After every pull, restart what is running.** Both agents hold code in memory
+and neither notices a `git pull`:
+
+```bash
+git pull && ./scripts/install_agents.sh          # add --with-app if installed
+```
+
+The bot needs it because a new or changed slash command only registers when the
+process starts. The app needs it because Streamlit re-executes `app.py` on change
+but keeps already-imported modules, so a new module is missing and a changed one
+is stale. That is the same mechanism behind the `Band` dataclass error further
+down this file, and restarting is the fix in both directions.
+
+`launchctl kickstart -k gui/$(id -u)/com.thecombine.bot` restarts just the bot if
+you would rather not re-run the installer.
 
 Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. `/week` and
 `/startsit` take an optional league and cover all of them when you leave it
@@ -164,6 +195,26 @@ holds the 33MB outcome database, the PFF caches, the projection exports and the
 id crosswalk, so a deploy from the repo would silently lose the outcome columns,
 the Role column and the scaling comparison threshold. And it would mean putting
 ESPN session cookies in a third party's secret store.
+
+## Scoreboard
+
+```bash
+uv run combine scoreboard          # every league, live
+uv run combine scoreboard 3        # a past week
+```
+
+`*` marks your matchup, `F` is final, `>` in progress, `-` not started. PROJ is
+ESPN's projected final, which moves during games, so it is labelled as theirs
+rather than presented as ours. LFT is starters whose game has not ended, which
+is there because a 20 point lead with nine players left is not a lead.
+
+The same view is `/scoreboard` in Discord, narrowed for a phone, and a Scores
+mode in the app where auto refresh defaults to on, since this is the one view
+whose numbers really are moving.
+
+The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
+hand-entered league has none, so it shows as unavailable with the reason rather
+than silently going missing. It joins when the API is approved.
 
 ## The week (CLI)
 

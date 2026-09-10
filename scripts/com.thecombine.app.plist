@@ -9,9 +9,10 @@
   with pandas loaded and effectively no CPU; the outcome history it reads builds
   in about a second.
 
-  Bound to 127.0.0.1, because access goes through the Cloudflare tunnel already
-  running on this box for the *arr stack. The tunnel connects to localhost, so
-  nothing needs to listen on the LAN.
+  The bind address is filled in by scripts/install_agents.sh: 127.0.0.1 by
+  default, which is what the Cloudflare tunnel wants because it connects to
+  localhost, or whatever `--bind` says. Use `--bind 0.0.0.0` to reach it from
+  another machine on the network or over Tailscale without a tunnel.
 
   The app has NO authentication of its own. Every page load acts as your ESPN
   session, so the hostname MUST have a Cloudflare Access policy in front of it.
@@ -42,7 +43,7 @@
     <string>-lc</string>
     <!-- REPLACE <REPO> with the absolute path to the checkout, e.g.
          /Users/williamweir/the_combine -->
-    <string>cd &lt;REPO&gt; &amp;&amp; exec &lt;UV&gt; run streamlit run app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false</string>
+    <string>cd &lt;REPO&gt; &amp;&amp; exec &lt;UV&gt; run streamlit run app.py --server.address &lt;BIND&gt; --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false</string>
   </array>
 
   <key>WorkingDirectory</key>

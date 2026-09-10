@@ -183,6 +183,14 @@ def build_compare(league: str, a: str, b: str, week: int | None = None) -> list[
     return [f"```\n{text}\n```"]
 
 
+def build_scoreboard(week: int | None = None) -> list[str]:
+    from . import discord_out
+    from .pipeline.scoreboard import build
+
+    games, missing = build(week)
+    return discord_out.scoreboard_message(games, missing)
+
+
 def build_health() -> list[str]:
     from .platforms import client_for
 
@@ -312,6 +320,13 @@ async def startsit(interaction: discord.Interaction, league: str | None = None,
 async def compare(interaction: discord.Interaction, league: str,
                   player_a: str, player_b: str):
     await respond(interaction, build_compare, league, player_a, player_b)
+
+
+@client.tree.command(description="Live scores across every league")
+@app_commands.describe(week="Week number, blank for current")
+@owner_only()
+async def scoreboard(interaction: discord.Interaction, week: int | None = None):
+    await respond(interaction, build_scoreboard, week)
 
 
 @client.tree.command(description="What the Role and outcome numbers mean")

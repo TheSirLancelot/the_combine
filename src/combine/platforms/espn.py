@@ -267,6 +267,40 @@ class EspnClient:
         """My full roster for one week, starters and bench, with weekly numbers."""
         return self.matchup(week).my_lineup
 
+    def all_matchups(self, week: int | None = None) -> list[Matchup]:
+        """Every matchup in the league, not just mine.
+
+        `mine` is set on whichever side is the configured team, and is "home" by
+        convention on games I am not in, where it means nothing. Callers that
+        care use `Matchup.involves`.
+        """
+        wk = int(week or self.week)
+        schedule = self.pro_schedule(wk)
+        out: list[Matchup] = []
+        for b in self.league.box_scores(wk):
+            home, away = getattr(b, "home_team", None), getattr(b, "away_team", None)
+            home_name = getattr(home, "team_name", None)
+            away_name = getattr(away, "team_name", None)
+            if not home_name or not away_name:
+                continue          # a bye hands back an int 0 in place of a team
+            mine = "home" if str(getattr(home, "team_id", "")) == str(self.cfg.team_id) \
+                else ("away" if str(getattr(away, "team_id", "")) == str(self.cfg.team_id)
+                      else "home")
+            out.append(Matchup(
+                week=wk, home_team=home_name, away_team=away_name,
+                home_proj=float(getattr(b, "home_projected", 0.0) or 0.0),
+                away_proj=float(getattr(b, "away_projected", 0.0) or 0.0),
+                home_lineup=[self._weekly(p, schedule) for p in (b.home_lineup or [])],
+                away_lineup=[self._weekly(p, schedule) for p in (b.away_lineup or [])],
+                home_score=float(getattr(b, "home_score", 0.0) or 0.0),
+                away_score=float(getattr(b, "away_score", 0.0) or 0.0),
+                mine=mine,
+            ))
+        return out
+
+    def my_team_name(self) -> str:
+        return getattr(self._my_team(), "team_name", "") or ""
+
     def player_weeks(self, week: int) -> list[tuple[str, str, WeeklyPlayer]]:
         """(fantasy team, the team it faced, player) for EVERY rostered player
         in the league that week, not just mine.

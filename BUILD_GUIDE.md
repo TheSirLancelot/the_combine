@@ -661,6 +661,50 @@ opponent's lineup and entering one weekly by hand is more upkeep than a score
 line is worth. It renders as unavailable WITH the reason rather than being
 filtered out, so its absence never reads as a bug.
 
+## The waiver wire
+
+`pipeline/waivers.py` for the live question, `pipeline/wire.py` for what it was
+worth, added 2026-09-10. `combine waivers` and `combine train wire --all-teams`.
+
+**What the backtest can and cannot establish.** ESPN does not retain historical
+weekly PROJECTIONS: for any player in any past week `projected_points` comes back
+None, verified across a batch of 60. Projections survive only for players someone
+rostered, because we stored them week by week as the season ran. So the method's
+ranking cannot be replayed against the past and this is NOT the flip test the
+residual model got.
+
+What can be measured exactly is availability, since every roster was stored for
+every week, and actuals, since ESPN answers `player_info` with a list of ids and
+returns every week at once already scored under that league's own rules.
+
+So the substitute is an ex-ante rule that needs no projections: each week take the
+available player with the best trailing form and see what he actually did.
+Trailing form is a weaker signal than a projection, so this is a FLOOR on what
+the live version can manage, not an estimate of it.
+
+**Result, 432 team-weeks across both leagues:**
+
+```
+RCL    +2.50 points a week, se 0.28  (8.8 sigma)   helped 38% of weeks, changed 5 of 216 results
+DMWD   +0.79 points a week, se 0.22  (3.7 sigma)   helped 10% of weeks, changed 2 of 216 results
+```
+
+Both real. The asymmetry matches the live tool exactly: RCL's deep IDP pool and
+weak DP slot produce three candidates in week 1 while DMWD produces none.
+
+Two things that number does not include. A bad add never costs points in the
+week, because you simply do not start him, so the downside here is structurally
+invisible; what it really costs is the dropped player's future, which this does
+not measure. And the hindsight ceiling, 21 points a week in RCL, is not an
+opportunity figure at all: the best of 300 players is high by arithmetic, and it
+mostly measures pool size.
+
+**A profiling lesson worth keeping.** The sweep would not finish, and the cause
+was a `best_lineup` call sitting inside a list comprehension's CONDITION, so it
+re-ran once per roster player: 21 solves a week instead of 1. Reading the code
+twice did not find it; `cProfile` found it in a minute. The same solve was
+already being computed one line above.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

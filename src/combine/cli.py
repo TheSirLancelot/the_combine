@@ -338,6 +338,8 @@ def train() -> int:
     model     fit the residual model and score it on held-out weeks
     backtest  replay a season and test posture-aware lineups against expected
               points, using the same optimizer for both
+    wire      how much the waiver wire was actually worth, add --all-teams for a
+              sample big enough to measure
 
     Resumable: it skips whatever is already there, so run it again after an
     interruption. A full season is around a hundred requests and some of them
@@ -385,6 +387,53 @@ def train() -> int:
             print("  " + sc.line())
         print("\nESPN BY POSITION FAMILY")
         print(by_family(frame).to_string(index=False))
+        return 0
+
+    if what == "wire":
+        import numpy as np
+
+        from .pipeline.wire import fetch, form_ranking
+        from .pipeline.wire import run as run_wire
+        from .platforms import client_for
+
+        every = "--all-teams" in sys.argv
+        for slug, cfg in config.leagues().items():
+            if cfg.platform != "espn":
+                continue
+            client = client_for(slug, season=season)
+            with db.connect(readonly=True) as conn:
+                actuals, eligibility = fetch(client, conn, season)
+                ranking = form_ranking(actuals, range(1, 19))
+                teams = ([r[0] for r in conn.execute(
+                    "SELECT DISTINCT fantasy_team FROM espn_player_week"
+                    " WHERE league=? AND season=?", (slug, season))]
+                    if every else [client.my_team_name()])
+                rows = []
+                for team in teams:
+                    rows += run_wire(conn, client, season, team, actuals,
+                                     eligibility, ceiling=not every,
+                                     ranking=ranking)
+            if not rows:
+                print(f"{slug}: nothing stored for {season}")
+                continue
+            values = np.array([r.form_value for r in rows])
+            se = values.std(ddof=1) / np.sqrt(len(values)) if len(values) > 1 else 0
+            flips = sum(1 for r in rows if r.form_flipped)
+            print(f"\n{cfg.name}: {len(teams)} team(s), {len(rows)} team-weeks")
+            print("  ex-ante waiver rule (best trailing form, no foreknowledge)")
+            print(f"    {values.mean():+.2f} points a week, se {se:.2f}"
+                  + (f" ({values.mean() / se:.1f} sigma)" if se else ""))
+            print(f"    helped in {(values > 0.05).mean() * 100:.0f}% of weeks, "
+                  f"changed {flips} of {len(rows)} results")
+            if not every:
+                ceiling = np.array([r.wire_value for r in rows])
+                print(f"  hindsight ceiling: {ceiling.mean():+.1f} a week "
+                      f"(mostly measures pool size, not opportunity)")
+        print("\nA bad add never costs points in the week, because you simply do "
+              "not start him.\nWhat it costs is the dropped player's future, which "
+              "this does not measure.\nTrailing form is a weaker signal than a "
+              "projection, so read these as a FLOOR\non what the live "
+              "projection-driven version can manage.")
         return 0
 
     if what == "backtest":
@@ -443,7 +492,7 @@ def train() -> int:
         return 0
 
     if what != "build":
-        print("usage: combine train <build|status|baseline|model|backtest> [season]",
+        print("usage: combine train <build|status|baseline|model|backtest|wire> [season]",
               file=sys.stderr)
         return 2
 

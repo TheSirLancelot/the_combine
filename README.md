@@ -49,6 +49,67 @@ data without the mouse.
 The CLI still works and is documented below. The app is a front end over the
 identical code, not a reimplementation.
 
+## The Discord bot
+
+The in-season interface from anywhere. Slash commands for asking, and a Sunday
+morning check that stays silent unless there is something to act on.
+
+```bash
+uv run combine bot                 # foreground, for testing
+./scripts/install_agents.sh        # background, survives reboots
+```
+
+The installer fills in the repo path and the absolute path to `uv`, creates
+`logs/`, and loads the agent. Both substitutions matter because launchd is not a
+shell: it starts with a minimal PATH and no working directory, so `uv run` alone
+fails with command not found and the job dies at boot with nothing obvious in
+the logs. Run it again after pulling; it reloads rather than duplicating.
+
+Add `--with-app` to also run the Streamlit app, `--uninstall` to remove both.
+
+Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. `/week` and
+`/startsit` take an optional league and cover all of them when you leave it
+blank, which is usually what you want on a Sunday. Three leagues takes about
+five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
+your rosters and cause ESPN requests authenticated as you.
+
+Chosen over exposing the app through a tunnel because of the direction of the
+connection. The bot dials out to Discord and holds a websocket, so there is no
+public hostname, no ingress rule, no Access policy to keep correct and no inbound
+surface at all.
+
+Testing the Sunday check without waiting for Sunday:
+
+```bash
+uv run combine notify --dry-run          # print what it would post, send nothing
+uv run combine notify                    # exactly what the schedule does
+uv run combine notify rcl --force        # post even though nothing is wrong
+```
+
+`--force` exists because the check's success condition is silence, which is
+indistinguishable from the whole thing being broken. It labels the post as a
+manual test so a forced message never reads as a real recommendation. It sends
+over REST without joining the gateway, so it does not conflict with the running
+agent; two gateway sessions would mean two copies of the bot answering every
+slash command twice.
+
+Setup lives in `.env`: `DISCORD_TOKEN` plus `DISCORD_GUILD_ID`,
+`DISCORD_CHANNEL_ID` and `DISCORD_OWNER_ID`. The token is a secret and belongs
+nowhere else. The IDs come from right-click Copy ID with Developer Mode on.
+
+Two things that will bite:
+
+The bot needs Send Messages **in the target channel**, not just at the server
+level. A channel permission override silently blocks the Sunday post while slash
+commands keep working, because interaction replies go through a webhook and
+ignore channel send permissions. `/health` will look fine while the schedule
+posts nowhere.
+
+Tables are re-rendered narrow for Discord, about 48 characters, because Discord
+wraps code blocks rather than scrolling them. The terminal renderers run to 130
+characters and are unreadable on a phone. Prose stays as markdown so Discord can
+wrap it.
+
 ## Reaching it from a phone
 
 The app runs on the Mac mini, which is always on and is also the Plex server.
@@ -72,9 +133,7 @@ Then run it as a launchd agent so it survives reboots and never competes with
 Plex:
 
 ```bash
-cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
-# edit the <REPO> paths inside first
-launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
+./scripts/install_agents.sh --with-app
 ```
 
 It launches under `taskpolicy -b`, macOS background QoS, so any Plex transcode
@@ -153,6 +212,7 @@ asks PFF where the calendar is and says which season it used.
 ## Start/sit (CLI)
 
 ```bash
+uv run combine startsit              # every league
 uv run combine startsit rcl
 uv run combine startsit dmwd 3
 uv run combine compare dmwd "Nabers" "Golden"

@@ -220,7 +220,7 @@ def pff_ids() -> int:
 
 
 def start_sit() -> int:
-    """combine startsit <league> [week]
+    """combine startsit [league...] [week]
 
     Only the slots with a real question: bench players outprojecting a starter
     they can legally replace, with PFF usage on both sides, plus anyone who
@@ -233,22 +233,23 @@ def start_sit() -> int:
     from .platforms import client_for
 
     args = sys.argv[2:]
-    if not args:
-        print("usage: combine startsit <league> [week]", file=sys.stderr)
+    # No league means every league, which is usually what you want on a Sunday.
+    leagues = [a for a in args if not a.isdigit()] or list(config.leagues())
+    wk = next((int(a) for a in args if a.isdigit()), None)
+    unknown = [lg for lg in leagues if lg not in config.leagues()]
+    if unknown:
+        print(f"unknown league(s): {', '.join(unknown)}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
         return 2
-    league = args[0]
-    wk = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
 
     ids = load_ids()
     if not ids:
-        print("no PFF id crosswalk yet. run: combine pffids " + league, file=sys.stderr)
+        print("no PFF id crosswalk yet. run: combine pffids "
+              + leagues[0], file=sys.stderr)
         return 2
     api = PffApi()
     state = api.season_state()
     usage = load_usage(api)
-    c = client_for(league)
-    m = c.matchup(wk)
-
     # Outcome spread, shown as context and never used to rank. Ranking by it was
     # backtested and lost; see build guide item 6.
     dist = None
@@ -261,9 +262,18 @@ def start_sit() -> int:
     except Exception:
         dist = None
 
-    calls, hurt = review(m, usage, ids, dist=dist)
-    print(render(m, calls, hurt, usage, ids, state.in_season,
-                 config.get_league(league).name, slots=c.roster_slots(), dist=dist))
+    for i, league in enumerate(leagues):
+        if i:
+            print("\n" + "=" * 60)
+        try:
+            c = client_for(league)
+            m = c.matchup(wk)
+            calls, hurt = review(m, usage, ids, dist=dist)
+            print(render(m, calls, hurt, usage, ids, state.in_season,
+                         config.get_league(league).name, slots=c.roster_slots(),
+                         dist=dist))
+        except Exception as exc:
+            print(f"{league}: {type(exc).__name__}: {exc}", file=sys.stderr)
     if not state.in_season:
         print(f"\nusage is {state.stats_season}, read it as a prior")
     return 0
@@ -498,6 +508,32 @@ def check_scoring() -> int:
     return 0
 
 
+def notify() -> int:
+    """combine notify [league...] [--force] [--dry-run]
+
+    Run the Sunday check right now. Without --force it behaves exactly as the
+    schedule does and stays silent when there is nothing to say, which is the
+    normal outcome. Use --force to prove delivery works on a quiet week, and
+    --dry-run to see the messages in the terminal without posting.
+    """
+    import logging
+
+    from .bot import notify as run_notify
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s",
+                        force=True)
+    args = sys.argv[2:]
+    force = "--force" in args
+    dry = "--dry-run" in args
+    leagues = [a for a in args if not a.startswith("-")]
+    unknown = [lg for lg in leagues if lg not in config.leagues()]
+    if unknown:
+        print(f"unknown league(s): {', '.join(unknown)}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
+        return 2
+    return run_notify(leagues or None, force=force, dry_run=dry)
+
+
 def glossary() -> int:
     """combine glossary — what every token in a role line means."""
     from .pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY
@@ -533,6 +569,13 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "notify":
+        return notify()
+    if cmd == "bot":
+        from .bot import main as run_bot
+
+        run_bot(sys.argv[2:])
+        return 0
     if cmd == "compare":
         return compare()
     if cmd == "init":

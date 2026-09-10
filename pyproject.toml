@@ -11,10 +11,12 @@ dependencies = [
     "rapidfuzz>=3.9",
     "streamlit>=1.37",   # st.fragment(run_every=...) for the auto refresh
     "pandas>=2.0",
+    "discord.py>=2.4",   # in-season interface; slash commands + the Sunday check
 ]
 
 [project.scripts]
 combine = "combine.cli:main"
+combine-bot = "combine.bot:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]

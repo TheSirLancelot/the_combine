@@ -573,7 +573,69 @@ the shortcut was safe; mismatch means someone has a scoring bug.
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
 the draft-day notes in project memory.
 
-**13. Discord bot.** Unchanged from the brief.
+**13. Discord bot. DONE 2026-09-10.** `src/combine/bot.py` plus
+`src/combine/discord_out.py`, run with `combine bot` or the launchd agent in
+`scripts/com.thecombine.bot.plist`.
+
+Chosen over exposing the Streamlit app through the Cloudflare tunnel, and it
+replaced that plan rather than adding to it. The reason is the direction of the
+connection: the bot dials OUT and holds a websocket, so there is no public
+hostname, no ingress rule, no Access policy whose correctness matters and no
+inbound surface. It also collapses both wanted behaviours into one process,
+slash commands for asking and a scheduled check for being told.
+
+Commands are `/week`, `/startsit`, `/compare`, `/glossary`, `/health`, locked to
+`DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
+repo, because this is the one component that takes instructions from a chat box.
+
+**Getting it running under launchd cost two rounds, both self-inflicted.** First,
+`discord.py` went into `pyproject.toml` and never into `uv.lock`, so `uv run`
+had nothing to install; testing had been done by importing the module in a venv
+where it was hand-installed, which bypassed the lockfile entirely and made a
+broken path look fine. Second, the command was wrapped in `/usr/bin/taskpolicy
+-b` for background QoS, which `ProcessType: Background` already provides, so it
+was a redundant binary in the exec path. When an exec fails, launchd writes to
+the system log and NOTHING to the job's own log files, so the symptom was two
+empty log files and no explanation. Empty logs plus a job that is not listed now
+means exactly that, and `install_agents.sh` says so and prints the system-log
+query.
+
+Three things learned by connecting rather than by reading:
+
+  * **`Intents.none()` is wrong.** `guilds` is not a privileged intent and is
+    required for the channel cache; without it `get_channel` returns None and
+    the scheduled check posts nowhere while logging a warning nobody reads.
+    Caught by a connection test that printed what the client could actually see.
+    `weekly_check` also falls back to `fetch_channel`, which goes over REST and
+    does not depend on the cache at all.
+  * **Send Messages is per channel.** The bot had the server permission and a
+    channel override denied it. Slash commands still worked, because interaction
+    replies use a webhook token and bypass channel send permissions, so the
+    failure mode is a bot that answers every command and never posts on
+    schedule.
+  * **Width, not length, is the constraint.** Measured first: the week view is
+    1353 characters over 27 lines, comfortably inside Discord's 2000 cap, but
+    its widest line is 74 and start/sit reaches 130. Discord wraps code blocks
+    rather than scrolling them, so tables are re-rendered at about 48 characters
+    and prose is left as markdown for Discord to wrap.
+
+Two mechanics that are easy to get wrong and are commented in the module: every
+command defers before working, because Discord wants a response inside three
+seconds and this pipeline takes several; and the work runs in a thread, because
+discord.py has one event loop and blocking it stops the heartbeat and drops the
+gateway connection.
+
+`combine notify` runs the check on demand: `--dry-run` prints without sending,
+`--force` posts even when nothing is wrong. That last one is not a convenience.
+The check's success condition is silence, so a quiet week and a broken bot look
+identical, and forcing a labelled test post is the only way to prove delivery
+works. It sends over REST via `login` and `fetch_channel` without joining the
+gateway, because a second gateway session while the agent is running would be a
+second copy of the bot answering every command twice.
+
+Silence is the feature in the scheduled check. A correct lineup produces no
+message, because a bot that says "nothing to report" every week gets muted and
+then the one week it matters is missed.
 
 ## Known soft spots
 

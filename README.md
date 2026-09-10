@@ -292,9 +292,20 @@ the bottom of the app's Week page. The scheduled check only pings you about an a
 that does not cost season value; one that buys a week and pays for it later
 waits until you go looking, which is what `/waivers` is for.
 
+Team defenses are included. Kickers are not, and that is a measured decision
+rather than an unfinished one: across 245 kicker weeks in 2025, picking the
+higher-projected of two kickers scored more 50.0% of the time. A coin flip.
+ESPN projects every kicker at about the same number because they are about the
+same, so any kicker advice here would be noise with a decimal point on it.
+Defenses clear that bar, at 56.9%, the same signal the tool already acts on for
+IDP.
+
+Adding a defense drops the defense you already have, not your cheapest bench
+player, so the comparison reads defense against defense: what this week and the
+rest of the season look like with his versus with yours.
+
 The Yahoo league cannot answer this. Free agents need the API, so it reports the
-reason rather than an empty list. Kickers and team defenses are not covered in
-any league yet.
+reason rather than an empty list.
 
 ## The week (CLI)
 

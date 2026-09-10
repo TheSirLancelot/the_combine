@@ -895,6 +895,69 @@ the row's season against the season being played rather than asking whether the
 calendar is in season -- keyed off the calendar, the "prior, not evidence"
 warning went silent in exactly the weeks it was needed.
 
+## Defenses in, kickers out
+
+Settled 2026-09-11, closing the TODO. The question was whether K and D/ST can go
+through the same machinery as everyone else: this week plus rest of season,
+against what the wire offers. Mechanically yes -- ESPN publishes weekly and
+season projections for both in the free agent pool, with eligible slots, so
+nothing had to be invented. The real question was whether those projections mean
+anything, and that is answerable from our own stored ESPN outcomes. PFF having no
+stat lines for these positions only ever blocked the wire BACKTEST, which is not
+the same thing, and the earlier note conflated the two.
+
+Measured on 2025, from the outcome database:
+
+```
+              n     corr(proj, actual)   higher projection actually scored more
+D/ST        300          +0.258                     56.9%  of 39,776 pairs
+K           245          +0.096                     50.0%  of 39,568 pairs
+RB        1,569          +0.497                     68.2%
+pass-catch 2,488         +0.374                        --
+IDP       1,248          +0.258                        --
+```
+
+Kickers are a coin flip, and not marginally: 50.0%. Projections have a standard
+deviation of 0.4 points against an outcome spread of 11.4, which is ESPN saying
+every kicker is the same, correctly. `NEVER_STREAM` excludes them and the
+comment carries the numbers, because "we did not get to kickers" and "kickers
+are unpredictable and here is the measurement" are different states and the
+second one should not have to be rediscovered.
+
+Defenses are in. +0.258 and 56.9% is the same signal as IDP, a family the tool
+already acts on, so excluding D/ST while acting on linebackers would have been
+inconsistent.
+
+**Correcting something from the night before.** The old TODO cited D/ST being
+under-projected by 1.17 +-0.37 as evidence of value here. It is not, for this
+decision. A per-position calibration offset is a constant, so it applies equally
+to every defense and cancels in a defense-versus-defense comparison. It matters
+when comparing across positions, which never happens for a slot only defenses
+can fill.
+
+**Splitting the family.** `family()` used to answer "other" for both, which put
+245 kicker weeks and 300 defense weeks in one cell. Their outcome spreads are
+11.4 and 17.0, so a threshold averaged across them was wrong for both. They are
+now `k` and `dst` and each has enough rows to measure its own bands.
+
+**Streaming changes the drop.** `STREAMED` positions replace rather than
+accumulate: nobody carries two defenses. Without this the tool dropped whichever
+fringe receiver was cheapest and reported a 92 point season loss for a one point
+weekly gain, comparing a defense's season projection against a receiver's --
+true, and answering a question nobody asked. The drop is now the incumbent
+defense, so it reads as intended: Titans +1.49 this week, -32.1 for the season
+against the Chiefs.
+
+That also surfaced a bug in yesterday's locked-drop work. `blocked_name` was set
+whenever the chosen drop was not the cheapest player, so a streamed add produced
+"his game has started, so he cannot be dropped" about a player who was simply
+not the right drop. It is now gated on the ideal drop actually being locked.
+
+**Where it currently lands.** DMWD week 1: Titans D/ST projects 6.8 against the
+rostered Chiefs at 5.31, a gain of 1.49 against a measured bar of 1.62. It falls
+short by 0.13 and reports nothing, which is the threshold working rather than
+the feature failing.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

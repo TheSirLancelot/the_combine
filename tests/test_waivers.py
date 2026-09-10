@@ -245,3 +245,79 @@ def test_the_cheap_filter_still_excludes_a_player_who_cannot_help():
                          {"Droppable": 20.0, "Starter": 200.0,
                           "DT Starter": 180.0})
     assert found == []
+
+
+# --- kickers and defenses ---------------------------------------------------
+
+def test_kickers_are_never_offered():
+    """Measured, not assumed. Across 245 kicker player-weeks in 2025 the
+    projections have a standard deviation of 0.4 against an outcome spread of
+    11.4, and picking the higher-projected of two kickers scored more 50.0% of
+    the time across 39,568 pairs. Every kicker recommendation would be noise
+    wearing a number."""
+    from combine.pipeline.waivers import _synthetic
+
+    kicker = FakePool("Some Kicker", "K", 8.6, slots=["K", "BE"])
+    assert _synthetic(kicker, 1) is None
+
+
+def test_defenses_are_offered():
+    """+0.258 correlation and the higher projection wins 56.9% of pairs, which
+    is the same signal as IDP, a family the tool already acts on."""
+    from combine.pipeline.waivers import _synthetic
+
+    dst = FakePool("Titans D/ST", "D/ST", 6.8, slots=["D/ST", "BE"])
+    assert _synthetic(dst, 1) is not None
+
+
+def test_adding_a_defense_drops_the_defense_you_have():
+    """Nobody carries two defenses. Dropping a fringe receiver instead compared
+    a defense's season projection against a receiver's and reported a 92 point
+    season loss for a one point weekly gain: true, and answering a question
+    nobody asked."""
+    lineup = [rostered("My D/ST", "D/ST", "D/ST", 5.3),
+              rostered("Fringe WR", "WR", "BE", 1.0),
+              rostered("Starter", "WR", "WR", 12.0)]
+    client = FakeClient(lineup, [FakePool("Better D/ST", "D/ST", 9.0,
+                                          slots=["D/ST", "BE"], season=60.0)])
+    client.roster_slots = lambda: {"WR": 1, "D/ST": 1}
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"My D/ST": 100.0, "Fringe WR": 5.0,
+                                          "Starter": 200.0}, limit=5)
+    assert found, "the defense should be a candidate"
+    assert found[0].drop_name == "My D/ST"
+    assert found[0].season_cost == -40.0   # 60 for his season against 100 for yours
+
+
+def test_a_streamed_drop_is_not_reported_as_a_lock():
+    """The cheapest player is a fringe receiver, but the defense is the right
+    drop and nothing here is locked. Saying "his game has started" would be a
+    false explanation of a deliberate choice."""
+    lineup = [rostered("My D/ST", "D/ST", "D/ST", 5.3),
+              rostered("Fringe WR", "WR", "BE", 1.0),
+              rostered("Starter", "WR", "WR", 12.0)]
+    client = FakeClient(lineup, [FakePool("Better D/ST", "D/ST", 9.0,
+                                          slots=["D/ST", "BE"], season=60.0)])
+    client.roster_slots = lambda: {"WR": 1, "D/ST": 1}
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"My D/ST": 100.0, "Fringe WR": 5.0,
+                                          "Starter": 200.0}, limit=5)
+    assert found[0].blocked_name is None
+    assert found[0].blocked_note() == ""
+
+
+def test_a_streamed_add_still_respects_the_lock():
+    """A defense that has already played cannot be dropped either."""
+    lineup = [rostered("My D/ST", "D/ST", "D/ST", 5.3, started=True),
+              rostered("Fringe WR", "WR", "BE", 1.0),
+              rostered("Starter", "WR", "WR", 12.0)]
+    client = FakeClient(lineup, [FakePool("Better D/ST", "D/ST", 9.0,
+                                          slots=["D/ST", "BE"])])
+    client.roster_slots = lambda: {"WR": 1, "D/ST": 1}
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"My D/ST": 100.0, "Fringe WR": 5.0,
+                                          "Starter": 200.0}, limit=5)
+    assert found[0].drop_name != "My D/ST"

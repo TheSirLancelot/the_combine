@@ -29,10 +29,8 @@ bench asset is usually a bad trade, and no single number says so.
 READ ONLY. This says what a claim would be worth. It never makes one, and there
 is no add or drop anywhere in this repo.
 
-TODO: kickers and team defenses. Streaming a defense is the classic waiver win,
-DMWD's D/ST are under-projected by 1.17 +-0.37 points which suggests real value
-there, and none of it can be backtested because PFF publishes no stat lines for
-kickers or team defenses. Deferred rather than guessed at.
+Team defenses are in. Kickers are deliberately out, and the reason is measured
+rather than assumed -- see NEVER_STREAM.
 """
 
 from __future__ import annotations
@@ -50,6 +48,30 @@ from .optimize import best_lineup
 # is worth. Three is enough to catch that without running the optimizer hundreds
 # of times.
 DROP_CHOICES = 3
+
+# Kickers are excluded because ESPN cannot tell them apart, and the number is
+# not close. Across 245 kicker player-weeks in 2025, projections have a standard
+# deviation of 0.4 points against an outcome spread of 11.4, correlation between
+# projection and result is +0.096, and picking the higher-projected of two
+# kickers scored more 50.0% of the time across 39,568 pairs. A coin flip. Every
+# kicker recommendation this could make would be noise wearing a number.
+#
+# Team defenses are a different story and are IN: correlation +0.258 and the
+# higher projection wins 56.9% of pairs, which is the same signal as IDP, a
+# family the tool already acts on.
+#
+# Both numbers come from our own stored ESPN outcomes rather than from PFF,
+# which is what makes them checkable. PFF publishes no stat lines for either
+# position, but that only ever blocked the wire BACKTEST, not this decision.
+NEVER_STREAM = frozenset({"K"})
+
+# Positions you replace rather than accumulate. Nobody carries two defenses, so
+# the drop that goes with adding one is the defense already on the roster, not
+# whichever fringe receiver happens to be cheapest. Without this the tool
+# compared a defense's season projection against a wide receiver's and reported
+# a 92 point season loss for a one point weekly gain, which is a true number
+# answering a question nobody asked.
+STREAMED = frozenset({"D/ST", "DST", "DEF"})
 
 # Kickoff far enough out that a synthetic free agent is never treated as locked.
 _UNPLAYED = 4_000_000_000_000
@@ -179,6 +201,8 @@ def _synthetic(player, week: int) -> WeeklyPlayer | None:
     ESPN's pool players carry a weekly projection and their eligible slots, which
     is everything needed to ask whether they would start.
     """
+    if (getattr(player, "position", "") or "").upper() in NEVER_STREAM:
+        return None
     stats = (getattr(player, "stats", {}) or {}).get(week, {}) or {}
     proj = stats.get("projected_points") or 0.0
     slots = frozenset(getattr(player, "eligibleSlots", ()) or ())
@@ -242,6 +266,10 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
     def free(p) -> bool:
         return not (p.locked or p.played)
 
+    def blocked_by_lock(ideal, drop) -> bool:
+        return (ideal is not None and ideal.player_id != drop.player_id
+                and not free(ideal))
+
     out_of_lineup = [p for p in lineup if p.player_id not in base_ids]
     # What you WOULD drop if the roster were unlocked, kept so the message can
     # name him and price the difference rather than quietly substituting.
@@ -285,8 +313,18 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
                    for slot in candidate.eligible_slots):
             continue
 
+        # For a streamed position the drop is the incumbent, so the comparison
+        # reads defense against defense: what this week and the rest of the
+        # season look like with his, versus with the one you have.
+        drops = ranked_drops
+        if candidate.pos.upper() in STREAMED:
+            incumbent = [p for p in lineup
+                         if p.pos.upper() in STREAMED and free(p)]
+            if incumbent:
+                drops = cheapest(incumbent)[:1]
+
         best: tuple[float, WeeklyPlayer, str | None] | None = None
-        for drop in ranked_drops:
+        for drop in drops:
             trial = [p for p in lineup if p.player_id != drop.player_id]
             trial.append(candidate)
             value, ids = _value(trial, slot_list, cal)
@@ -314,12 +352,14 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
             season_proj=float(getattr(raw, "projected_total_points", 0.0) or 0.0),
             drop_name=drop.name, drop_pos=drop.pos,
             drop_season_proj=values.get(drop.player_id, 0.0),
-            blocked_name=(ideal.name if ideal is not None
-                          and ideal.player_id != drop.player_id else None),
-            blocked_pos=(ideal.pos if ideal is not None
-                         and ideal.player_id != drop.player_id else None),
+            # Only when the cheaper drop is LOCKED. A streamed add deliberately
+            # drops the incumbent rather than the cheapest player, and saying
+            # "his game has started" about a player who is simply not the right
+            # drop would be a false explanation.
+            blocked_name=(ideal.name if blocked_by_lock(ideal, drop) else None),
+            blocked_pos=(ideal.pos if blocked_by_lock(ideal, drop) else None),
             blocked_season_proj=(values.get(ideal.player_id, 0.0)
-                                 if ideal is not None else 0.0),
+                                 if blocked_by_lock(ideal, drop) else 0.0),
             drop_locked=drop_locked,
             week_gain=gain, displaces=displaced,
             correction=cal.offset(candidate.pos),

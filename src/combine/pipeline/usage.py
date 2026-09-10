@@ -62,6 +62,14 @@ def family(pos: str) -> str:
         return "pass-catcher"
     if pos in IDP:
         return "idp"
+    # K and D/ST were one "other" family and should not have been. They are 245
+    # and 300 player-weeks of 2025 with nothing in common: a kicker's outcomes
+    # spread 11.4 points p10 to p90 against a defense's 17.0, so a threshold
+    # averaged across the two is wrong for both.
+    if pos in ("D/ST", "DST", "DEF"):
+        return "dst"
+    if pos == "K":
+        return "k"
     return "other"
 
 

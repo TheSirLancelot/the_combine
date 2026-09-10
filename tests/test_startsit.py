@@ -42,7 +42,12 @@ def test_families_split_the_units():
     assert family("RB") != family("WR")
     assert family("QB") == "qb"
     assert family("LB") == family("CB") == "idp"
-    assert family("D/ST") == "other"
+    # K and D/ST were one "other" family and should not have been: a kicker's
+    # outcomes spread 11.4 points p10 to p90 against a defense's 17.0, so a
+    # threshold averaged over the two is wrong for both.
+    assert family("D/ST") == "dst"
+    assert family("K") == "k"
+    assert family("D/ST") != family("K")
 
 
 def test_opportunity_edge_refuses_to_cross_positions():

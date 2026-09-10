@@ -144,3 +144,29 @@ def test_one_league_failing_does_not_stop_the_others(monkeypatch, capsys):
     monkeypatch.setattr(bot, "build_startsit", build)
     assert bot.notify(dry_run=True) == 1        # non-zero: something failed
     assert "dmwd" in capsys.readouterr().out
+
+
+def test_all_leagues_continues_past_one_that_fails(monkeypatch):
+    """Expired ESPN cookies in one league must not hide the other two."""
+    from combine import bot
+
+    monkeypatch.setattr(bot.config, "leagues",
+                        lambda: {"rcl": object(), "dmwd": object(), "work": object()})
+
+    def build(league, week):
+        if league == "dmwd":
+            raise RuntimeError("401 unauthorized")
+        return ([f"{league} report"], False)
+
+    monkeypatch.setattr(bot, "build_startsit", build)
+    out = "\n".join(bot.build_startsit_all())
+    assert "rcl report" in out and "work report" in out
+    assert "dmwd" in out and "401 unauthorized" in out
+
+
+def test_all_leagues_reports_every_league(monkeypatch):
+    from combine import bot
+
+    monkeypatch.setattr(bot.config, "leagues", lambda: {"a": object(), "b": object()})
+    monkeypatch.setattr(bot, "build_week", lambda lg, wk: [f"{lg} week"])
+    assert bot.build_week_all() == ["a week", "b week"]

@@ -28,6 +28,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from datetime import time as dtime
+from functools import lru_cache
 
 import discord
 from discord import app_commands
@@ -60,9 +61,14 @@ LEAGUE_CHOICES = [
 
 # --- the work, all of it synchronous and run off the event loop -------------
 
+@lru_cache(maxsize=1)
 def _distribution():
     """Outcome history, or None. Optional by design: a missing database costs
-    the floor and ceiling columns, not the answer."""
+    the floor and ceiling columns, not the answer.
+
+    Cached: it is identical for every league, and asking for all three at once
+    would otherwise rebuild the same frame three times.
+    """
     from . import db
     from .pipeline.distribution import load as load_dist
 
@@ -75,6 +81,7 @@ def _distribution():
         return None
 
 
+@lru_cache(maxsize=1)
 def _pff():
     """(usage, ids, in_season). Optional the same way."""
     from .pipeline.crosswalk import load_ids
@@ -98,6 +105,34 @@ def build_week(league: str, week: int | None = None) -> list[str]:
     stamp = datetime.now().astimezone().strftime("%H:%M %Z")
     return discord_out.week_message(matchup, client.roster_slots(),
                                     config.get_league(league).name, stamp)
+
+
+def build_startsit_all(week: int | None = None) -> list[str]:
+    """Every configured league, one after another.
+
+    A league that errors is reported inline rather than taking the others with
+    it: expired ESPN cookies should not hide the Yahoo league's answer.
+    """
+    messages: list[str] = []
+    for slug in config.leagues():
+        try:
+            part, _newsworthy = build_startsit(slug, week)
+            messages += part
+        except Exception as exc:
+            log.exception("startsit failed for %s", slug)
+            messages.append(f"⚠️ `{slug}` failed: `{type(exc).__name__}: {exc}`")
+    return messages
+
+
+def build_week_all(week: int | None = None) -> list[str]:
+    messages: list[str] = []
+    for slug in config.leagues():
+        try:
+            messages += build_week(slug, week)
+        except Exception as exc:
+            log.exception("week failed for %s", slug)
+            messages.append(f"⚠️ `{slug}` failed: `{type(exc).__name__}: {exc}`")
+    return messages
 
 
 def build_startsit(league: str, week: int | None = None) -> tuple[list[str], bool]:
@@ -243,20 +278,30 @@ async def respond(interaction: discord.Interaction, work, *args):
 
 
 @client.tree.command(description="This week's lineup, with projections and opponents")
-@app_commands.describe(league="Which league", week="Week number, blank for current")
+@app_commands.describe(league="Which league, blank for all of them",
+                       week="Week number, blank for current")
 @app_commands.choices(league=LEAGUE_CHOICES)
 @owner_only()
-async def week(interaction: discord.Interaction, league: str, week: int | None = None):
-    await respond(interaction, build_week, league, week)
+async def week(interaction: discord.Interaction, league: str | None = None,
+               week: int | None = None):
+    if league is None:
+        await respond(interaction, build_week_all, week)
+    else:
+        await respond(interaction, build_week, league, week)
 
 
 @client.tree.command(description="Start/sit calls: only the slots with a real question")
-@app_commands.describe(league="Which league", week="Week number, blank for current")
+@app_commands.describe(league="Which league, blank for all of them",
+                       week="Week number, blank for current")
 @app_commands.choices(league=LEAGUE_CHOICES)
 @owner_only()
-async def startsit(interaction: discord.Interaction, league: str,
+async def startsit(interaction: discord.Interaction, league: str | None = None,
                    week: int | None = None):
-    await respond(interaction, lambda lg, wk: build_startsit(lg, wk)[0], league, week)
+    if league is None:
+        await respond(interaction, build_startsit_all, week)
+    else:
+        await respond(interaction, lambda lg, wk: build_startsit(lg, wk)[0],
+                      league, week)
 
 
 @client.tree.command(description="Two players head to head, in one league")

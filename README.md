@@ -67,8 +67,10 @@ the logs. Run it again after pulling; it reloads rather than duplicating.
 
 Add `--with-app` to also run the Streamlit app, `--uninstall` to remove both.
 
-Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. All of them
-answer to the owner only, because otherwise anyone who can see the bot can read
+Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. `/week` and
+`/startsit` take an optional league and cover all of them when you leave it
+blank, which is usually what you want on a Sunday. Three leagues takes about
+five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
 
 Chosen over exposing the app through a tunnel because of the direction of the
@@ -210,6 +212,7 @@ asks PFF where the calendar is and says which season it used.
 ## Start/sit (CLI)
 
 ```bash
+uv run combine startsit              # every league
 uv run combine startsit rcl
 uv run combine startsit dmwd 3
 uv run combine compare dmwd "Nabers" "Golden"

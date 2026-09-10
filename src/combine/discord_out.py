@@ -352,6 +352,9 @@ def waivers_embeds(candidates, league_name: str, week: int,
         lines = [f"Drop **{c.drop_name}** ({c.drop_pos})"]
         if c.displaces:
             lines.append(f"Starts over {c.displaces}")
+        note = c.blocked_note()
+        if note:
+            lines.append(f"🔒 {note}")
         if c.trades_down:
             lines.append("*Buys a week and pays for it later.*")
         if c.correction_carries_it:

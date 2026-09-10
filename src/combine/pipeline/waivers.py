@@ -71,6 +71,13 @@ class Candidate:
     displaces: str | None     # who he pushes out of the lineup this week
     correction: float = 0.0   # calibration applied to his projection
     correction_n: int = 0     # how many observations that correction rests on
+    # The drop you would actually want, when his game has already kicked off and
+    # the platform will not let you drop him until the weekly reset. None when
+    # the best drop is also a legal one, which is the normal case.
+    blocked_name: str | None = None
+    blocked_pos: str | None = None
+    blocked_season_proj: float = 0.0
+    drop_locked: bool = False   # nothing on the roster can be dropped right now
 
     @property
     def correction_carries_it(self) -> bool:
@@ -93,6 +100,18 @@ class Candidate:
         return self.correction < 0
 
     @property
+    def blocked_cost(self) -> float:
+        """Extra season value surrendered because the ideal drop is locked.
+
+        Always >= 0: the blocked player is by definition the cheapest to lose,
+        so anyone else costs at least as much. This is the number that decides
+        whether to make the move now or wait for the reset.
+        """
+        if self.blocked_name is None:
+            return 0.0
+        return max(0.0, self.drop_season_proj - self.blocked_season_proj)
+
+    @property
     def season_cost(self) -> float:
         """Season value given up. Positive means the add is also an upgrade for
         the rest of the year; negative means you are trading the season for a
@@ -102,6 +121,30 @@ class Candidate:
     @property
     def trades_down(self) -> bool:
         return self.season_cost < 0
+
+    def blocked_note(self) -> str:
+        """Why the drop is not the one you would pick, in a sentence.
+
+        No invented threshold for "is the difference big enough". It states the
+        number and whether the move still gains season value overall, which is
+        the pair of facts the decision actually turns on.
+        """
+        if self.drop_locked:
+            return ("Nothing on this roster can be dropped right now: everyone "
+                    "who could go has already played. This has to wait for the "
+                    "weekly reset.")
+        if not self.blocked_name:
+            return ""
+        tail = (f"Dropping {self.drop_name} instead gives up "
+                f"{self.blocked_cost:.0f} more points of season value")
+        if self.season_cost >= 0:
+            tail += ", and the move still gains season value overall."
+        else:
+            tail += (f", and the move gives up {abs(self.season_cost):.0f} "
+                     f"overall. Waiting for the reset would avoid that.")
+        return (f"{self.blocked_name} ({self.blocked_pos}) is the cheaper drop, "
+                f"but his game has started, so he cannot be dropped until the "
+                f"weekly reset. {tail}")
 
     def describe(self) -> str:
         line = (f"{self.name} ({self.pos} {self.team or '--'}) "
@@ -117,6 +160,9 @@ class Candidate:
             line += (f"\n    clears the bar even after {self.pos} projections are "
                      f"marked DOWN {abs(self.correction):.1f} for being "
                      f"systematically over-projected")
+        note = self.blocked_note()
+        if note:
+            line += f"\n    LOCKED: {note}"
         line += f"\n    drop {self.drop_name} ({self.drop_pos})"
         if self.trades_down:
             line += (f": costs {abs(self.season_cost):.0f} projected points of "
@@ -186,21 +232,48 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
     # week's projection only if the season numbers are unavailable, which is
     # worse but better than refusing to answer.
     values = season_value or {}
-    ranked_drops = sorted(
-        (p for p in lineup if p.player_id not in base_ids),
-        key=lambda p: values.get(p.player_id, p.projected))[:DROP_CHOICES]
+
+    def cheapest(pool):
+        return sorted(pool, key=lambda p: values.get(p.player_id, p.projected))
+
+    # A player whose game has kicked off cannot be dropped until the weekly
+    # reset, so recommending him is advice you cannot take. This is what made the
+    # tool say "drop Rashid Shaheed" on a Monday after he had already played.
+    def free(p) -> bool:
+        return not (p.locked or p.played)
+
+    out_of_lineup = [p for p in lineup if p.player_id not in base_ids]
+    # What you WOULD drop if the roster were unlocked, kept so the message can
+    # name him and price the difference rather than quietly substituting.
+    ideal = next(iter(cheapest(out_of_lineup or lineup)), None)
+
+    ranked_drops = cheapest([p for p in out_of_lineup if free(p)])[:DROP_CHOICES]
+    drop_locked = False
     if not ranked_drops:
-        # Every rostered player is in the lineup, so a drop must cost a starter.
-        ranked_drops = sorted(lineup, key=lambda p: values.get(p.player_id,
-                                                               p.projected))[:1]
+        # Nothing on the bench is droppable. Fall back to the whole roster, and
+        # if that is locked too, still answer but say the move cannot be made.
+        ranked_drops = cheapest([p for p in lineup if free(p)])[:DROP_CHOICES]
+    if not ranked_drops:
+        drop_locked = True
+        ranked_drops = cheapest(out_of_lineup or lineup)[:1]
 
     # The cheap filter. A candidate can only help if his calibrated projection
     # beats the weakest calibrated starter he is eligible to replace. Without
     # this the optimizer would run hundreds of times for nothing.
+    # Every startable slot begins at zero, because an EMPTY slot is beaten by
+    # anyone at all. Defaulting an unfilled slot to infinity silently hid every
+    # candidate who could have filled it, which is the kind of miss that looks
+    # like "the wire has nothing" rather than like a bug.
     weakest: dict[str, float] = {}
     for s in starters:
         weakest[s.slot] = min(weakest.get(s.slot, 1e9),
                               cal.adjust(s.pos, effective(s)))
+    # An EMPTY startable slot is beaten by anyone at all, so it sits at zero
+    # rather than at the infinity a missing key would give. Applied after the
+    # loop, not as its default: seeding zeros first makes every min() zero and
+    # turns the whole filter off, which is a quiet way to return noise.
+    for slot in slot_list:
+        weakest.setdefault(slot, 0.0)
 
     out: list[Candidate] = []
     for raw in client.league.free_agents(size=pool_size):
@@ -241,6 +314,13 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
             season_proj=float(getattr(raw, "projected_total_points", 0.0) or 0.0),
             drop_name=drop.name, drop_pos=drop.pos,
             drop_season_proj=values.get(drop.player_id, 0.0),
+            blocked_name=(ideal.name if ideal is not None
+                          and ideal.player_id != drop.player_id else None),
+            blocked_pos=(ideal.pos if ideal is not None
+                         and ideal.player_id != drop.player_id else None),
+            blocked_season_proj=(values.get(ideal.player_id, 0.0)
+                                 if ideal is not None else 0.0),
+            drop_locked=drop_locked,
             week_gain=gain, displaces=displaced,
             correction=cal.offset(candidate.pos),
             correction_n=(cal.biases.get(candidate.pos.upper()).n
@@ -284,6 +364,9 @@ def render(candidates: list[Candidate], league_name: str, week: int) -> str:
                    f"{c.displaces or '--'}")
     out.append("")
     for i, c in enumerate(candidates, start=1):
+        note = c.blocked_note()
+        if note:
+            out.append(f"  {i}  LOCKED: {note}")
         if c.correction_carries_it:
             out.append(f"  {i}* ranks here only because {c.pos} projections are "
                        f"corrected UP by {c.correction:.1f},\n     measured on "

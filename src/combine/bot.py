@@ -29,12 +29,15 @@ Two mechanics that matter and are easy to get wrong:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import sys
 from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 from functools import lru_cache
+from typing import NamedTuple
 
 import discord
 from discord import app_commands
@@ -44,10 +47,16 @@ from . import config
 
 log = logging.getLogger("combine.bot")
 
-# The scheduled check. Sunday morning Pacific, before the early kickoffs, late
-# enough that Saturday's injury news has landed.
+# The scheduled check. Every morning Pacific, not just Sunday: games are played
+# on Thursday, Saturday, Sunday and Monday, so a Sunday-only check misses a
+# Thursday injury and every waiver window that opens midweek.
+#
+# Running daily only works because of the digest below. The gate that made a
+# Sunday check bearable was "post only when there is news", and news does not
+# stop being news the next morning: a hurt starter would have posted the same
+# card six days running, which is how a channel gets muted.
 CHECK_AT = dtime(hour=15, minute=30, tzinfo=UTC)   # 08:30 PT
-CHECK_DAYS = (6,)     # Sunday, as isoweekday
+STATE_PATH = config.DATA_DIR / "last_post.json"
 
 
 def _int_env(key: str) -> int:
@@ -102,6 +111,49 @@ def _pff():
         return {}, {}, True
 
 
+class Report(NamedTuple):
+    """What a builder hands back.
+
+    `signature` is what the report is ABOUT -- which players, which swaps --
+    with the numbers left out on purpose. Digesting the rendered text instead
+    would defeat the whole thing, because ESPN nudges projections through the
+    day and every morning would look like new news.
+    """
+
+    embeds: list[discord.Embed]
+    news: bool = False
+    signature: tuple[str, ...] = ()
+
+
+def already_said(slug: str, week: int, signature: tuple[str, ...]) -> bool:
+    """Whether this exact report already went out. Records it if not.
+
+    Best effort: any failure to read or write the state file returns False, so
+    the worst case is a duplicate post rather than a missed one. That is the
+    right way round.
+    """
+    if not signature:
+        return False
+    digest = hashlib.sha1(
+        "|".join(sorted(signature)).encode(), usedforsecurity=False).hexdigest()
+    try:
+        state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
+    except Exception:
+        log.warning("could not read %s; posting anyway", STATE_PATH, exc_info=True)
+        state = {}
+    seen = state.get(slug) or {}
+    if seen.get("week") == week and seen.get("digest") == digest:
+        return True
+    state[slug] = {"week": week, "digest": digest,
+                   "at": datetime.now(UTC).isoformat(timespec="seconds")}
+    try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.write_text(json.dumps(state, indent=2))
+    except Exception:
+        log.warning("could not write %s", STATE_PATH, exc_info=True)
+    return False
+
+
 def failure_embed(slug: str, exc: Exception) -> discord.Embed:
     """One league failing must not take the others with it.
 
@@ -136,8 +188,7 @@ def build_startsit_all(week: int | None = None) -> list[discord.Embed]:
     messages: list[discord.Embed] = []
     for slug in config.leagues():
         try:
-            part, _newsworthy = build_startsit(slug, week)
-            messages += part
+            messages += build_startsit(slug, week).embeds
         except Exception as exc:
             log.exception("startsit failed for %s", slug)
             messages.append(failure_embed(slug, exc))
@@ -155,9 +206,7 @@ def build_week_all(week: int | None = None) -> list[discord.Embed]:
     return messages
 
 
-def build_startsit(league: str,
-                   week: int | None = None) -> tuple[list[discord.Embed], bool]:
-    """(messages, whether there is anything worth interrupting for)."""
+def build_startsit(league: str, week: int | None = None) -> Report:
     from . import discord_out
     from .pipeline.lineup import optimal_moves
     from .pipeline.startsit import review
@@ -173,7 +222,11 @@ def build_startsit(league: str,
     messages = discord_out.startsit_embeds(
         matchup, calls, hurt, usage, ids, in_season,
         config.get_league(league).name, slots, dist)
-    return messages, discord_out.has_news(calls, hurt, gain)
+    signature = tuple(
+        [f"hurt:{p.player_id}" for p in hurt]
+        + [f"swap:{c.bench.player_id}>{c.starter.player_id}" for c in calls]
+        + [f"optimal:{p.player_id}" for p in _add])
+    return Report(messages, discord_out.has_news(calls, hurt, gain), signature)
 
 
 def build_compare(league: str, a: str, b: str,
@@ -218,18 +271,16 @@ def _calibration(league: str):
     return load_cal(league)
 
 
-def build_waivers(league: str,
-                  week: int | None = None) -> tuple[list[discord.Embed], bool]:
-    """(messages, whether anything is worth interrupting for)."""
+def build_waivers(league: str, week: int | None = None) -> Report:
     from . import discord_out
     from .pipeline.waivers import find, season_values
     from .platforms import client_for
 
     cfg = config.get_league(league)
     if cfg.platform != "espn":
-        return discord_out.waivers_embeds(
+        return Report(discord_out.waivers_embeds(
             [], cfg.name, int(week or 0),
-            unavailable="no free agent pool without the Yahoo API"), False
+            unavailable="no free agent pool without the Yahoo API"))
 
     client = client_for(league)
     wk = int(week or client.week)
@@ -238,14 +289,15 @@ def build_waivers(league: str,
     # Only an add that does not trade away season value is worth a notification.
     # The rest belong in `/waivers` when you go looking, not in a Sunday ping.
     worth_telling = any(not c.trades_down for c in found)
-    return discord_out.waivers_embeds(found, cfg.name, wk), worth_telling
+    return Report(discord_out.waivers_embeds(found, cfg.name, wk), worth_telling,
+                  tuple(f"add:{c.name}>{c.drop_name}" for c in found))
 
 
 def build_waivers_all(week: int | None = None) -> list[discord.Embed]:
     messages: list[discord.Embed] = []
     for slug in config.leagues():
         try:
-            messages += build_waivers(slug, week)[0]
+            messages += build_waivers(slug, week).embeds
         except Exception as exc:
             log.exception("waivers failed for %s", slug)
             messages.append(failure_embed(slug, exc))
@@ -310,7 +362,7 @@ class Combine(discord.Client):
         else:
             await self.tree.sync()
         if CHANNEL_ID:
-            weekly_check.start(self)
+            daily_check.start(self)
 
 
 client = Combine()
@@ -335,9 +387,9 @@ def owner_only():
 BUILDERS = {
     "week": lambda league, week: (build_week(league, week) if league
                                   else build_week_all(week)),
-    "startsit": lambda league, week: (build_startsit(league, week)[0] if league
+    "startsit": lambda league, week: (build_startsit(league, week).embeds if league
                                       else build_startsit_all(week)),
-    "waivers": lambda league, week: (build_waivers(league, week)[0] if league
+    "waivers": lambda league, week: (build_waivers(league, week).embeds if league
                                      else build_waivers_all(week)),
     "scoreboard": lambda league, week: build_scoreboard(week),
 }
@@ -481,7 +533,7 @@ async def startsit(interaction: discord.Interaction, league: str | None = None,
                    week: int | None = None):
     await respond(interaction,
                   build_startsit_all if league is None
-                  else (lambda lg, wk: build_startsit(lg, wk)[0]),
+                  else (lambda lg, wk: build_startsit(lg, wk).embeds),
                   *( (week,) if league is None else (league, week) ),
                   nav=("startsit", league, week))
 
@@ -505,7 +557,7 @@ async def waivers(interaction: discord.Interaction, league: str | None = None,
                   week: int | None = None):
     await respond(interaction,
                   build_waivers_all if league is None
-                  else (lambda lg, wk: build_waivers(lg, wk)[0]),
+                  else (lambda lg, wk: build_waivers(lg, wk).embeds),
                   *( (week,) if league is None else (league, week) ),
                   nav=("waivers", league, week))
 
@@ -637,15 +689,14 @@ async def send_embeds(channel, embeds: list[discord.Embed]) -> int:
 
 
 @tasks.loop(time=CHECK_AT)
-async def weekly_check(bot: discord.Client):
-    """Post only when there is something to say.
+async def daily_check(bot: discord.Client):
+    """Post only when there is something NEW to say.
 
-    Silence is the feature. A correct lineup should produce no message at all,
-    because a bot that says "nothing to report" every week is a bot you mute and
-    then miss the one week it mattered.
+    Silence is the feature, and running daily raises the bar for what silence
+    means. A correct lineup produces nothing, and so does a report that already
+    went out: a starter who is out for the season is news once, not every
+    morning until Sunday.
     """
-    if datetime.now(UTC).isoweekday() not in CHECK_DAYS:
-        return
     channel = bot.get_channel(CHANNEL_ID)
     if channel is None:
         # Cache miss, or a channel created since connect. REST always knows.
@@ -656,21 +707,30 @@ async def weekly_check(bot: discord.Client):
             return
     for slug in config.leagues():
         try:
-            messages, newsworthy = await asyncio.to_thread(build_startsit, slug, None)
+            startsit = await asyncio.to_thread(build_startsit, slug, None)
             # A waiver upgrade that does not cost season value is the strongest
             # validated signal here: +2.50 points a week in RCL over 216
-            # team-weeks. It belongs in the Sunday post.
-            wire, wire_news = await asyncio.to_thread(build_waivers, slug, None)
+            # team-weeks. It belongs in the morning post.
+            wire = await asyncio.to_thread(build_waivers, slug, None)
         except Exception as exc:
             log.exception("weekly check failed for %s", slug)
             await channel.send(embed=failure_embed(f"{slug} check", exc))
             continue
-        if not (newsworthy or wire_news):
+        if not (startsit.news or wire.news):
             log.info("%s: nothing worth posting", slug)
             continue
-        await send_embeds(channel,
-                          (messages if newsworthy else [])
-                          + (wire if wire_news else []))
+        week = current_week()
+        parts, signature = [], ()
+        if startsit.news:
+            parts += startsit.embeds
+            signature += startsit.signature
+        if wire.news:
+            parts += wire.embeds
+            signature += wire.signature
+        if already_said(slug, week, signature):
+            log.info("%s: same report as last time, staying quiet", slug)
+            continue
+        await send_embeds(channel, parts)
 
 
 def preflight() -> list[str]:
@@ -726,7 +786,7 @@ def notify(leagues: list[str] | None = None, force: bool = False,
 
     for slug in wanted:
         try:
-            messages, newsworthy = build_startsit(slug, None)
+            messages, newsworthy, _signature = build_startsit(slug, None)
         except Exception as exc:
             log.error("%s: %s: %s", slug, type(exc).__name__, exc)
             failed += 1

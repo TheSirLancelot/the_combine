@@ -51,7 +51,7 @@ identical code, not a reimplementation.
 
 ## The Discord bot
 
-The in-season interface from anywhere. Slash commands for asking, and a Sunday
+The in-season interface from anywhere. Slash commands for asking, and a daily
 morning check that stays silent unless there is something to act on.
 
 ```bash
@@ -104,6 +104,17 @@ blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
 
+The scheduled check runs at 08:30 Pacific every morning, not just Sunday. Games
+are played Thursday through Monday, so a Sunday-only check misses a Thursday
+injury and every waiver window that opens midweek.
+
+Daily only works because the same report does not go out twice. The check
+remembers what it last said per league, by which players and which swaps rather
+than by the numbers, so a starter who is out for the season is news once instead
+of six mornings running. ESPN nudges projections through the day, and matching on
+the rendered text would have made every morning look like fresh news. State lives
+in `data/last_post.json`; delete it to make the next check post again.
+
 Output is embeds: the coloured left bar, a title, columns for the numbers, a
 footer for the caveats. The colour is severity rather than decoration. Green
 means nothing to do, blue means here is your information, amber means a decision
@@ -142,7 +153,7 @@ connection. The bot dials out to Discord and holds a websocket, so there is no
 public hostname, no ingress rule, no Access policy to keep correct and no inbound
 surface at all.
 
-Testing the Sunday check without waiting for Sunday:
+Testing the scheduled check without waiting for the morning:
 
 ```bash
 uv run combine notify --dry-run          # print what it would post, send nothing
@@ -164,7 +175,7 @@ nowhere else. The IDs come from right-click Copy ID with Developer Mode on.
 Two things that will bite:
 
 The bot needs Send Messages **in the target channel**, not just at the server
-level. A channel permission override silently blocks the Sunday post while slash
+level. A channel permission override silently blocks the scheduled post while slash
 commands keep working, because interaction replies go through a webhook and
 ignore channel send permissions. `/health` will look fine while the schedule
 posts nowhere.
@@ -277,7 +288,7 @@ example: +2.49 measured on 40 observations is a real finding on a thin sample,
 and you should see the sample rather than a confident number.
 
 Also `/waivers` in Discord, with an optional league, and a Waiver wire section at
-the bottom of the app's Week page. The Sunday check only pings you about an add
+the bottom of the app's Week page. The scheduled check only pings you about an add
 that does not cost season value; one that buys a week and pays for it later
 waits until you go looking, which is what `/waivers` is for.
 

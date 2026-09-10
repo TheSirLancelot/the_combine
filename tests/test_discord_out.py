@@ -114,7 +114,7 @@ def test_notify_stays_quiet_when_there_is_nothing_to_say(monkeypatch, capsys):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
-    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: ([_embed("a report")], False))
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: bot.Report([_embed("a report")], False))
     sent = []
     monkeypatch.setattr(bot, "_post", lambda *a: sent.append(a))
 
@@ -129,7 +129,7 @@ def test_force_posts_anyway_and_labels_itself_a_test(monkeypatch, capsys):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
-    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: ([_embed("a report")], False))
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: bot.Report([_embed("a report")], False))
     assert bot.notify(force=True, dry_run=True) == 0
     out = capsys.readouterr().out
     assert "Manual test" in out and "a report" in out
@@ -139,7 +139,7 @@ def test_dry_run_never_sends(monkeypatch, capsys):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
-    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: ([_embed("real news")], True))
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: bot.Report([_embed("real news")], True))
     sent = []
     monkeypatch.setattr(bot, "_post", lambda *a: sent.append(a))
     assert bot.notify(dry_run=True) == 0
@@ -156,7 +156,7 @@ def test_one_league_failing_does_not_stop_the_others(monkeypatch, capsys):
     def build(league, week):
         if league == "rcl":
             raise RuntimeError("espn cookies expired")
-        return ([_embed("dmwd news")], True)
+        return bot.Report([_embed("dmwd news")], True)
 
     monkeypatch.setattr(bot, "build_startsit", build)
     assert bot.notify(dry_run=True) == 1        # non-zero: something failed
@@ -173,7 +173,7 @@ def test_all_leagues_continues_past_one_that_fails(monkeypatch):
     def build(league, week):
         if league == "dmwd":
             raise RuntimeError("401 unauthorized")
-        return ([_embed(f"{league} report")], False)
+        return bot.Report([_embed(f"{league} report")], False)
 
     monkeypatch.setattr(bot, "build_startsit", build)
     out = "\n".join(embed_text(e) for e in bot.build_startsit_all())
@@ -277,12 +277,12 @@ def test_waivers_only_interrupt_for_an_add_that_does_not_cost_the_season(monkeyp
     monkeypatch.setattr("combine.platforms.client_for",
                         lambda lg: type("C", (), {"week": 3})())
 
-    messages, worth_telling = bot.build_waivers("rcl", 3)
-    assert worth_telling is False
-    assert "D. Buckner" in embed_text(messages[0])
+    report = bot.build_waivers("rcl", 3)
+    assert report.news is False
+    assert "D. Buckner" in embed_text(report.embeds[0])
 
     found[:] = [cand(season_proj=90.0)]                 # gains season value too
-    assert bot.build_waivers("rcl", 3)[1] is True
+    assert bot.build_waivers("rcl", 3).news is True
 
 
 def test_waivers_for_a_league_without_a_free_agent_pool(monkeypatch):
@@ -291,6 +291,6 @@ def test_waivers_for_a_league_without_a_free_agent_pool(monkeypatch):
     monkeypatch.setattr(
         bot.config, "get_league",
         lambda lg: type("C", (), {"platform": "manual", "name": "Degenerates"})())
-    messages, worth_telling = bot.build_waivers("work", 3)
-    assert worth_telling is False
-    assert "Yahoo API" in messages[0].description
+    report = bot.build_waivers("work", 3)
+    assert report.news is False
+    assert "Yahoo API" in report.embeds[0].description

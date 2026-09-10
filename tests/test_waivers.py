@@ -119,3 +119,129 @@ def test_calibration_can_reverse_a_raw_comparison():
     assert 10.0 > 6.6                                  # raw
     assert cal.adjust("CB", 10.0) < cal.adjust("DT", 6.6) + 0.8
     assert round(cal.adjust("DT", 6.6), 2) == 9.09
+
+
+# --- drops you are actually allowed to make ---------------------------------
+
+class FakeClient:
+    """Enough of a league client for `find` to run against a fixed roster."""
+
+    slug = "rcl"
+    week = 1
+
+    class _League:
+        def __init__(self, pool):
+            self._pool = pool
+
+        def free_agents(self, size=350):
+            return self._pool
+
+    def __init__(self, lineup, pool):
+        self.lineup = lineup
+        self.league = self._League(pool)
+
+    def matchup(self, week=None):
+        from combine.platforms import Matchup
+
+        return Matchup(week=1, home_team="Me", away_team="Them", home_proj=0.0,
+                       away_proj=0.0, home_lineup=self.lineup, away_lineup=[],
+                       mine="home")
+
+    def roster_slots(self):
+        return {"WR": 1, "DT": 1}
+
+
+def rostered(name, pos, slot, proj=5.0, started=False):
+    from combine.platforms import ProGame, WeeklyPlayer
+
+    past, future = 1_000_000_000_000, 4_000_000_000_000
+    return WeeklyPlayer(
+        player_id=name, name=name, team="KC", pos=pos, slot=slot,
+        eligible_slots=frozenset({pos, "BE"}), projected=proj,
+        played=started,
+        game=ProGame(opponent="SF", home=True,
+                     kickoff_ms=past if started else future))
+
+
+def find_against(lineup, pool, values):
+    from combine.pipeline.waivers import find
+
+    return find(FakeClient(lineup, pool), 1, season_value=values, limit=5)
+
+
+def test_a_player_who_already_played_is_not_offered_as_a_drop():
+    """The bug this exists for. It told him to drop Rashid Shaheed on a Monday,
+    after Shaheed had played, which the platform will not allow."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Cheap But Played", "WR", "BE", 4.0, started=True),
+              rostered("Droppable", "WR", "BE", 5.0)]
+    found = find_against(lineup, [FakePool("Big Add", "DT", 14.0)],
+                         {"Cheap But Played": 20.0, "Droppable": 60.0,
+                          "Starter": 200.0})
+    assert found, "the add itself should still be found"
+    assert found[0].drop_name == "Droppable"
+
+
+def test_it_names_the_drop_you_would_rather_make_and_prices_it():
+    """Silently substituting a more expensive drop would hide the cost."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Cheap But Played", "WR", "BE", 4.0, started=True),
+              rostered("Droppable", "WR", "BE", 5.0)]
+    found = find_against(lineup, [FakePool("Big Add", "DT", 14.0)],
+                         {"Cheap But Played": 20.0, "Droppable": 60.0,
+                          "Starter": 200.0})
+    c = found[0]
+    assert c.blocked_name == "Cheap But Played"
+    assert c.blocked_cost == 40.0              # 60 given up instead of 20
+    note = c.blocked_note()
+    assert "cannot be dropped until the weekly reset" in note
+    assert "40 more points" in note
+
+
+def test_no_note_when_the_best_drop_is_also_legal():
+    """Most of the time. A caveat that fires every week stops being read."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Droppable", "WR", "BE", 5.0)]
+    found = find_against(lineup, [FakePool("Big Add", "DT", 14.0)],
+                         {"Droppable": 20.0, "Starter": 200.0})
+    assert found[0].blocked_name is None
+    assert found[0].blocked_note() == ""
+
+
+def test_a_fully_locked_roster_says_so_instead_of_recommending_the_impossible():
+    lineup = [rostered("Starter", "WR", "WR", 8.0, started=True),
+              rostered("Bench", "WR", "BE", 5.0, started=True)]
+    found = find_against(lineup, [FakePool("Big Add", "DT", 14.0)],
+                         {"Bench": 20.0, "Starter": 200.0})
+    assert found[0].drop_locked is True
+    assert "has to wait for the weekly reset" in found[0].blocked_note()
+
+
+def test_blocked_cost_is_never_negative():
+    """The blocked player is the cheapest by construction, so anyone else costs
+    at least as much. A negative would mean the ordering broke."""
+    c = candidate(blocked_name="X", blocked_pos="WR", blocked_season_proj=150.0,
+                  drop_season_proj=100.0)
+    assert c.blocked_cost == 0.0
+
+
+def test_an_empty_starting_slot_accepts_anyone():
+    """A slot with nobody in it is beaten by any projection at all. This used to
+    default to infinity, so the tool reported an empty wire instead."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Droppable", "WR", "BE", 5.0)]      # nobody at DT
+    found = find_against(lineup, [FakePool("Weak DT", "DT", 3.0)],
+                         {"Droppable": 20.0, "Starter": 200.0})
+    assert [c.name for c in found] == ["Weak DT"]
+
+
+def test_the_cheap_filter_still_excludes_a_player_who_cannot_help():
+    """The other half of that fix: a filled slot must still reject someone
+    projected below the man already in it."""
+    lineup = [rostered("Starter", "WR", "WR", 20.0),
+              rostered("DT Starter", "DT", "DT", 12.0),
+              rostered("Droppable", "WR", "BE", 5.0)]
+    found = find_against(lineup, [FakePool("Worse DT", "DT", 2.0)],
+                         {"Droppable": 20.0, "Starter": 200.0,
+                          "DT Starter": 180.0})
+    assert found == []

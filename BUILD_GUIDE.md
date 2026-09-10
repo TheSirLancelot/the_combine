@@ -764,11 +764,11 @@ already being computed one line above.
 
 **Surfacing it, 2026-09-10.** `/waivers` in Discord (optional league, all three
 when omitted), a Waiver wire section at the bottom of the app's Week page, and
-folded into the Sunday `weekly_check`.
+folded into the scheduled check.
 
 The notification gate is `worth_telling = any(not c.trades_down for c in found)`.
 An add that gains the week but costs season value is real advice and belongs in
-`/waivers`; it is not worth interrupting a Sunday morning for, because the answer
+`/waivers`; it is not worth interrupting a morning for, because the answer
 depends on how the rest of your season looks and only you know that. In RCL week
 1 the top candidate trades down and the other two do not, so the check does ping,
 and it pings for the two that are unambiguous.
@@ -784,6 +784,53 @@ to column width gave "DeForest Buck", which is both ugly and ambiguous.
 The app caches waivers at `ttl=300`. The wire does not move minute to minute and
 the sweep scores a 350-player pool, so a five minute cache is the difference
 between a page that loads and one you wait on.
+
+## Daily instead of Sunday
+
+Changed 2026-09-11. `weekly_check` is now `daily_check` and the `CHECK_DAYS`
+gate is gone. Games run Thursday through Monday, so a Sunday-only check missed a
+Thursday injury and every waiver window that opened midweek.
+
+The interesting part is what makes daily survivable. The original gate was "post
+only when there is news", which was enough at once a week, but news does not stop
+being news the next morning: a starter ruled out for the season would have posted
+the same card six days running, and a channel that repeats itself gets muted --
+at which point the one message that mattered is missed too.
+
+So a builder now returns a `Report(embeds, news, signature)`. The signature is
+what the report is ABOUT and deliberately carries no numbers: `hurt:<player_id>`,
+`swap:<bench_id>><starter_id>`, `add:<name>><drop>`. `already_said()` digests it
+and compares against `data/last_post.json`, keyed by league and week. Digesting
+the rendered text instead would have defeated the whole thing, because ESPN
+revises projections through the day and every morning would have looked new.
+
+Failures are deliberately one-directional. An unreadable or unwritable state file
+returns False and posts, so the worst case of this cache is a duplicate message
+rather than a missed one. An empty signature is never suppressed either, since
+that means the builder could not say what the report was about.
+
+## Waiver drops you are actually allowed to make
+
+Fixed 2026-09-11, from a real bad recommendation: it told him to drop Rashid
+Shaheed on a day Shaheed had already played, which the platform will not allow.
+
+`find()` now excludes any player whose game has kicked off from the drop
+candidates, and keeps the one it WOULD have picked so the message can name him
+and price the difference. `blocked_cost` is the extra season value surrendered by
+being forced onto a legal drop, and `blocked_note()` says both that number and
+whether the move still gains season value overall. No threshold on "is the
+difference big enough" -- that is his call and the two numbers are what it turns
+on. When nothing on the roster can be dropped at all, `drop_locked` says so
+rather than the tool recommending the impossible.
+
+Writing the test for that found a second bug in the same function. The cheap
+pre-filter compared a candidate against the weakest starter in each slot he was
+eligible for, defaulting a slot with no entry to infinity -- so an EMPTY starting
+slot rejected everyone, when in fact an empty slot is beaten by anybody at all.
+The fix is `setdefault(slot, 0.0)` AFTER the loop over starters, not as the
+default inside it: seeding zeros first makes every `min()` zero and turns the
+filter off completely, which is a quiet way to go back to returning 94
+candidates. Both directions are tested now.
 
 ## Known soft spots
 

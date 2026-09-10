@@ -804,12 +804,16 @@ def week_page():
                 "WEEK": c.week_gain,
                 "SEASON": c.season_cost,
                 "Starts over": c.displaces or "--",
-                "Drop": f"{c.drop_name} ({c.drop_pos})",
+                "Drop": f"{c.drop_name} ({c.drop_pos})"
+                        + (" 🔒" if c.blocked_name or c.drop_locked else ""),
             })
         st.dataframe(pd.DataFrame(rows), hide_index=True,
                      use_container_width=True, column_config=WAIVER_COLS)
 
         for c in wire["candidates"]:
+            note = c.blocked_note()
+            if note:
+                st.info(f"**{c.name}**: {note}")
             if c.correction_carries_it:
                 st.warning(
                     f"**{c.name}** ranks here only because {c.pos} projections "

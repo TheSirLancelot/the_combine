@@ -533,6 +533,11 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "bot":
+        from .bot import main as run_bot
+
+        run_bot()
+        return 0
     if cmd == "compare":
         return compare()
     if cmd == "init":

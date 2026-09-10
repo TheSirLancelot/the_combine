@@ -49,6 +49,43 @@ data without the mouse.
 The CLI still works and is documented below. The app is a front end over the
 identical code, not a reimplementation.
 
+## The Discord bot
+
+The in-season interface from anywhere. Slash commands for asking, and a Sunday
+morning check that stays silent unless there is something to act on.
+
+```bash
+uv run combine bot          # foreground, for testing
+cp scripts/com.thecombine.bot.plist ~/Library/LaunchAgents/   # then edit <REPO>
+launchctl load -w ~/Library/LaunchAgents/com.thecombine.bot.plist
+```
+
+Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. All of them
+answer to the owner only, because otherwise anyone who can see the bot can read
+your rosters and cause ESPN requests authenticated as you.
+
+Chosen over exposing the app through a tunnel because of the direction of the
+connection. The bot dials out to Discord and holds a websocket, so there is no
+public hostname, no ingress rule, no Access policy to keep correct and no inbound
+surface at all.
+
+Setup lives in `.env`: `DISCORD_TOKEN` plus `DISCORD_GUILD_ID`,
+`DISCORD_CHANNEL_ID` and `DISCORD_OWNER_ID`. The token is a secret and belongs
+nowhere else. The IDs come from right-click Copy ID with Developer Mode on.
+
+Two things that will bite:
+
+The bot needs Send Messages **in the target channel**, not just at the server
+level. A channel permission override silently blocks the Sunday post while slash
+commands keep working, because interaction replies go through a webhook and
+ignore channel send permissions. `/health` will look fine while the schedule
+posts nowhere.
+
+Tables are re-rendered narrow for Discord, about 48 characters, because Discord
+wraps code blocks rather than scrolling them. The terminal renderers run to 130
+characters and are unreadable on a phone. Prose stays as markdown so Discord can
+wrap it.
+
 ## Reaching it from a phone
 
 The app runs on the Mac mini, which is always on and is also the Plex server.

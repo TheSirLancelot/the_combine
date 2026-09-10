@@ -573,7 +573,49 @@ the shortcut was safe; mismatch means someone has a scoring bug.
 in-progress draft; picks ride a comet channel at `fantasydraft.espn.com`. See
 the draft-day notes in project memory.
 
-**13. Discord bot.** Unchanged from the brief.
+**13. Discord bot. DONE 2026-09-10.** `src/combine/bot.py` plus
+`src/combine/discord_out.py`, run with `combine bot` or the launchd agent in
+`scripts/com.thecombine.bot.plist`.
+
+Chosen over exposing the Streamlit app through the Cloudflare tunnel, and it
+replaced that plan rather than adding to it. The reason is the direction of the
+connection: the bot dials OUT and holds a websocket, so there is no public
+hostname, no ingress rule, no Access policy whose correctness matters and no
+inbound surface. It also collapses both wanted behaviours into one process,
+slash commands for asking and a scheduled check for being told.
+
+Commands are `/week`, `/startsit`, `/compare`, `/glossary`, `/health`, locked to
+`DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
+repo, because this is the one component that takes instructions from a chat box.
+
+Three things learned by connecting rather than by reading:
+
+  * **`Intents.none()` is wrong.** `guilds` is not a privileged intent and is
+    required for the channel cache; without it `get_channel` returns None and
+    the scheduled check posts nowhere while logging a warning nobody reads.
+    Caught by a connection test that printed what the client could actually see.
+    `weekly_check` also falls back to `fetch_channel`, which goes over REST and
+    does not depend on the cache at all.
+  * **Send Messages is per channel.** The bot had the server permission and a
+    channel override denied it. Slash commands still worked, because interaction
+    replies use a webhook token and bypass channel send permissions, so the
+    failure mode is a bot that answers every command and never posts on
+    schedule.
+  * **Width, not length, is the constraint.** Measured first: the week view is
+    1353 characters over 27 lines, comfortably inside Discord's 2000 cap, but
+    its widest line is 74 and start/sit reaches 130. Discord wraps code blocks
+    rather than scrolling them, so tables are re-rendered at about 48 characters
+    and prose is left as markdown for Discord to wrap.
+
+Two mechanics that are easy to get wrong and are commented in the module: every
+command defers before working, because Discord wants a response inside three
+seconds and this pipeline takes several; and the work runs in a thread, because
+discord.py has one event loop and blocking it stops the heartbeat and drops the
+gateway connection.
+
+Silence is the feature in the scheduled check. A correct lineup produces no
+message, because a bot that says "nothing to report" every week gets muted and
+then the one week it matters is missed.
 
 ## Known soft spots
 

@@ -76,6 +76,21 @@ connection. The bot dials out to Discord and holds a websocket, so there is no
 public hostname, no ingress rule, no Access policy to keep correct and no inbound
 surface at all.
 
+Testing the Sunday check without waiting for Sunday:
+
+```bash
+uv run combine notify --dry-run          # print what it would post, send nothing
+uv run combine notify                    # exactly what the schedule does
+uv run combine notify rcl --force        # post even though nothing is wrong
+```
+
+`--force` exists because the check's success condition is silence, which is
+indistinguishable from the whole thing being broken. It labels the post as a
+manual test so a forced message never reads as a real recommendation. It sends
+over REST without joining the gateway, so it does not conflict with the running
+agent; two gateway sessions would mean two copies of the bot answering every
+slash command twice.
+
 Setup lives in `.env`: `DISCORD_TOKEN` plus `DISCORD_GUILD_ID`,
 `DISCORD_CHANNEL_ID` and `DISCORD_OWNER_ID`. The token is a secret and belongs
 nowhere else. The IDs come from right-click Copy ID with Developer Mode on.

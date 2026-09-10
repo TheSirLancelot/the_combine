@@ -332,6 +332,77 @@ def preflight() -> list[str]:
     return problems
 
 
+async def _post(messages: list[str], channel_id: int) -> None:
+    """Send without joining the gateway.
+
+    `login` does the REST handshake only, and `fetch_channel` and `send` are
+    plain HTTP, so this never opens a websocket. That matters because the
+    long-running agent already holds one: a second gateway session would be a
+    second copy of the bot answering every slash command twice.
+    """
+    # Same intents as the agent even though nothing connects: with none(),
+    # discord.py warns "Guilds intent seems to be disabled" on every send, which
+    # is noise on a path that never opens a gateway.
+    poster = discord.Client(intents=discord.Intents(guilds=True))
+    await poster.login(os.environ["DISCORD_TOKEN"])
+    try:
+        channel = await poster.fetch_channel(channel_id)
+        for message in messages:
+            await channel.send(message)
+    finally:
+        await poster.close()
+
+
+def notify(leagues: list[str] | None = None, force: bool = False,
+           dry_run: bool = False) -> int:
+    """Run the scheduled check now, on demand.
+
+    Exists because the success condition of the weekly check is silence, which
+    is indistinguishable from the whole thing being broken. `--force` posts even
+    when there is nothing to report, which is the only way to prove delivery
+    works on a quiet week.
+    """
+    wanted = leagues or list(config.leagues())
+    posted = quiet = failed = 0
+
+    for slug in wanted:
+        try:
+            messages, newsworthy = build_startsit(slug, None)
+        except Exception as exc:
+            log.error("%s: %s: %s", slug, type(exc).__name__, exc)
+            failed += 1
+            continue
+
+        if not newsworthy and not force:
+            print(f"{slug}: nothing worth posting (this is the normal case)")
+            quiet += 1
+            continue
+
+        if force and not newsworthy:
+            messages = ["_Manual test. Nothing is actually wrong; the real check "
+                        "would have stayed silent._"] + messages
+
+        if dry_run:
+            print(f"\n===== {slug}: would post {len(messages)} message(s) =====")
+            for message in messages:
+                print(message)
+            posted += 1
+            continue
+
+        if not CHANNEL_ID:
+            print(f"{slug}: DISCORD_CHANNEL_ID is unset, nowhere to post")
+            failed += 1
+            continue
+
+        asyncio.run(_post(messages, CHANNEL_ID))
+        print(f"{slug}: posted {len(messages)} message(s)")
+        posted += 1
+
+    verb = "would post" if dry_run else "posted"
+    print(f"\n{verb} for {posted} league(s), {quiet} quiet, {failed} failed")
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the bot, or with --check just validate and exit.
 

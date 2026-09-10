@@ -498,6 +498,32 @@ def check_scoring() -> int:
     return 0
 
 
+def notify() -> int:
+    """combine notify [league...] [--force] [--dry-run]
+
+    Run the Sunday check right now. Without --force it behaves exactly as the
+    schedule does and stays silent when there is nothing to say, which is the
+    normal outcome. Use --force to prove delivery works on a quiet week, and
+    --dry-run to see the messages in the terminal without posting.
+    """
+    import logging
+
+    from .bot import notify as run_notify
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s",
+                        force=True)
+    args = sys.argv[2:]
+    force = "--force" in args
+    dry = "--dry-run" in args
+    leagues = [a for a in args if not a.startswith("-")]
+    unknown = [lg for lg in leagues if lg not in config.leagues()]
+    if unknown:
+        print(f"unknown league(s): {', '.join(unknown)}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
+        return 2
+    return run_notify(leagues or None, force=force, dry_run=dry)
+
+
 def glossary() -> int:
     """combine glossary — what every token in a role line means."""
     from .pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY
@@ -533,6 +559,8 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "notify":
+        return notify()
     if cmd == "bot":
         from .bot import main as run_bot
 

@@ -588,6 +588,18 @@ Commands are `/week`, `/startsit`, `/compare`, `/glossary`, `/health`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
 
+**Getting it running under launchd cost two rounds, both self-inflicted.** First,
+`discord.py` went into `pyproject.toml` and never into `uv.lock`, so `uv run`
+had nothing to install; testing had been done by importing the module in a venv
+where it was hand-installed, which bypassed the lockfile entirely and made a
+broken path look fine. Second, the command was wrapped in `/usr/bin/taskpolicy
+-b` for background QoS, which `ProcessType: Background` already provides, so it
+was a redundant binary in the exec path. When an exec fails, launchd writes to
+the system log and NOTHING to the job's own log files, so the symptom was two
+empty log files and no explanation. Empty logs plus a job that is not listed now
+means exactly that, and `install_agents.sh` says so and prints the system-log
+query.
+
 Three things learned by connecting rather than by reading:
 
   * **`Intents.none()` is wrong.** `guilds` is not a privileged intent and is
@@ -612,6 +624,14 @@ command defers before working, because Discord wants a response inside three
 seconds and this pipeline takes several; and the work runs in a thread, because
 discord.py has one event loop and blocking it stops the heartbeat and drops the
 gateway connection.
+
+`combine notify` runs the check on demand: `--dry-run` prints without sending,
+`--force` posts even when nothing is wrong. That last one is not a convenience.
+The check's success condition is silence, so a quiet week and a broken bot look
+identical, and forcing a labelled test post is the only way to prove delivery
+works. It sends over REST via `login` and `fetch_channel` without joining the
+gateway, because a second gateway session while the agent is running would be a
+second copy of the bot answering every command twice.
 
 Silence is the feature in the scheduled check. A correct lineup produces no
 message, because a bot that says "nothing to report" every week gets muted and

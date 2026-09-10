@@ -88,3 +88,59 @@ def test_silence_is_the_default():
     assert has_news([], ["a hurt starter"], 0.0) is True
     assert has_news(["a call"], [], 0.0) is True
     assert has_news([], [], 3.0) is True          # lineup is not optimal
+
+
+# --- the on-demand notification ------------------------------------------
+
+def test_notify_stays_quiet_when_there_is_nothing_to_say(monkeypatch, capsys):
+    """The normal outcome. A check that posts every week gets muted."""
+    from combine import bot
+
+    monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: (["a report"], False))
+    sent = []
+    monkeypatch.setattr(bot, "_post", lambda *a: sent.append(a))
+
+    assert bot.notify(dry_run=False) == 0
+    assert sent == []
+    assert "nothing worth posting" in capsys.readouterr().out
+
+
+def test_force_posts_anyway_and_labels_itself_a_test(monkeypatch, capsys):
+    """Delivery cannot be proven on a quiet week without this, and a forced
+    post must not read as a real recommendation."""
+    from combine import bot
+
+    monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: (["a report"], False))
+    assert bot.notify(force=True, dry_run=True) == 0
+    out = capsys.readouterr().out
+    assert "Manual test" in out and "a report" in out
+
+
+def test_dry_run_never_sends(monkeypatch, capsys):
+    from combine import bot
+
+    monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: (["real news"], True))
+    sent = []
+    monkeypatch.setattr(bot, "_post", lambda *a: sent.append(a))
+    assert bot.notify(dry_run=True) == 0
+    assert sent == []
+    assert "would post" in capsys.readouterr().out
+
+
+def test_one_league_failing_does_not_stop_the_others(monkeypatch, capsys):
+    from combine import bot
+
+    monkeypatch.setattr(bot.config, "leagues",
+                        lambda: {"rcl": object(), "dmwd": object()})
+
+    def build(league, week):
+        if league == "rcl":
+            raise RuntimeError("espn cookies expired")
+        return (["dmwd news"], True)
+
+    monkeypatch.setattr(bot, "build_startsit", build)
+    assert bot.notify(dry_run=True) == 1        # non-zero: something failed
+    assert "dmwd" in capsys.readouterr().out

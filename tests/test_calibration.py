@@ -109,3 +109,34 @@ def test_leagues_are_measured_separately(conn):
         add(conn, week, "WR", 10.0, 12.0, league="dmwd")
     assert measure(conn, "rcl", 2025).biases["WR"].mean < 0
     assert measure(conn, "dmwd", 2025).biases["WR"].mean > 0
+
+
+# --- banded corrections ---------------------------------------------------
+
+def test_a_measurable_band_with_no_bias_means_no_correction():
+    """The case that mattered. Low-projected linebackers measured +0.34, so no
+    over-projection, while the position-wide figure is -1.26 because it is
+    dominated by highly-projected linebackers. Falling back to -1.26 for a
+    low-projected linebacker applies a penalty his own band argues against."""
+    from combine.pipeline.calibration import Bias, Calibration
+    cal = Calibration("rcl", 2025,
+                      biases={"LB": Bias("LB", 676, -1.26, 0.24)},
+                      banded={("LB", "0-10"): Bias("LB", 200, 0.34, 0.81, "0-10")})
+    assert cal.offset("LB", 9.9) == 0.0        # measured, and it is zero
+    assert cal.offset("LB") == -1.26           # no projection given, coarse figure
+
+
+def test_a_band_too_thin_to_measure_falls_back_to_the_position():
+    from combine.pipeline.calibration import Bias, Calibration
+    cal = Calibration("rcl", 2025,
+                      biases={"DT": Bias("DT", 40, 2.49, 0.98)},
+                      banded={("DT", "0-10"): Bias("DT", 38, 2.14, 1.00, "0-10")})
+    assert cal.offset("DT", 6.6) == 2.49
+
+
+def test_a_significant_band_beats_the_position_figure():
+    from combine.pipeline.calibration import Bias, Calibration
+    cal = Calibration("rcl", 2025,
+                      biases={"S": Bias("S", 204, -2.05, 0.41)},
+                      banded={("S", "14-999"): Bias("S", 68, -3.35, 0.75, "14-999")})
+    assert cal.offset("S", 15.0) == -3.35

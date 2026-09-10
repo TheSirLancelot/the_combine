@@ -508,6 +508,55 @@ def check_scoring() -> int:
     return 0
 
 
+def waivers() -> int:
+    """combine waivers [league...] [week]
+
+    Free agents who would improve this week's lineup. Value is what the whole
+    lineup is worth afterwards, not a head-to-head, so cascades are included.
+    Season value given up by the drop is reported separately, because a week is
+    not worth a season.
+    """
+    from .pipeline.calibration import load as load_cal
+    from .pipeline.waivers import find, render, season_values
+    from .platforms import client_for
+
+    args = sys.argv[2:]
+    week = next((int(a) for a in args if a.isdigit()), None)
+    slugs = [a for a in args if not a.isdigit()] or list(config.leagues())
+    unknown = [lg for lg in slugs if lg not in config.leagues()]
+    if unknown:
+        print(f"unknown league(s): {', '.join(unknown)}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
+        return 2
+
+    dist = None
+    try:
+        from . import db
+        from .pipeline.distribution import load as load_dist
+        with db.connect(readonly=True) as conn:
+            candidate = load_dist(conn, config.SEASON - 1)
+        dist = None if candidate.empty else candidate
+    except Exception:
+        dist = None
+
+    for i, slug in enumerate(slugs):
+        if i:
+            print("\n" + "=" * 60)
+        cfg = config.get_league(slug)
+        if cfg.platform == "manual":
+            print(f"{cfg.name}: no free agent pool without the Yahoo API. "
+                  f"hand entry cannot provide one.")
+            continue
+        try:
+            client = client_for(slug)
+            found = find(client, week, cal=load_cal(slug),
+                         season_value=season_values(client), dist=dist)
+            print(render(found, cfg.name, int(week or client.week)))
+        except Exception as exc:
+            print(f"{slug}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 0
+
+
 def calibration() -> int:
     """combine calibration [season]
 
@@ -615,6 +664,8 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "waivers":
+        return waivers()
     if cmd == "calibration":
         return calibration()
     if cmd == "scoreboard":

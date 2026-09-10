@@ -585,9 +585,26 @@ inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
 Commands are `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
-`/glossary`, `/health`, locked to
+`/glossary`, `/health`, `/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
+
+`/clear`, added 2026-09-10, is the single exception and it is worth being precise
+about why it is not a violation. The read-only rule exists because a write
+against ESPN or Yahoo is a roster move with real consequences that only William
+should make. `/clear` writes to DISCORD, deleting the bot's own status posts out
+of its own channel. Different blast radius entirely. It is still irreversible, so
+it is built with the guards that implies: a dry run by default, `confirm: True`
+required to delete, ephemeral replies so the progress message cannot be caught in
+its own purge, and an explicit `discord.Forbidden` branch that names the two
+permissions and points at server settings rather than the developer portal, which
+is the mistake this cost an exchange to sort out.
+
+It is also the one command that does not route through `respond()`. That helper
+exists to keep blocking ESPN calls off the event loop; `purge` is async I/O
+against Discord and belongs on the loop as it is. The type guard checks for
+`TextChannel | Thread` rather than `Messageable`, because a DM can be read but
+not purged.
 
 **Getting it running under launchd cost two rounds, both self-inflicted.** First,
 `discord.py` went into `pyproject.toml` and never into `uv.lock`, so `uv run`

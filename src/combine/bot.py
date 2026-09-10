@@ -6,9 +6,15 @@ there is no public hostname, no ingress rule, no Access policy to keep correct
 and no inbound surface at all. It also collapses both wanted behaviours into one
 process: slash commands for asking, and a scheduled check for being told.
 
-READ ONLY, and more emphatically than elsewhere in this repo, because this is
-the one component that takes instructions from a chat window. There are no
-write or transaction commands and none should ever be added.
+READ ONLY against ESPN and Yahoo, and more emphatically than elsewhere in this
+repo, because this is the one component that takes instructions from a chat
+window. There are no write or transaction commands against a league and none
+should ever be added.
+
+`/clear` is the one command that writes anything anywhere, and it writes to
+Discord: it deletes the bot's own noise out of its own channel. That is a
+different thing from a roster move, but it is still destructive and
+irreversible, so it dry runs by default and only deletes when told to.
 
 Two mechanics that matter and are easy to get wrong:
 
@@ -26,7 +32,7 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 from functools import lru_cache
 
@@ -393,6 +399,93 @@ async def glossary(interaction: discord.Interaction):
 @owner_only()
 async def health(interaction: discord.Interaction):
     await respond(interaction, build_health)
+
+
+# Discord bulk-deletes in one request, but only messages under 14 days old.
+# Older ones go one at a time and get rate limited to roughly one a second, so a
+# long-lived channel is minutes of work rather than an instant wipe. Worth
+# saying in the dry run so the wait is expected rather than alarming.
+BULK_WINDOW = timedelta(days=14)
+COUNT_CAP = 2000        # how far back a dry run bothers to count
+
+
+@client.tree.command(
+    description="Delete messages in this channel. Irreversible. Dry runs by default.")
+@app_commands.describe(
+    limit="How many messages back. Blank means the whole channel.",
+    confirm="Must be True to actually delete. Left off, this only reports.")
+@owner_only()
+async def clear(interaction: discord.Interaction, limit: int | None = None,
+                confirm: bool = False):
+    """Housekeeping for the bot's own channel.
+
+    Not routed through `respond`: purge is async I/O against Discord rather than
+    blocking work against ESPN, so it belongs on the loop, and the reply is
+    ephemeral so the progress message cannot be caught in its own purge.
+    """
+    channel = interaction.channel
+    # Messageable is not enough: DMs can be read but not purged, so the check
+    # has to be for the channel types that actually have purge().
+    if not isinstance(channel, discord.TextChannel | discord.Thread):
+        await interaction.response.send_message(
+            "This only works in a server text channel.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    cutoff = datetime.now(UTC) - BULK_WINDOW
+    where = f"#{getattr(channel, 'name', 'this channel')}"
+
+    try:
+        if not confirm:
+            recent = old = 0
+            async for message in channel.history(limit=limit or COUNT_CAP):
+                if message.created_at >= cutoff:
+                    recent += 1
+                else:
+                    old += 1
+            total = recent + old
+            if not total:
+                await interaction.followup.send(f"{where} is already empty.",
+                                                ephemeral=True)
+                return
+            capped = "+" if limit is None and total >= COUNT_CAP else ""
+            note = ""
+            if old:
+                note = (f"\n{old} of them are over 14 days old and have to go one "
+                        f"at a time, so expect roughly {old // 60 + 1} minute(s) "
+                        f"of deleting.")
+            await interaction.followup.send(
+                f"Would delete **{total}{capped}** message(s) from {where}. "
+                f"This cannot be undone.{note}\n\nRun it again with "
+                f"`confirm: True` to go ahead.", ephemeral=True)
+            return
+
+        started = datetime.now(UTC)
+        deleted = await channel.purge(
+            limit=limit, reason=f"/clear by {interaction.user}")
+        elapsed = (datetime.now(UTC) - started).total_seconds()
+        log.info("cleared %d message(s) from %s in %.0fs",
+                 len(deleted), where, elapsed)
+        try:
+            await interaction.followup.send(
+                f"Deleted **{len(deleted)}** message(s) from {where} in "
+                f"{elapsed:.0f}s.", ephemeral=True)
+        except discord.HTTPException:
+            # A long purge can outlive the 15 minute interaction token. The
+            # deleting already happened; only the receipt is lost.
+            log.warning("purge finished after the interaction expired")
+
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "I need **Manage Messages** and **Read Message History** on this "
+            "channel. Right-click the channel, Edit Channel, Permissions, then "
+            "add this bot. The developer portal's permission checkboxes only "
+            "build the invite link and do not change a bot that is already in "
+            "the server.", ephemeral=True)
+    except discord.HTTPException as exc:
+        log.exception("clear failed")
+        await interaction.followup.send(f"`{type(exc).__name__}: {exc}`",
+                                        ephemeral=True)
 
 
 @tasks.loop(time=CHECK_AT)

@@ -99,10 +99,27 @@ down this file, and restarting is the fix in both directions.
 you would rather not re-run the installer.
 
 Commands: `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
-`/glossary`, `/health`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
+`/glossary`, `/health`, `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
+
+`/clear` deletes messages in the channel it is run in, and it is the only
+command in this repo that destroys anything. Read-only is about ESPN and Yahoo,
+where a write would be a real roster move; clearing the bot's own status posts
+out of its own channel is a different thing. It still dry runs by default and
+reports what it would delete, and only deletes when you pass `confirm: True`.
+
+It needs **Manage Messages** and **Read Message History** on that channel. Grant
+those in Discord, not in the developer portal: the portal's permission
+checkboxes only build the invite URL and changing them does nothing to a bot
+already in the server. Right-click the channel, Edit Channel, Permissions, add
+the bot.
+
+Discord bulk-deletes in one request but only for messages under 14 days old.
+Anything older goes one at a time at about one a second, so clearing a channel
+with months of history takes minutes. The dry run counts how many fall in that
+bucket and tells you roughly how long to expect.
 
 Chosen over exposing the app through a tunnel because of the direction of the
 connection. The bot dials out to Discord and holds a websocket, so there is no

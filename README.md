@@ -65,7 +65,22 @@ shell: it starts with a minimal PATH and no working directory, so `uv run` alone
 fails with command not found and the job dies at boot with nothing obvious in
 the logs. Run it again after pulling; it reloads rather than duplicating.
 
-Add `--with-app` to also run the Streamlit app, `--uninstall` to remove both.
+`--with-app` also runs the Streamlit app in the background, same low priority,
+same survives-a-reboot. It binds `127.0.0.1` by default, which is what the
+Cloudflare tunnel wants, so it is reachable only on the mini itself. To read it
+from another machine without setting up the tunnel:
+
+```bash
+./scripts/install_agents.sh --with-app --bind 0.0.0.0
+```
+
+Then browse to the mini's address on port 8501, including over Tailscale. The
+app has no login of its own and every page load acts as your ESPN session, so
+anything that can reach it can read your rosters and make requests as you. On a
+home network that is usually a fine trade. The version that actually
+authenticates is `127.0.0.1` plus the tunnel with an Access policy.
+
+`--uninstall` removes both agents.
 
 **After every pull, restart what is running.** Both agents hold code in memory
 and neither notices a `git pull`:

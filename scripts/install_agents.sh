@@ -7,9 +7,16 @@
 # the committed plist would break the moment the repo moved, so they are
 # substituted at install time from wherever this script is run.
 #
-#   ./scripts/install_agents.sh            # the Discord bot only
-#   ./scripts/install_agents.sh --with-app # and the Streamlit app
+#   ./scripts/install_agents.sh                        # the Discord bot only
+#   ./scripts/install_agents.sh --with-app             # and the Streamlit app
+#   ./scripts/install_agents.sh --with-app --bind 0.0.0.0   # reachable on the LAN
 #   ./scripts/install_agents.sh --uninstall
+#
+# The app has NO login of its own and every page load acts as your ESPN session,
+# so binding 0.0.0.0 means anyone who can reach this machine can read the rosters
+# and drive requests as you. On a home network that is usually an acceptable
+# trade; on anything shared it is not. 127.0.0.1 plus the Cloudflare tunnel with
+# an Access policy is the version that authenticates.
 #
 # Run it again after pulling; it reloads rather than duplicating.
 set -euo pipefail
@@ -17,13 +24,17 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENTS="$HOME/Library/LaunchAgents"
 WANT=("com.thecombine.bot")
+BIND="127.0.0.1"
 
-for arg in "$@"; do
-  case "$arg" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --with-app) WANT+=("com.thecombine.app") ;;
+    --bind) BIND="${2:?--bind needs an address}"; shift ;;
+    --bind=*) BIND="${1#*=}" ;;
     --uninstall) UNINSTALL=1 ;;
-    *) echo "unknown option: $arg" >&2; exit 2 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
+  shift
 done
 
 if [[ -n "${UNINSTALL:-}" ]]; then
@@ -55,6 +66,13 @@ mkdir -p "$AGENTS"
 
 echo "repo: $REPO"
 echo "uv:   $UV"
+if [[ " ${WANT[*]} " == *com.thecombine.app* ]]; then
+  echo "app:  http://$BIND:8501"
+  if [[ "$BIND" != "127.0.0.1" && "$BIND" != "localhost" ]]; then
+    echo "      NOTE: the app has no login. anything that can reach $BIND:8501"
+    echo "      can read your rosters and make ESPN requests as you."
+  fi
+fi
 
 UID_NUM="$(id -u)"
 
@@ -69,7 +87,8 @@ for label in "${WANT[@]}"; do
   launchctl unload -w "$dest" 2>/dev/null || true
 
   sed -e "s|&lt;REPO&gt;|$REPO|g" -e "s|<REPO>|$REPO|g" \
-      -e "s|&lt;UV&gt;|$UV|g"     -e "s|<UV>|$UV|g" "$src" > "$dest"
+      -e "s|&lt;UV&gt;|$UV|g"     -e "s|<UV>|$UV|g" \
+      -e "s|&lt;BIND&gt;|$BIND|g" -e "s|<BIND>|$BIND|g" "$src" > "$dest"
 
   # Validate before loading. A malformed plist fails at load with a message
   # that does not say which key is wrong, and a bad substitution is silent.
@@ -77,7 +96,7 @@ for label in "${WANT[@]}"; do
     echo "generated plist is not valid: $dest" >&2
     exit 1
   fi
-  if grep -q "<REPO>\|<UV>\|&lt;REPO&gt;\|&lt;UV&gt;" "$dest"; then
+  if grep -q "<REPO>\|<UV>\|<BIND>\|&lt;REPO&gt;\|&lt;UV&gt;\|&lt;BIND&gt;" "$dest"; then
     echo "substitution missed a placeholder in $dest" >&2
     exit 1
   fi

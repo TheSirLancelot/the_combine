@@ -67,6 +67,22 @@ the logs. Run it again after pulling; it reloads rather than duplicating.
 
 Add `--with-app` to also run the Streamlit app, `--uninstall` to remove both.
 
+**After every pull, restart what is running.** Both agents hold code in memory
+and neither notices a `git pull`:
+
+```bash
+git pull && ./scripts/install_agents.sh          # add --with-app if installed
+```
+
+The bot needs it because a new or changed slash command only registers when the
+process starts. The app needs it because Streamlit re-executes `app.py` on change
+but keeps already-imported modules, so a new module is missing and a changed one
+is stale. That is the same mechanism behind the `Band` dataclass error further
+down this file, and restarting is the fix in both directions.
+
+`launchctl kickstart -k gui/$(id -u)/com.thecombine.bot` restarts just the bot if
+you would rather not re-run the installer.
+
 Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. `/week` and
 `/startsit` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about

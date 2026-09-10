@@ -260,6 +260,33 @@ The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
 hand-entered league has none, so it shows as unavailable with the reason rather
 than silently going missing. It joins when the API is approved.
 
+## Scorecard
+
+```bash
+uv run combine scorecard              # how the advice has done this season
+uv run combine scorecard score 3      # grade week 3 now
+```
+
+Every recommendation is written down when it is made, with the projections as
+advised, and graded once the week's games are final. There is a Scorecard tab in
+the app and a `/scorecard` command in Discord, and the bot runs the grading pass
+Tuesday at 09:00 Pacific, after Monday night.
+
+It grades the tool, not you. It counts what was recommended whether or not you
+acted on it, because whether the advice would have helped is what decides if the
+advice is worth following.
+
+The projection is stored at the moment of the call and never restated. ESPN
+revises projections through the day, so grading a Sunday recommendation against
+Sunday-night numbers would quietly mark the tool against information it did not
+have. A call whose players cannot be resolved stays unscored rather than being
+scored as zero, since a zero is a real football outcome and inventing one would
+bias the record.
+
+This matters because every other number in this project was measured on 2025:
+the optimizer's +3.5pp, the waiver wire's +2.50 a week, the 0.25 threshold. This
+asks the same questions of 2026 as it happens.
+
 ## Waiver wire
 
 ```bash

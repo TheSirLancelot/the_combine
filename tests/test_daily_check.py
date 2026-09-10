@@ -95,9 +95,15 @@ def test_startsit_signature_survives_a_projection_change(monkeypatch):
     from combine import discord_out
 
     class Call:
+        """Enough of a Call for the signature and the scorecard row."""
+
         def __init__(self):
-            self.bench = type("P", (), {"player_id": "11"})()
-            self.starter = type("P", (), {"player_id": "22"})()
+            self.bench = type("P", (), {"player_id": "11", "name": "Bench",
+                                        "projected": 12.0})()
+            self.starter = type("P", (), {"player_id": "22", "name": "Starter",
+                                          "projected": 10.0})()
+            self.proj_edge = 2.0
+            self.needed = 1.8
 
     monkeypatch.setattr(discord_out, "startsit_embeds", lambda *a, **k: [])
     monkeypatch.setattr(discord_out, "has_news", lambda *a: True)
@@ -111,6 +117,7 @@ def test_startsit_signature_survives_a_projection_change(monkeypatch):
                         lambda *a, **k: ([], [], 0.0))
     monkeypatch.setattr("combine.platforms.client_for",
                         lambda lg: type("C", (), {
-                            "matchup": lambda self, wk: type("M", (), {"my_lineup": []})(),
+                            "matchup": lambda self, wk: type(
+                                "M", (), {"my_lineup": [], "week": 1})(),
                             "roster_slots": lambda self: {}})())
     assert bot.build_startsit("rcl", 1).signature == ("swap:11>22",)

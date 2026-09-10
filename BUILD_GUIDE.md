@@ -1015,6 +1015,46 @@ chosen to land on rounding boundaries.
 William asked for this while learning the tool and expects to want the terse
 version back later, so it is one method with three call sites.
 
+## Scorecard
+
+`pipeline/scorecard.py` and the `recommendation` table, added 2026-09-11.
+Everything this project asserts was measured on 2025 and none of it had been
+checked against a single live decision. This is what closes that.
+
+Recommendations are written from `build_startsit` and `build_waivers`, which the
+daily check runs for every league every morning, so the record accrues whether
+or not anyone looks at a command. Three design points that are the whole value:
+
+`ON CONFLICT DO NOTHING`, never REPLACE. The honest record is what the tool said
+when it FIRST said it. Re-running `/startsit` an hour later with nudged
+projections must not overwrite the call being graded.
+
+An unresolvable call stays unscored. A zero is a real football outcome, so
+defaulting to one would quietly bias the record toward the tool looking worse
+than it was.
+
+Nullable dtypes in `frame()`. An open call is not False and not zero, and a
+plain bool column cannot hold "not known yet" -- it silently becomes False,
+which reads as a wrong call rather than a pending one.
+
+Grading runs Tuesday 09:00 PT rather than Monday, because Monday night finishes
+late enough that a Monday pass would grade a week still being played, and a
+wrong grade is worse than a late one. It calls `pull_espn(..., refresh=True)`
+first: a week stored mid-Sunday has projections but no actuals, and the normal
+"already have that week" skip would leave every recommendation from it
+permanently unscored.
+
+`_log_recommendations` swallows everything. Bookkeeping for a scorecard must
+never be the reason a Sunday lineup check fails to arrive.
+
+## Stretch goals
+
+**Trade evaluation.** Rest-of-season value both ways, with the same two-column
+honesty the waiver view uses. Deferred because it is a value-projection problem,
+which is the class of idea that has failed twice here, and because it involves a
+negotiation the tool cannot see. Revisit once the scorecard has enough live data
+to say whether this system's season projections are worth trusting at all.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

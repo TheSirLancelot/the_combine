@@ -606,6 +606,28 @@ def waivers() -> int:
     return 0
 
 
+def scorecard() -> int:
+    """combine scorecard [score [week]]
+
+    How the tool's own recommendations have done this season. `score` grades a
+    finished week now instead of waiting for the Tuesday pass.
+    """
+    from . import db
+    from .pipeline.scorecard import frame, render
+
+    args = sys.argv[2:]
+    if args and args[0] == "score":
+        from .bot import score_last_week
+
+        week = int(args[1]) if len(args) > 1 else None
+        target, done, missing = score_last_week(week)
+        print(f"week {target}: scored {done}, {missing} unresolved")
+
+    with db.connect(readonly=True) as conn:
+        print(render(frame(conn, config.SEASON)))
+    return 0
+
+
 def calibration() -> int:
     """combine calibration [season]
 
@@ -715,6 +737,8 @@ def main() -> int:
         return check_scoring()
     if cmd == "waivers":
         return waivers()
+    if cmd == "scorecard":
+        return scorecard()
     if cmd == "calibration":
         return calibration()
     if cmd == "scoreboard":

@@ -154,6 +154,24 @@ def already_said(slug: str, week: int, signature: tuple[str, ...]) -> bool:
     return False
 
 
+def _log_recommendations(league: str, week: int, rows) -> None:
+    """Write down what we just advised, so it can be graded later.
+
+    Deliberately not load-bearing. This is bookkeeping for a scorecard, and a
+    locked database or a missing table must never be the reason a Sunday morning
+    lineup check fails to arrive.
+    """
+    if not rows:
+        return
+    try:
+        from .pipeline.scorecard import record
+
+        record(league, config.SEASON, int(week), rows)
+    except Exception:
+        log.warning("could not record recommendations for %s", league,
+                    exc_info=True)
+
+
 def failure_embed(slug: str, exc: Exception) -> discord.Embed:
     """One league failing must not take the others with it.
 
@@ -208,6 +226,7 @@ def build_week_all(week: int | None = None) -> list[discord.Embed]:
 
 def build_startsit(league: str, week: int | None = None) -> Report:
     from . import discord_out
+    from .pipeline import scorecard
     from .pipeline.lineup import optimal_moves
     from .pipeline.startsit import review
     from .platforms import client_for
@@ -219,6 +238,8 @@ def build_startsit(league: str, week: int | None = None) -> Report:
     calls, hurt = review(matchup, usage, ids, dist=dist)
     slots = client.roster_slots()
     _add, _drop, gain = optimal_moves(matchup.my_lineup, slots)
+    _log_recommendations(league, matchup.week,
+                         scorecard.from_startsit(calls, _add, _drop))
     messages = discord_out.startsit_embeds(
         matchup, calls, hurt, usage, ids, in_season,
         config.get_league(league).name, slots, dist)
@@ -273,6 +294,7 @@ def _calibration(league: str):
 
 def build_waivers(league: str, week: int | None = None) -> Report:
     from . import discord_out
+    from .pipeline import scorecard
     from .pipeline.waivers import find, season_values
     from .platforms import client_for
 
@@ -288,6 +310,7 @@ def build_waivers(league: str, week: int | None = None) -> Report:
                  season_value=season_values(client), dist=_distribution())
     # Only an add that does not trade away season value is worth a notification.
     # The rest belong in `/waivers` when you go looking, not in a Sunday ping.
+    _log_recommendations(league, wk, scorecard.from_waivers(found))
     worth_telling = any(not c.trades_down for c in found)
     return Report(discord_out.waivers_embeds(found, cfg.name, wk), worth_telling,
                   tuple(f"add:{c.name}>{c.drop_name}" for c in found))
@@ -363,6 +386,7 @@ class Combine(discord.Client):
             await self.tree.sync()
         if CHANNEL_ID:
             daily_check.start(self)
+            weekly_score.start(self)
 
 
 client = Combine()
@@ -576,6 +600,17 @@ async def glossary(interaction: discord.Interaction):
     await respond(interaction, build_glossary)
 
 
+@client.tree.command(description="How the tool's own recommendations have done")
+@app_commands.describe(week="Grade this week now instead of waiting for Tuesday")
+@owner_only()
+async def scorecard(interaction: discord.Interaction, week: int | None = None):
+    if week is not None:
+        await respond(interaction,
+                      lambda wk: build_scorecard(score_last_week(wk)[0]), week)
+    else:
+        await respond(interaction, build_scorecard, None)
+
+
 @client.tree.command(description="Per-league connection status")
 @owner_only()
 async def health(interaction: discord.Interaction):
@@ -731,6 +766,99 @@ async def daily_check(bot: discord.Client):
             log.info("%s: same report as last time, staying quiet", slug)
             continue
         await send_embeds(channel, parts)
+
+
+# Tuesday morning Pacific, after Monday night is final and scored.
+SCORE_AT = dtime(hour=16, minute=0, tzinfo=UTC)     # 09:00 PT
+SCORE_DAY = 2                                        # Tuesday, as isoweekday
+
+
+def score_last_week(week: int | None = None) -> tuple[int, int, int]:
+    """Pull the finished week's actuals, then grade what we recommended.
+
+    Returns (week scored, recommendations scored, still unresolved).
+    """
+    from . import db
+    from .pipeline.history import pull_espn
+    from .pipeline.scorecard import score
+
+    target = int(week if week is not None else max(current_week() - 1, 1))
+    done = missing = 0
+    with db.connect() as conn:
+        for slug, cfg in config.leagues().items():
+            if cfg.platform != "espn":
+                continue
+            try:
+                pull_espn(conn, slug, config.SEASON, weeks=[target],
+                          log=lambda m: log.info("%s", m), refresh=True)
+            except Exception:
+                log.exception("could not pull week %s for %s", target, slug)
+        got, left = score(conn, config.SEASON, target)
+        done += got
+        missing += left
+    log.info("week %s: scored %d recommendation(s), %d unresolved",
+             target, done, missing)
+    return target, done, missing
+
+
+@tasks.loop(time=SCORE_AT)
+async def weekly_score(bot: discord.Client):
+    """Grade last week once its games are final.
+
+    Tuesday rather than Monday: Monday night finishes late enough that a Monday
+    morning pass would score a week that is still being played, and a wrong
+    grade is worse than a late one.
+    """
+    if datetime.now(UTC).isoweekday() != SCORE_DAY:
+        return
+    try:
+        week, done, missing = await asyncio.to_thread(score_last_week)
+    except Exception:
+        log.exception("weekly scoring failed")
+        return
+    if not done:
+        log.info("nothing to score")
+        return
+    if not CHANNEL_ID:
+        return
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(CHANNEL_ID)
+        except Exception:
+            log.warning("channel %s unreachable for the scorecard", CHANNEL_ID)
+            return
+    await send_embeds(channel, await asyncio.to_thread(build_scorecard, week))
+
+
+def build_scorecard(week: int | None = None) -> list[discord.Embed]:
+    from . import db, discord_out
+    from .pipeline.scorecard import frame, summary
+
+    with db.connect(readonly=True) as conn:
+        df = frame(conn, config.SEASON)
+    rows = summary(df)
+    if not rows:
+        return [discord_out.message_embed(
+            "Nothing scored yet. Recommendations are written down as they are "
+            "made and graded once the week's games are final.",
+            title="Scorecard", colour=discord_out.DEAD)]
+
+    overall = rows[-1]
+    colour = (discord_out.GOOD if overall["points"] > 0
+              else discord_out.BAD if overall["points"] < 0 else discord_out.INFO)
+    title = "Scorecard" + (f" · through week {week}" if week else "")
+    table = [f"{'KIND':<9}{'N':>4}{'RIGHT':>7}{'POINTS':>9}{'PER':>7}"]
+    for r in rows:
+        table.append(f"{r['kind']:<9}{r['n']:>4}{r['right'] * 100:>6.0f}%"
+                     f"{r['points']:>+9.1f}{r['per_call']:>+7.2f}")
+    e = discord.Embed(title=title, colour=colour,
+                      description=discord_out.code("\n".join(table)))
+    e.set_footer(text="RIGHT is how often the recommended player outscored the "
+                      "one he would have replaced. This grades the tool, not "
+                      "the manager: it counts what was recommended whether or "
+                      "not it was acted on.")
+    return [e]
 
 
 def preflight() -> list[str]:

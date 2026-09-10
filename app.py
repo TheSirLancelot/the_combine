@@ -433,7 +433,8 @@ with st.sidebar:
     st.title("The Combine")
 
     # Draft is dormant outside August, so the in-season views lead.
-    mode = st.radio("Mode", ["Week", "Scores", "Draft"], horizontal=True)
+    mode = st.radio("Mode", ["Week", "Scores", "Scorecard", "Draft"],
+                    horizontal=True)
 
     league = st.radio("League", list(leagues),
                       format_func=lambda s: f"{s} · {leagues[s].name}",
@@ -827,6 +828,76 @@ def week_page():
 
 
 @st.fragment(run_every=f"{every}s" if auto else None)
+@st.cache_data(ttl=300, show_spinner=False)
+def load_scorecard(_nonce: int, _version: str):
+    from combine import db
+    from combine.pipeline.scorecard import frame
+
+    with db.connect(readonly=True) as conn:
+        return frame(conn, config.SEASON)
+
+
+def scorecard_page():
+    from combine.pipeline.scorecard import summary
+
+    st.subheader("Scorecard")
+    st.caption(
+        "Every recommendation the tool made, and what actually happened. This "
+        "grades the tool rather than the manager: it counts what was "
+        "recommended whether or not you acted on it, because whether it would "
+        "have helped is what decides if the advice is worth following. "
+        "Everything else in here was measured on 2025. This is the same "
+        "questions asked of 2026 as it happens.")
+
+    df = load_scorecard(st.session_state.nonce, _code_version())
+    rows = summary(df)
+    if not rows:
+        st.info("Nothing scored yet. Recommendations are written down as they "
+                "are made and graded every Tuesday morning, once Monday night "
+                "is final.")
+        if df is not None and not df.empty:
+            st.caption(f"{len(df)} recommendation(s) recorded, waiting for "
+                       f"their week to finish.")
+        return
+
+    overall = rows[-1]
+    top = st.columns(3)
+    top[0].metric("Calls graded", overall["n"])
+    top[1].metric("Right", f"{overall['right'] * 100:.0f}%")
+    top[2].metric("Points", f"{overall['points']:+.1f}",
+                  help="What following every call would have been worth")
+
+    st.dataframe(
+        pd.DataFrame(rows).rename(columns={
+            "kind": "Kind", "n": "Calls", "right": "Right",
+            "points": "Points", "per_call": "Per call"}),
+        hide_index=True, use_container_width=True,
+        column_config={
+            "Right": st.column_config.NumberColumn(
+                "Right", format="%.0f%%",
+                help="How often the recommended player outscored the one he "
+                     "would have replaced"),
+            "Points": st.column_config.NumberColumn("Points", format="%+.1f"),
+            "Per call": st.column_config.NumberColumn("Per call", format="%+.2f"),
+        })
+
+    done = df[df["gain"].notna()]
+    if not done.empty and done["week"].nunique() > 1:
+        st.markdown("**By week**")
+        weekly = done.groupby("week")["gain"].sum()
+        st.bar_chart(weekly)
+
+    with st.expander("Every call"):
+        st.dataframe(
+            df[["week", "league", "kind", "subject_name", "against_name",
+                "edge", "subject_actual", "against_actual", "gain"]].rename(
+                columns={"week": "Wk", "league": "League", "kind": "Kind",
+                         "subject_name": "Recommended", "against_name": "Over",
+                         "edge": "Projected edge", "subject_actual": "He scored",
+                         "against_actual": "Other scored", "gain": "Gain"}),
+            hide_index=True, use_container_width=True)
+
+
 def scores_page():
     try:
         data = load_scores(int(week_no), st.session_state.nonce, _code_version())
@@ -875,5 +946,7 @@ if mode == "Draft":
     page()
 elif mode == "Scores":
     scores_page()
+elif mode == "Scorecard":
+    scorecard_page()
 else:
     week_page()

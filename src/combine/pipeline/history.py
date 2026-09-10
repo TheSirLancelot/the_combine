@@ -47,9 +47,15 @@ def stored_pff_weeks(conn, season: int, area: str) -> set[int]:
 
 
 def pull_espn(conn, league: str, season: int, weeks=REGULAR_SEASON,
-              log=print) -> int:
-    """Every rostered player's projection and actual, week by week."""
-    have = stored_espn_weeks(conn, league, season)
+              log=print, refresh: bool = False) -> int:
+    """Every rostered player's projection and actual, week by week.
+
+    `refresh` re-pulls weeks already stored, which the Tuesday scoring pass
+    needs: a week first stored mid-Sunday has projections but no actuals, and
+    skipping it as "already have that one" would leave every recommendation
+    from that week permanently unscored.
+    """
+    have = set() if refresh else stored_espn_weeks(conn, league, season)
     todo = [w for w in weeks if w not in have]
     if not todo:
         log(f"  {league} {season}: all {len(weeks)} weeks already stored")

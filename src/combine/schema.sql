@@ -146,3 +146,33 @@ CREATE TABLE IF NOT EXISTS prediction (
   made_at    TEXT NOT NULL,
   PRIMARY KEY (league, season, week, espn_id, model)
 );
+
+-- Every recommendation the tool made, and what actually happened. Exists so the
+-- system's claims are checkable on THIS season's live data instead of resting
+-- on a backtest of last season forever. Written when advice is produced, scored
+-- once the week's games are final.
+--
+-- Counterfactual by design: it records what the tool said, not what William
+-- did. "Would this have helped" is the question it can answer honestly, and it
+-- is the one that says whether the advice is worth following.
+CREATE TABLE IF NOT EXISTS recommendation (
+  league        TEXT NOT NULL,
+  season        INTEGER NOT NULL,
+  week          INTEGER NOT NULL,
+  kind          TEXT NOT NULL,        -- 'start' | 'optimal' | 'waiver'
+  subject_id    TEXT NOT NULL,        -- who to start, or add
+  subject_name  TEXT NOT NULL,
+  against_id    TEXT NOT NULL DEFAULT '',   -- who to bench, or drop
+  against_name  TEXT NOT NULL DEFAULT '',
+  subject_proj  REAL,                 -- the numbers AS ADVISED, never restated
+  against_proj  REAL,
+  edge          REAL NOT NULL,        -- projected gain when the call was made
+  bar           REAL,                 -- the threshold it had to clear
+  made_at       TEXT NOT NULL,
+  subject_actual REAL,                -- filled in after the week is final
+  against_actual REAL,
+  scored_at     TEXT,
+  PRIMARY KEY (league, season, week, kind, subject_id, against_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rec_week ON recommendation(season, week);
+CREATE INDEX IF NOT EXISTS idx_rec_open ON recommendation(scored_at);

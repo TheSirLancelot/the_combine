@@ -338,6 +338,8 @@ def train() -> int:
     model     fit the residual model and score it on held-out weeks
     backtest  replay a season and test posture-aware lineups against expected
               points, using the same optimizer for both
+    wire      how much the waiver wire was actually worth, add --all-teams for a
+              sample big enough to measure
 
     Resumable: it skips whatever is already there, so run it again after an
     interruption. A full season is around a hundred requests and some of them
@@ -385,6 +387,53 @@ def train() -> int:
             print("  " + sc.line())
         print("\nESPN BY POSITION FAMILY")
         print(by_family(frame).to_string(index=False))
+        return 0
+
+    if what == "wire":
+        import numpy as np
+
+        from .pipeline.wire import fetch, form_ranking
+        from .pipeline.wire import run as run_wire
+        from .platforms import client_for
+
+        every = "--all-teams" in sys.argv
+        for slug, cfg in config.leagues().items():
+            if cfg.platform != "espn":
+                continue
+            client = client_for(slug, season=season)
+            with db.connect(readonly=True) as conn:
+                actuals, eligibility = fetch(client, conn, season)
+                ranking = form_ranking(actuals, range(1, 19))
+                teams = ([r[0] for r in conn.execute(
+                    "SELECT DISTINCT fantasy_team FROM espn_player_week"
+                    " WHERE league=? AND season=?", (slug, season))]
+                    if every else [client.my_team_name()])
+                rows = []
+                for team in teams:
+                    rows += run_wire(conn, client, season, team, actuals,
+                                     eligibility, ceiling=not every,
+                                     ranking=ranking)
+            if not rows:
+                print(f"{slug}: nothing stored for {season}")
+                continue
+            values = np.array([r.form_value for r in rows])
+            se = values.std(ddof=1) / np.sqrt(len(values)) if len(values) > 1 else 0
+            flips = sum(1 for r in rows if r.form_flipped)
+            print(f"\n{cfg.name}: {len(teams)} team(s), {len(rows)} team-weeks")
+            print("  ex-ante waiver rule (best trailing form, no foreknowledge)")
+            print(f"    {values.mean():+.2f} points a week, se {se:.2f}"
+                  + (f" ({values.mean() / se:.1f} sigma)" if se else ""))
+            print(f"    helped in {(values > 0.05).mean() * 100:.0f}% of weeks, "
+                  f"changed {flips} of {len(rows)} results")
+            if not every:
+                ceiling = np.array([r.wire_value for r in rows])
+                print(f"  hindsight ceiling: {ceiling.mean():+.1f} a week "
+                      f"(mostly measures pool size, not opportunity)")
+        print("\nA bad add never costs points in the week, because you simply do "
+              "not start him.\nWhat it costs is the dropped player's future, which "
+              "this does not measure.\nTrailing form is a weaker signal than a "
+              "projection, so read these as a FLOOR\non what the live "
+              "projection-driven version can manage.")
         return 0
 
     if what == "backtest":
@@ -443,7 +492,7 @@ def train() -> int:
         return 0
 
     if what != "build":
-        print("usage: combine train <build|status|baseline|model|backtest> [season]",
+        print("usage: combine train <build|status|baseline|model|backtest|wire> [season]",
               file=sys.stderr)
         return 2
 
@@ -505,6 +554,79 @@ def check_scoring() -> int:
               f"config/{slug}_league.toml, idp={table.idp}")
         print("  hand-entered, so it cannot be validated against the platform. "
               "the engine below it is.")
+    return 0
+
+
+def waivers() -> int:
+    """combine waivers [league...] [week]
+
+    Free agents who would improve this week's lineup. Value is what the whole
+    lineup is worth afterwards, not a head-to-head, so cascades are included.
+    Season value given up by the drop is reported separately, because a week is
+    not worth a season.
+    """
+    from .pipeline.calibration import load as load_cal
+    from .pipeline.waivers import find, render, season_values
+    from .platforms import client_for
+
+    args = sys.argv[2:]
+    week = next((int(a) for a in args if a.isdigit()), None)
+    slugs = [a for a in args if not a.isdigit()] or list(config.leagues())
+    unknown = [lg for lg in slugs if lg not in config.leagues()]
+    if unknown:
+        print(f"unknown league(s): {', '.join(unknown)}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
+        return 2
+
+    dist = None
+    try:
+        from . import db
+        from .pipeline.distribution import load as load_dist
+        with db.connect(readonly=True) as conn:
+            candidate = load_dist(conn, config.SEASON - 1)
+        dist = None if candidate.empty else candidate
+    except Exception:
+        dist = None
+
+    for i, slug in enumerate(slugs):
+        if i:
+            print("\n" + "=" * 60)
+        cfg = config.get_league(slug)
+        if cfg.platform == "manual":
+            print(f"{cfg.name}: no free agent pool without the Yahoo API. "
+                  f"hand entry cannot provide one.")
+            continue
+        try:
+            client = client_for(slug)
+            found = find(client, week, cal=load_cal(slug),
+                         season_value=season_values(client), dist=dist)
+            print(render(found, cfg.name, int(week or client.week)))
+        except Exception as exc:
+            print(f"{slug}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 0
+
+
+def calibration() -> int:
+    """combine calibration [season]
+
+    ESPN's projection bias per position, measured from stored history. Shown
+    because a silent correction is worse than none: this is what is being
+    applied and how sure we are of it.
+    """
+    from .pipeline.calibration import load
+
+    season = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() \
+        else config.SEASON - 1
+    for slug, cfg in config.leagues().items():
+        if cfg.platform == "manual":
+            print(f"{slug}: hand-entered, no measured history\n")
+            continue
+        print(load(slug, season).describe())
+        print()
+    print("negative means ESPN projects too generously for that position.")
+    print("applied only where the sample is big enough and the bias clears two")
+    print("standard errors. it makes projections comparable ACROSS positions;")
+    print("displayed projections stay exactly as ESPN published them.")
     return 0
 
 
@@ -591,6 +713,10 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "waivers":
+        return waivers()
+    if cmd == "calibration":
+        return calibration()
     if cmd == "scoreboard":
         return scoreboard()
     if cmd == "notify":

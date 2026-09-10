@@ -54,6 +54,10 @@ FACET_TTL = 12 * 3600
 # The calendar moves on Tuesdays; a few hours is plenty.
 CALENDAR_TTL = 6 * 3600
 
+# Regular season weeks in an NFL season. Weeks past this are playoffs, which
+# PFF folds into a season total along with preseason.
+REGULAR_WEEKS = 18
+
 
 class PffError(RuntimeError):
     pass
@@ -142,6 +146,27 @@ class PffApi:
         return []
 
     # --- calendar -------------------------------------------------------
+
+    def regular_weeks(self, season: int) -> str:
+        """The `week` argument that gets REGULAR SEASON numbers for a season.
+
+        PFF's season-level totals silently include preseason and playoff snaps.
+        Drake Maye's 2025 season row is 23 games and 770 dropbacks; his regular
+        season is 17 and 601, and his passing grade moves 75.2 -> 87.8 once the
+        camp snaps come out. So no caller should ever ask for a bare season
+        total.
+
+        A comma-separated week list is aggregated server-side, which matters:
+        summing weekly rows here would mean re-deriving rates and grades, and a
+        PFF grade is not something that can be recombined from its parts.
+        """
+        state = self.season_state()
+        last = REGULAR_WEEKS
+        if season >= state.season and state.in_season:
+            last = min(state.week, REGULAR_WEEKS)   # the season so far
+        elif season >= state.season:
+            return ""                               # preseason: nothing to ask for
+        return ",".join(str(w) for w in range(1, last + 1))
 
     def season_state(self) -> SeasonState:
         """PFF's own view of where the calendar is. One cheap call."""

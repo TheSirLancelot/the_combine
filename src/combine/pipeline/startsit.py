@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .. import config
 from ..platforms import Matchup, WeeklyPlayer
 from . import usage as usage_mod
 from .lineup import BAD_STATUS, near_misses, optimal_moves, problems, split, swaps
@@ -109,7 +110,7 @@ def _player_block(p: WeeklyPlayer, u: usage_mod.Usage | None, in_season: bool,
         out.append(f"{indent}  no PFF usage on file")
         return out
     out.append(f"{indent}  {u.line(p.pos)}")
-    for note in u.caveats(in_season):
+    for note in u.caveats(in_season, season=config.SEASON):
         out.append(f"{indent}  ({note})")
     if band is not None:
         out.append(f"{indent}  {band.describe()}")
@@ -152,11 +153,7 @@ def render(m: Matchup, calls: list[Call], hurt: list[WeeklyPlayer],
         if close:
             out.append("\nCLOSEST COMPARISONS, none of them close enough")
             for c in close:
-                out.append(
-                    f"  {c.bench.name} {c.bench.projected:.1f} would need "
-                    f"{c.short_by:.1f} more to be worth weighing against "
-                    f"{c.starter.name} {c.starter.projected:.1f} "
-                    f"({c.starter.slot}); that pair needs a {c.needed:.1f} point edge")
+                out.append(f"  {c.explain()} ({c.starter.slot})")
             out.append("  the edge required differs per pair, because it scales "
                        "with how widely\n  those two positions actually scatter "
                        "at those projections. see: combine glossary")

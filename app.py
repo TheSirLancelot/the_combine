@@ -243,6 +243,27 @@ def missing_inputs(league: str) -> list[tuple[str, str, str]]:
     return out
 
 
+@st.cache_data(ttl=300, show_spinner="reading the wire...")
+def load_waivers(league: str, week: int, _nonce: int, _version: str) -> dict:
+    """Free agent upgrades. Its own loader with a long ttl, because it pulls a
+    350 player pool and the wire does not move minute to minute."""
+    from combine.pipeline.calibration import load as load_cal
+    from combine.pipeline.waivers import find, season_values
+
+    cfg = leagues[league]
+    if cfg.platform != "espn":
+        return {"candidates": [], "unavailable":
+                "no free agent pool without the Yahoo API"}
+    try:
+        client = client_for(league)
+        found = find(client, week or None, cal=load_cal(league),
+                     season_value=season_values(client),
+                     dist=outcome_distribution(config.SEASON - 1))
+        return {"candidates": found, "unavailable": ""}
+    except Exception as exc:
+        return {"candidates": [], "unavailable": f"{type(exc).__name__}: {exc}"}
+
+
 @st.cache_data(ttl=30, show_spinner="pulling live scores...")
 def load_scores(week: int, _nonce: int, _version: str) -> dict:
     """Every league's matchups. Short ttl because this is the one view where
@@ -350,6 +371,26 @@ WEEK_COLS = {
         width="small"),
     "ROLE": st.column_config.TextColumn(
         "Role (PFF)", help="See the glossary below the tables", width="large"),
+}
+
+
+WAIVER_COLS = {
+    "!": st.column_config.TextColumn(
+        "!", help="The position correction is what puts him here. See below.",
+        width="small"),
+    "PROJ": st.column_config.NumberColumn(
+        "Proj", help="ESPN's weekly projection for him, as published", format="%.1f"),
+    "WEEK": st.column_config.NumberColumn(
+        "Week +/-", help="What the whole lineup gains this week if you make the "
+                         "move. Already accounts for who shifts where.",
+        format="%+.1f"),
+    "SEASON": st.column_config.NumberColumn(
+        "Season +/-", help="Projected rest-of-season points gained or given up by "
+                           "the drop. Negative means the move buys a week and "
+                           "pays for it later.",
+        format="%+.1f"),
+    "Starts over": st.column_config.TextColumn(
+        "Starts over", help="Who he pushes out of the lineup this week"),
 }
 
 
@@ -700,12 +741,8 @@ def week_page():
         if data["near"]:
             with st.expander("Closest comparisons, none of them close enough"):
                 for c in data["near"]:
-                    st.markdown(
-                        f"**{c.bench.name}** {c.bench.projected:.1f} would need "
-                        f"**{c.short_by:.1f} more** to be worth weighing against "
-                        f"{c.starter.name} {c.starter.projected:.1f} "
-                        f"(`{c.starter.slot}`) &nbsp;·&nbsp; that pair needs a "
-                        f"{c.needed:.1f} point edge")
+                    st.markdown(f"{c.explain()} &nbsp;·&nbsp; "
+                                f"`{c.starter.slot}`")
                 st.caption(
                     "A bench player has to be AHEAD by the edge shown, not level. "
                     "The edge differs per pair: it scales with how widely those "
@@ -732,6 +769,58 @@ def week_page():
             hide_index=True, use_container_width=True, column_config=WEEK_COLS)
 
     role_legend(data["in_season"], config.SEASON - 1 if data["dist"] else None)
+
+    st.divider()
+    st.markdown("**Waiver wire**")
+    st.caption(
+        "Free agents who would improve this lineup. Week +/- is what the whole "
+        "lineup is worth afterwards, not a head to head, so it already accounts "
+        "for who shifts where. Season +/- is what the drop costs or gains for "
+        "the rest of the year, kept separate because a week is not worth a "
+        "season. Each row is an alternative, not a sequence: every one is "
+        "measured against the lineup you have now, which is why they can name "
+        "the same drop. Backtested at +2.50 points a week in RCL and +0.79 in "
+        "DMWD over 216 team-weeks each.")
+    wire = load_waivers(league, int(week_no), st.session_state.nonce,
+                        _code_version())
+    if wire["unavailable"]:
+        st.info(wire["unavailable"])
+    elif not wire["candidates"]:
+        st.success("Nobody on the wire improves the lineup. That is the normal "
+                   "answer: the pool is unrostered for a reason.")
+    else:
+        rows = []
+        for c in wire["candidates"]:
+            rows.append({
+                "!": "⚠️" if c.correction_carries_it else "",
+                "Add": c.name,
+                "POS": c.pos,
+                "Team": c.team or "--",
+                "PROJ": c.week_proj,
+                "WEEK": c.week_gain,
+                "SEASON": c.season_cost,
+                "Starts over": c.displaces or "--",
+                "Drop": f"{c.drop_name} ({c.drop_pos})"
+                        + (" 🔒" if c.blocked_name or c.drop_locked else ""),
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True,
+                     use_container_width=True, column_config=WAIVER_COLS)
+
+        for c in wire["candidates"]:
+            note = c.blocked_note()
+            if note:
+                st.info(f"**{c.name}**: {note}")
+            if c.correction_carries_it:
+                st.warning(
+                    f"**{c.name}** ranks here only because {c.pos} projections "
+                    f"are corrected UP by {c.correction:.1f}, measured on "
+                    f"{c.correction_n} player-weeks. On ESPN's raw number he does "
+                    f"not clear the bar.")
+            elif c.clears_despite_correction:
+                st.caption(
+                    f"{c.name} clears the bar even after {c.pos} projections are "
+                    f"marked DOWN {abs(c.correction):.1f} for being "
+                    f"systematically over-projected.")
 
     if final:
         st.caption("week is final")

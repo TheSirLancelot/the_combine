@@ -584,9 +584,66 @@ hostname, no ingress rule, no Access policy whose correctness matters and no
 inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
-Commands are `/week`, `/startsit`, `/compare`, `/glossary`, `/health`, locked to
+Commands are `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
+`/glossary`, `/health`, `/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
+
+**Embeds and buttons, 2026-09-10.** Every command returns
+`list[discord.Embed]` instead of `list[str]`, built in `discord_out.py`.
+
+Three decisions worth keeping.
+
+Colour is severity, not palette: GOOD, INFO, WARN, BAD, DEAD, picked so the bar
+answers "do I need to act" before the message is opened. DEAD is grey and is used
+for a league that cannot answer, like Yahoo having no free agent pool. Using red
+there would have trained him to ignore red, which is the only thing the colour is
+for.
+
+The week and scoreboard views are several stacked embeds rather than one, and the
+reason is Discord's render order: within an embed the description always comes
+before the fields, so one embed puts the lineup table above the score. The score
+is what the message is opened for. Separate embeds stack in the order given.
+
+`field()` enforces three caps and returns whether the field went in. Twenty-five
+fields, 1024 characters in a value, and 6000 characters across the whole embed
+added together. The last one is the dangerous one: Discord rejects an oversized
+embed outright, so the message never arrives, and the symptom is silence, which
+is exactly what a normal quiet week looks like. A test found it, not production.
+The budget is 5500 rather than 5900 because footers are set after the fields are
+added, so `len(embed)` at measuring time does not include one yet. Where notes do
+not all fit, the footer says "notes shown for 3 of 8" rather than dropping them
+silently.
+
+Buttons are a `discord.ui.DynamicItem`, not a plain `View`. A normal view lives in
+the process that sent it, so every button in the channel goes dead on restart and
+a button that silently does nothing is worse than no button. The whole state --
+command, league, target week -- is encoded in the custom_id, so the handler is
+rebuilt from the click. `add_dynamic_items(Nav)` in `setup_hook` is what registers
+it; without that line the buttons are decoration. The owner check is repeated in
+the button callback, because anyone who can see the message can click it and the
+slash command's check does not carry over to a component interaction.
+
+`embed_text()` flattens an embed back to text. Nothing in Discord needs it; it
+exists so `combine notify --dry-run` can still show the wording of a message that
+fires once a week, and so the tests can assert on content.
+
+`/clear`, added 2026-09-10, is the single exception and it is worth being precise
+about why it is not a violation. The read-only rule exists because a write
+against ESPN or Yahoo is a roster move with real consequences that only William
+should make. `/clear` writes to DISCORD, deleting the bot's own status posts out
+of its own channel. Different blast radius entirely. It is still irreversible, so
+it is built with the guards that implies: a dry run by default, `confirm: True`
+required to delete, ephemeral replies so the progress message cannot be caught in
+its own purge, and an explicit `discord.Forbidden` branch that names the two
+permissions and points at server settings rather than the developer portal, which
+is the mistake this cost an exchange to sort out.
+
+It is also the one command that does not route through `respond()`. That helper
+exists to keep blocking ESPN calls off the event loop; `purge` is async I/O
+against Discord and belongs on the loop as it is. The type guard checks for
+`TextChannel | Thread` rather than `Messageable`, because a DM can be read but
+not purged.
 
 **Getting it running under launchd cost two rounds, both self-inflicted.** First,
 `discord.py` went into `pyproject.toml` and never into `uv.lock`, so `uv run`
@@ -660,6 +717,281 @@ The hand-entered Yahoo league cannot appear, because a scoreboard needs the
 opponent's lineup and entering one weekly by hand is more upkeep than a score
 line is worth. It renders as unavailable WITH the reason rather than being
 filtered out, so its absence never reads as a bug.
+
+## The waiver wire
+
+`pipeline/waivers.py` for the live question, `pipeline/wire.py` for what it was
+worth, added 2026-09-10. `combine waivers` and `combine train wire --all-teams`.
+
+**What the backtest can and cannot establish.** ESPN does not retain historical
+weekly PROJECTIONS: for any player in any past week `projected_points` comes back
+None, verified across a batch of 60. Projections survive only for players someone
+rostered, because we stored them week by week as the season ran. So the method's
+ranking cannot be replayed against the past and this is NOT the flip test the
+residual model got.
+
+What can be measured exactly is availability, since every roster was stored for
+every week, and actuals, since ESPN answers `player_info` with a list of ids and
+returns every week at once already scored under that league's own rules.
+
+So the substitute is an ex-ante rule that needs no projections: each week take the
+available player with the best trailing form and see what he actually did.
+Trailing form is a weaker signal than a projection, so this is a FLOOR on what
+the live version can manage, not an estimate of it.
+
+**Result, 432 team-weeks across both leagues:**
+
+```
+RCL    +2.50 points a week, se 0.28  (8.8 sigma)   helped 38% of weeks, changed 5 of 216 results
+DMWD   +0.79 points a week, se 0.22  (3.7 sigma)   helped 10% of weeks, changed 2 of 216 results
+```
+
+Both real. The asymmetry matches the live tool exactly: RCL's deep IDP pool and
+weak DP slot produce three candidates in week 1 while DMWD produces none.
+
+Two things that number does not include. A bad add never costs points in the
+week, because you simply do not start him, so the downside here is structurally
+invisible; what it really costs is the dropped player's future, which this does
+not measure. And the hindsight ceiling, 21 points a week in RCL, is not an
+opportunity figure at all: the best of 300 players is high by arithmetic, and it
+mostly measures pool size.
+
+**A profiling lesson worth keeping.** The sweep would not finish, and the cause
+was a `best_lineup` call sitting inside a list comprehension's CONDITION, so it
+re-ran once per roster player: 21 solves a week instead of 1. Reading the code
+twice did not find it; `cProfile` found it in a minute. The same solve was
+already being computed one line above.
+
+**Surfacing it, 2026-09-10.** `/waivers` in Discord (optional league, all three
+when omitted), a Waiver wire section at the bottom of the app's Week page, and
+folded into the scheduled check.
+
+The notification gate is `worth_telling = any(not c.trades_down for c in found)`.
+An add that gains the week but costs season value is real advice and belongs in
+`/waivers`; it is not worth interrupting a morning for, because the answer
+depends on how the rest of your season looks and only you know that. In RCL week
+1 the top candidate trades down and the other two do not, so the check does ping,
+and it pings for the two that are unambiguous.
+
+All three surfaces are a table plus numbered notes. The numbers belong in
+columns — WEEK and SEASON both signed, since the whole point is that they can
+disagree — but the caveats do not fit in a column and truncating one would leave
+a confident number with its qualifier cut off. So the caveats go underneath,
+keyed by row number, and the Discord table is 38 characters wide to survive phone
+wrapping. Names go through `short_name()` for the same reason: a hard truncation
+to column width gave "DeForest Buck", which is both ugly and ambiguous.
+
+The app caches waivers at `ttl=300`. The wire does not move minute to minute and
+the sweep scores a 350-player pool, so a five minute cache is the difference
+between a page that loads and one you wait on.
+
+## Daily instead of Sunday
+
+Changed 2026-09-11. `weekly_check` is now `daily_check` and the `CHECK_DAYS`
+gate is gone. Games run Thursday through Monday, so a Sunday-only check missed a
+Thursday injury and every waiver window that opened midweek.
+
+The interesting part is what makes daily survivable. The original gate was "post
+only when there is news", which was enough at once a week, but news does not stop
+being news the next morning: a starter ruled out for the season would have posted
+the same card six days running, and a channel that repeats itself gets muted --
+at which point the one message that mattered is missed too.
+
+So a builder now returns a `Report(embeds, news, signature)`. The signature is
+what the report is ABOUT and deliberately carries no numbers: `hurt:<player_id>`,
+`swap:<bench_id>><starter_id>`, `add:<name>><drop>`. `already_said()` digests it
+and compares against `data/last_post.json`, keyed by league and week. Digesting
+the rendered text instead would have defeated the whole thing, because ESPN
+revises projections through the day and every morning would have looked new.
+
+Failures are deliberately one-directional. An unreadable or unwritable state file
+returns False and posts, so the worst case of this cache is a duplicate message
+rather than a missed one. An empty signature is never suppressed either, since
+that means the builder could not say what the report was about.
+
+## Waiver drops you are actually allowed to make
+
+Fixed 2026-09-11, from a real bad recommendation: it told him to drop Rashid
+Shaheed on a day Shaheed had already played, which the platform will not allow.
+
+`find()` now excludes any player whose game has kicked off from the drop
+candidates, and keeps the one it WOULD have picked so the message can name him
+and price the difference. `blocked_cost` is the extra season value surrendered by
+being forced onto a legal drop, and `blocked_note()` says both that number and
+whether the move still gains season value overall. No threshold on "is the
+difference big enough" -- that is his call and the two numbers are what it turns
+on. When nothing on the roster can be dropped at all, `drop_locked` says so
+rather than the tool recommending the impossible.
+
+Writing the test for that found a second bug in the same function. The cheap
+pre-filter compared a candidate against the weakest starter in each slot he was
+eligible for, defaulting a slot with no entry to infinity -- so an EMPTY starting
+slot rejected everyone, when in fact an empty slot is beaten by anybody at all.
+The fix is `setdefault(slot, 0.0)` AFTER the loop over starters, not as the
+default inside it: seeding zeros first makes every `min()` zero and turns the
+filter off completely, which is a quiet way to go back to returning 94
+candidates. Both directions are tested now.
+
+## PFF season totals include preseason
+
+Found 2026-09-11, from "why is the Role column mostly empty". It was two bugs
+stacked, and neither one ever raised an error.
+
+The visible one: PFF's `default_week` flipped to 1, so `stats_season` became
+2026 and the tool started reading a season nobody had played. Most starters sit
+out preseason, so they had no row at all and the Role column went blank. The
+handful that DID show a row were worse than the blanks, because a preseason
+sample was rendered identically to a full charted season -- Brock Purdy's line
+was 7 dropbacks in one preseason game, T.J. Edwards' was 12 snaps.
+
+The one underneath, which had been wrong all along: PFF's season-level totals
+fold in preseason AND playoff snaps. Drake Maye 2025, season-level, is 23 games
+and 770 dropbacks. His regular season, weeks 1-18, is 17 and 601. His passing
+grade reads 75.2 against a real 87.8, so this is a 12-point swing on a grade,
+not a rounding error. Every usage number the tool has ever displayed was
+contaminated.
+
+Nothing validated is affected, which is worth stating plainly: calibration and
+the waiver backtest run off ESPN actuals in the local database, and
+`history.py` already pulled PFF per week. The damage was confined to displayed
+role context and the opportunity-edge line in start/sit.
+
+**The fix.** A comma-separated week list is aggregated SERVER SIDE:
+`week="1,2,3"` returns one row of three games. That matters more than it looks,
+because summing weekly rows locally would mean re-deriving rates and grades, and
+a PFF grade cannot be recombined from its parts. Verified against the known
+answer: `week=1,...,18` reproduces 17 games, 601 dropbacks, grade 87.8 exactly.
+`season_type=REG` is not supported and is silently ignored, so it is not an
+option. `PffApi.regular_weeks()` builds the list and `usage.load()` is the only
+caller that needs it; `crosswalk.py` still uses season totals on purpose, since
+it only wants names and ids and more rows is better there.
+
+**The fallback.** `USAGE_MIN_GAMES = 1` from `USAGE_FROM_WEEK = 2`: anyone who
+has played this season reads this season, and anyone who has not keeps last
+season. His call, and the reasoning holds up. Role is what these lines are FOR,
+and role is the half that stabilises immediately -- route/g, touch/g and snap/g
+mean something from a player's first game, and they are also the half most
+likely to have changed over an offseason, which is precisely when last season
+stops being a good prior. The rates sharing the line, yprr and grade and brk%,
+are close to noise at one game; what carries that is the season/games tag on
+every line and the `SMALL_SAMPLE` caveat, which fires constantly through
+September and should.
+
+The week 2 floor is so the table does not half-switch mid-week-1, when three
+teams have played and the rest have not; splitting the table on kickoff order
+would be worse than either answer. Checked against live data: at week 1 it is
+2025 for 1610 of 1614 players (the four are rookies with no prior), and
+simulating week 2 flips exactly the 55 who have played, Rhamondre Stevenson to
+`2026 1g` while Jahmyr Gibbs stays `2025 17g`.
+
+Keeping last season for a player with zero current-season games is a deliberate
+softening of "only show 2026". Hurt, inactive or not yet played all produce the
+same blank otherwise, and a real role from last year beats an empty cell when
+the tag says which year it is.
+
+Because the table now mixes seasons by design, every role line is tagged with
+the season and game count it describes (`2025 17g`). And `caveats()` compares
+the row's season against the season being played rather than asking whether the
+calendar is in season -- keyed off the calendar, the "prior, not evidence"
+warning went silent in exactly the weeks it was needed.
+
+## Defenses in, kickers out
+
+Settled 2026-09-11, closing the TODO. The question was whether K and D/ST can go
+through the same machinery as everyone else: this week plus rest of season,
+against what the wire offers. Mechanically yes -- ESPN publishes weekly and
+season projections for both in the free agent pool, with eligible slots, so
+nothing had to be invented. The real question was whether those projections mean
+anything, and that is answerable from our own stored ESPN outcomes. PFF having no
+stat lines for these positions only ever blocked the wire BACKTEST, which is not
+the same thing, and the earlier note conflated the two.
+
+Measured on 2025, from the outcome database:
+
+```
+              n     corr(proj, actual)   higher projection actually scored more
+D/ST        300          +0.258                     56.9%  of 39,776 pairs
+K           245          +0.096                     50.0%  of 39,568 pairs
+RB        1,569          +0.497                     68.2%
+pass-catch 2,488         +0.374                        --
+IDP       1,248          +0.258                        --
+```
+
+Kickers are a coin flip, and not marginally: 50.0%. Projections have a standard
+deviation of 0.4 points against an outcome spread of 11.4, which is ESPN saying
+every kicker is the same, correctly. `NEVER_STREAM` excludes them and the
+comment carries the numbers, because "we did not get to kickers" and "kickers
+are unpredictable and here is the measurement" are different states and the
+second one should not have to be rediscovered.
+
+Defenses are in. +0.258 and 56.9% is the same signal as IDP, a family the tool
+already acts on, so excluding D/ST while acting on linebackers would have been
+inconsistent.
+
+**Correcting something from the night before.** The old TODO cited D/ST being
+under-projected by 1.17 +-0.37 as evidence of value here. It is not, for this
+decision. A per-position calibration offset is a constant, so it applies equally
+to every defense and cancels in a defense-versus-defense comparison. It matters
+when comparing across positions, which never happens for a slot only defenses
+can fill.
+
+**Splitting the family.** `family()` used to answer "other" for both, which put
+245 kicker weeks and 300 defense weeks in one cell. Their outcome spreads are
+11.4 and 17.0, so a threshold averaged across them was wrong for both. They are
+now `k` and `dst` and each has enough rows to measure its own bands.
+
+**Streaming changes the drop.** `STREAMED` positions replace rather than
+accumulate: nobody carries two defenses. Without this the tool dropped whichever
+fringe receiver was cheapest and reported a 92 point season loss for a one point
+weekly gain, comparing a defense's season projection against a receiver's --
+true, and answering a question nobody asked. The drop is now the incumbent
+defense, so it reads as intended: Titans +1.49 this week, -32.1 for the season
+against the Chiefs.
+
+That also surfaced a bug in yesterday's locked-drop work. `blocked_name` was set
+whenever the chosen drop was not the cheapest player, so a streamed add produced
+"his game has started, so he cannot be dropped" about a player who was simply
+not the right drop. It is now gated on the ideal drop actually being locked.
+
+**Where it currently lands.** DMWD week 1: Titans D/ST projects 6.8 against the
+rostered Chiefs at 5.31, a gain of 1.49 against a measured bar of 1.62. It falls
+short by 0.13 and reports nothing, which is the threshold working rather than
+the feature failing.
+
+## The near-miss line, third attempt
+
+Worth recording because the same sentence has now confused William twice, in
+two different ways, and both times the number was correct.
+
+First version printed a signed gap next to the threshold: `-1.6` beside `1.6`,
+which reads as a match when it is the opposite. Rewritten as "needs X more".
+
+That fixed the sign and created the second problem. "Jonathon Brooks 11.3 needs
+2.4 more to weigh against Courtland Sutton 11.8" puts 2.4 next to two numbers
+0.5 apart, with no way to see where 2.4 came from. `short_by` folds two separate
+quantities together -- the gap he has to close, and the lead he then has to
+build -- so it cannot be read off the two projections shown beside it.
+
+`NearMiss.explain()` now shows the addition, and it is the one renderer for all
+three surfaces:
+
+```
+Jonathon Brooks 11.3 is 0.5 behind Courtland Sutton 11.8 and would
+need to lead by 1.9, so 2.4 more
+```
+
+with the other direction handled too, since a bench player can be ahead and
+still short: "leads S 11.8 by 0.7 but would need to lead by 1.9, so 1.2 more".
+
+One detail that is not fussiness: the total is computed from the ROUNDED parts.
+Two real DMWD rows displayed identical inputs and different totals (2.2 + 1.8
+showing as 4.0 and 4.1) because the underlying values differed in the second
+decimal. A sentence written specifically to show its arithmetic, that then does
+not add up, is worse than the bare number it replaced. Tested across cases
+chosen to land on rounding boundaries.
+
+William asked for this while learning the tool and expects to want the terse
+version back later, so it is one method with three call sites.
 
 ## Known soft spots
 

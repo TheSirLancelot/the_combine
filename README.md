@@ -51,7 +51,7 @@ identical code, not a reimplementation.
 
 ## The Discord bot
 
-The in-season interface from anywhere. Slash commands for asking, and a Sunday
+The in-season interface from anywhere. Slash commands for asking, and a daily
 morning check that stays silent unless there is something to act on.
 
 ```bash
@@ -98,18 +98,62 @@ down this file, and restarting is the fix in both directions.
 `launchctl kickstart -k gui/$(id -u)/com.thecombine.bot` restarts just the bot if
 you would rather not re-run the installer.
 
-Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. `/week` and
-`/startsit` take an optional league and cover all of them when you leave it
+Commands: `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
+`/glossary`, `/health`, `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
+
+The scheduled check runs at 08:30 Pacific every morning, not just Sunday. Games
+are played Thursday through Monday, so a Sunday-only check misses a Thursday
+injury and every waiver window that opens midweek.
+
+Daily only works because the same report does not go out twice. The check
+remembers what it last said per league, by which players and which swaps rather
+than by the numbers, so a starter who is out for the season is news once instead
+of six mornings running. ESPN nudges projections through the day, and matching on
+the rendered text would have made every morning look like fresh news. State lives
+in `data/last_post.json`; delete it to make the next check post again.
+
+Output is embeds: the coloured left bar, a title, columns for the numbers, a
+footer for the caveats. The colour is severity rather than decoration. Green
+means nothing to do, blue means here is your information, amber means a decision
+is waiting, red means someone who cannot play is in your lineup, grey means a
+league that cannot answer. It reads from the notification shade without opening
+anything.
+
+Tables stay in code blocks inside the embed, because embeds are not monospace and
+alignment is the whole point of a table.
+
+Under `/week`, `/startsit`, `/waivers` and `/scoreboard` there are three buttons:
+the previous week, Refresh, and the next week. They edit the message in place
+rather than posting a new one. The buttons keep working after the bot restarts,
+which is worth knowing because most bots' buttons do not: the state lives in the
+button's own id rather than in the process that sent it.
+
+`/clear` deletes messages in the channel it is run in, and it is the only
+command in this repo that destroys anything. Read-only is about ESPN and Yahoo,
+where a write would be a real roster move; clearing the bot's own status posts
+out of its own channel is a different thing. It still dry runs by default and
+reports what it would delete, and only deletes when you pass `confirm: True`.
+
+It needs **Manage Messages** and **Read Message History** on that channel. Grant
+those in Discord, not in the developer portal: the portal's permission
+checkboxes only build the invite URL and changing them does nothing to a bot
+already in the server. Right-click the channel, Edit Channel, Permissions, add
+the bot.
+
+Discord bulk-deletes in one request but only for messages under 14 days old.
+Anything older goes one at a time at about one a second, so clearing a channel
+with months of history takes minutes. The dry run counts how many fall in that
+bucket and tells you roughly how long to expect.
 
 Chosen over exposing the app through a tunnel because of the direction of the
 connection. The bot dials out to Discord and holds a websocket, so there is no
 public hostname, no ingress rule, no Access policy to keep correct and no inbound
 surface at all.
 
-Testing the Sunday check without waiting for Sunday:
+Testing the scheduled check without waiting for the morning:
 
 ```bash
 uv run combine notify --dry-run          # print what it would post, send nothing
@@ -131,7 +175,7 @@ nowhere else. The IDs come from right-click Copy ID with Developer Mode on.
 Two things that will bite:
 
 The bot needs Send Messages **in the target channel**, not just at the server
-level. A channel permission override silently blocks the Sunday post while slash
+level. A channel permission override silently blocks the scheduled post while slash
 commands keep working, because interaction replies go through a webhook and
 ignore channel send permissions. `/health` will look fine while the schedule
 posts nowhere.
@@ -216,6 +260,53 @@ The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
 hand-entered league has none, so it shows as unavailable with the reason rather
 than silently going missing. It joins when the API is approved.
 
+## Waiver wire
+
+```bash
+uv run combine waivers              # every league, this week
+uv run combine waivers rcl 3        # one league, a specific week
+```
+
+Free agents who would improve this week's lineup. The number is what the whole
+lineup is worth afterwards rather than a head to head, so a cascade counts: an
+add that only helps because he frees a flex spot is still an upgrade, and one
+who beats a starter you would not have started anyway is not.
+
+Two columns, on purpose. WEEK is the calibrated gain, so a position ESPN
+systematically over-projects is marked down before the comparison. SEASON is
+what the drop costs or gains for the rest of the year, kept in its own column
+because a week is not worth a season, and one blended number would hide which of
+the two you are trading. Both are signed, so a move that wins Sunday and costs
+you November reads as `+1.7 / -12.8` rather than as a recommendation.
+
+Each row is an alternative, not a sequence. Every one is scored against the
+lineup you have right now, which is why three rows can all name the same drop.
+
+A row marked `*` (⚠️ in the app) only clears the bar because of the calibration,
+and the note underneath says how many player-weeks that correction rests on. DT is the live
+example: +2.49 measured on 40 observations is a real finding on a thin sample,
+and you should see the sample rather than a confident number.
+
+Also `/waivers` in Discord, with an optional league, and a Waiver wire section at
+the bottom of the app's Week page. The scheduled check only pings you about an add
+that does not cost season value; one that buys a week and pays for it later
+waits until you go looking, which is what `/waivers` is for.
+
+Team defenses are included. Kickers are not, and that is a measured decision
+rather than an unfinished one: across 245 kicker weeks in 2025, picking the
+higher-projected of two kickers scored more 50.0% of the time. A coin flip.
+ESPN projects every kicker at about the same number because they are about the
+same, so any kicker advice here would be noise with a decimal point on it.
+Defenses clear that bar, at 56.9%, the same signal the tool already acts on for
+IDP.
+
+Adding a defense drops the defense you already have, not your cheapest bench
+player, so the comparison reads defense against defense: what this week and the
+rest of the season look like with his versus with yours.
+
+The Yahoo league cannot answer this. Free agents need the API, so it reports the
+reason rather than an empty list.
+
 ## The week (CLI)
 
 ```bash
@@ -235,6 +326,23 @@ PFF API client. Treat it as a "look at this" list, not an answer.
 Projections come off the box score, which is the only place weekly numbers
 exist. Before week 1 kicks off every actual reads 0, which is correct rather
 than broken.
+
+## Role numbers and which season they are
+
+Every role line is tagged with the season and how many games are charted, like
+`2025 17g`. From week 2, anyone who has played this season reads this season,
+even on one game: role is what these lines are for and role is the part that
+means something immediately, while last year's role is the part most likely to
+have changed. The rates on the same line are noisy that early, which is what the
+tag and the "only N games charted" caveat are there to tell you.
+
+A player with no games this season yet, hurt or inactive, keeps last season
+rather than going blank.
+
+All of these are regular season only. PFF's season totals quietly include
+preseason and playoff snaps, which is not cosmetic: Drake Maye's 2025 total is
+23 games and 770 dropbacks against a real regular season of 17 and 601, and his
+passing grade reads 75.2 instead of 87.8.
 
 ## PFF ids
 

@@ -823,11 +823,48 @@ def week_page():
                     f"marked DOWN {abs(c.correction):.1f} for being "
                     f"systematically over-projected.")
 
+    st.divider()
+    st.markdown("**The next few weeks**")
+    st.caption(
+        "Whether the roster can legally fill every starting slot, usually a "
+        "question about bye stacks. Feasibility only: no projections are "
+        "involved, because ESPN does not publish them this far out and "
+        "inventing them would be a guess. It is here because it changes what "
+        "the waiver Season column is worth to you.")
+    ahead = load_lookahead(league, st.session_state.nonce, _code_version())
+    if not ahead:
+        st.info("Needs the API for a schedule.")
+    else:
+        cols = st.columns(len(ahead))
+        for col, w in zip(cols, ahead, strict=False):
+            col.metric(f"Week {w.week}",
+                       "OK" if w.ok else f"short {w.short}",
+                       delta=None if not w.on_bye else f"{len(w.on_bye)} on bye",
+                       delta_color="off")
+        for w in ahead:
+            if not w.ok:
+                st.warning(f"**Week {w.week}**: {w.short} slot(s) with nobody "
+                           f"to fill them. On bye: {', '.join(w.on_bye)}.")
+            elif w.on_bye:
+                st.caption(f"Week {w.week} on bye: {', '.join(w.on_bye)}")
+
     if final:
         st.caption("week is final")
 
 
 @st.fragment(run_every=f"{every}s" if auto else None)
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_lookahead(league: str, _nonce: int, _version: str):
+    """Half an hour: a bye week does not move, and this costs a schedule
+    request per future week."""
+    from combine.pipeline.lookahead import look
+    from combine.platforms import client_for
+
+    if config.get_league(league).platform != "espn":
+        return []
+    return look(client_for(league))
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def load_scorecard(_nonce: int, _version: str):
     from combine import db

@@ -294,3 +294,37 @@ def test_waivers_for_a_league_without_a_free_agent_pool(monkeypatch):
     report = bot.build_waivers("work", 3)
     assert report.news is False
     assert "Yahoo API" in report.embeds[0].description
+
+
+def test_the_week_view_flags_the_opponent_s_problems():
+    """Being nine points down to a team starting a ruled-out back is not being
+    nine points down, and ESPN keeps paying him his full projection until he is
+    marked inactive."""
+    mine = [wp("Mine", "RB", "RB", 12.0)]
+    theirs = [wp("Their Hurt Guy", "RB", "RB", 14.0, status="O"),
+              wp("Their Fine Guy", "WR", "WR", 11.0)]
+    m = Matchup(week=1, home_team="Me", away_team="Them", home_proj=12.0,
+                away_proj=25.0, home_lineup=mine, away_lineup=theirs,
+                mine="home")
+    said = embed_text(week_embeds(m, {"RB": 1, "WR": 1}, "T")[0])
+    assert "Their problems" in said
+    assert "Their Hurt Guy" in said
+    assert "Their Fine Guy" not in said
+
+
+def test_no_opponent_problems_means_no_section():
+    """A clean opponent lineup produces nothing, like everything else here."""
+    mine = [wp("Mine", "RB", "RB", 12.0)]
+    theirs = [wp("Their Fine Guy", "WR", "WR", 11.0)]
+    m = Matchup(week=1, home_team="Me", away_team="Them", home_proj=12.0,
+                away_proj=11.0, home_lineup=mine, away_lineup=theirs,
+                mine="home")
+    assert "Their problems" not in embed_text(week_embeds(m, {"RB": 1, "WR": 1}, "T")[0])
+
+
+def test_a_league_with_no_opponent_lineup_does_not_invent_one():
+    """The hand-entered league has no opponent, so this must not fire."""
+    m = Matchup(week=1, home_team="Mine", away_team="(none)", home_proj=140.0,
+                away_proj=0.0, home_lineup=[wp("A", "RB", "RB")],
+                away_lineup=[], mine="home")
+    assert "Their problems" not in embed_text(week_embeds(m, {"RB": 1}, "T")[0])

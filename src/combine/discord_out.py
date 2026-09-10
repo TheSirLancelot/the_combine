@@ -182,6 +182,13 @@ def week_embeds(m: Matchup, slots: dict[str, int], league_name: str,
                        value=f"**{m.my_proj:.1f}**", inline=True)
     if hurt:
         field(head, "⚠️ Cannot play, still starting", _cannot_play(hurt))
+
+    # Their problems change what your own margin means. Being nine points down
+    # to a team starting a ruled-out back is not being nine points down, and
+    # ESPN keeps paying that back its full projection until he is inactive.
+    theirs = problems(split(m.their_lineup)[0]) if m.their_lineup else []
+    if theirs:
+        field(head, f"Their problems · {m.their_team}", _cannot_play(theirs))
     if pulled_at:
         head.set_footer(text=f"projections as of {pulled_at}")
 

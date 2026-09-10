@@ -1015,6 +1015,35 @@ chosen to land on rounding boundaries.
 William asked for this while learning the tool and expects to want the terse
 version back later, so it is one method with three call sites.
 
+## Look ahead, and the opponent's problems
+
+`pipeline/lookahead.py`, added 2026-09-11. Feasibility only, and the restriction
+is the design. The obvious version of this feature is "how good will your lineup
+be in week 7", which is a prediction ESPN gives no input for, so the number would
+have to be invented -- the exact move that produced the residual model and
+posture, both measured and thrown away. Whether a roster can legally fill its
+slots is arithmetic on the schedule, and that is all it claims.
+
+It calls `best_lineup` with a uniform key rather than counting eligible bodies
+per slot, because eligibility overlaps: a per-slot count lets one flex-eligible
+back cover RB and RB/WR at once, which is one player in two places. This is the
+same reason the start/sit optimizer exists.
+
+Found something real on its first run: DMWD week 5 is short two slots, with
+Travis Kelce, Jonathon Brooks and the Chiefs D/ST all on a shared bye. That is
+the case the feature is for, and it changes what the waiver Season column is
+worth in the weeks before it.
+
+Running off the end of the season is handled by letting `pro_schedule` raise and
+breaking, rather than by hardcoding week 18 in a second place.
+
+**Opponent problems** are a three-line addition to the week embed: their
+starters who cannot play. Worth having because ESPN keeps paying a ruled-out
+player his full projection until he is marked inactive, so a margin against a
+team with a problem is not the margin it appears to be. It stays silent when
+their lineup is clean, and when there is no opponent lineup at all, which is the
+hand-entered league.
+
 ## The pre-kickoff alert
 
 `kickoff_problems()` and `kickoff_check`, added 2026-09-11. Every other output

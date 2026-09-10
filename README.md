@@ -260,6 +260,37 @@ The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
 hand-entered league has none, so it shows as unavailable with the reason rather
 than silently going missing. It joins when the API is approved.
 
+## Look ahead
+
+```bash
+uv run combine lookahead            # every league, the next four weeks
+uv run combine lookahead dmwd
+```
+
+Weeks coming up where the roster cannot legally fill a starting slot, which in
+practice means a bye stack. Also `/lookahead` in Discord and a section at the
+bottom of the app's Week page.
+
+Feasibility only. No projections are involved and none are invented, because
+ESPN does not publish a week 7 projection in week 2 and guessing one would be
+exactly the kind of prediction this project has twice measured and thrown away.
+Whether the roster can fill its slots is arithmetic on the schedule.
+
+It uses the lineup optimizer rather than counting per slot, because eligibility
+overlaps: counting separately would let one flex-eligible back cover both RB and
+RB/WR, which is one player in two places.
+
+This is here because it changes what the waiver Season column is worth to you.
+Giving up season value for a one week gain reads differently when week 5 is the
+week three of your starters are on bye.
+
+## Opponent problems
+
+The week view names any of your opponent's starters who cannot play. Being nine
+points down to a team starting a ruled-out back is not being nine points down,
+and ESPN keeps paying that player his full projection until he is marked
+inactive.
+
 ## Pre-kickoff alert
 
 The bot polls every 15 minutes and pings you when a starter who cannot play has

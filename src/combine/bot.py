@@ -327,6 +327,46 @@ def build_waivers_all(week: int | None = None) -> list[discord.Embed]:
     return messages
 
 
+def build_lookahead(league: str) -> list[discord.Embed]:
+    from . import discord_out
+    from .pipeline.lookahead import look
+    from .platforms import client_for
+
+    cfg = config.get_league(league)
+    weeks = look(client_for(league))
+    if not weeks:
+        return [discord_out.message_embed("No weeks left to look at.", cfg.name)]
+
+    trouble = [w for w in weeks if not w.ok]
+    e = discord.Embed(
+        title=f"Next {len(weeks)} weeks · {cfg.name}",
+        colour=discord_out.WARN if trouble else discord_out.GOOD)
+    for w in weeks:
+        mark = "⚠️" if not w.ok else "✅"
+        value = (f"{w.short} slot(s) with nobody to fill them"
+                 if not w.ok else "every slot covered")
+        if w.on_bye:
+            value += f"\nBye: {', '.join(w.on_bye)}"
+        discord_out.field(e, f"{mark} Week {w.week}", value)
+    e.set_footer(text="Feasibility only: whether the roster can legally fill "
+                      "its slots. No projections, because ESPN does not publish "
+                      "them this far out.")
+    return [e]
+
+
+def build_lookahead_all() -> list[discord.Embed]:
+    out: list[discord.Embed] = []
+    for slug, cfg in config.leagues().items():
+        if cfg.platform != "espn":
+            continue
+        try:
+            out += build_lookahead(slug)
+        except Exception as exc:
+            log.exception("lookahead failed for %s", slug)
+            out.append(failure_embed(slug, exc))
+    return out
+
+
 def build_scoreboard(week: int | None = None) -> list[discord.Embed]:
     from . import discord_out
     from .pipeline.scoreboard import build
@@ -585,6 +625,16 @@ async def waivers(interaction: discord.Interaction, league: str | None = None,
                   else (lambda lg, wk: build_waivers(lg, wk).embeds),
                   *( (week,) if league is None else (league, week) ),
                   nav=("waivers", league, week))
+
+
+@client.tree.command(description="Weeks ahead where the roster cannot fill a slot")
+@app_commands.describe(league="Which league, blank for all of them")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def lookahead(interaction: discord.Interaction, league: str | None = None):
+    await respond(interaction,
+                  build_lookahead_all if league is None else build_lookahead,
+                  *((), (league,))[league is not None])
 
 
 @client.tree.command(description="Live scores across every league")

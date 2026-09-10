@@ -104,6 +104,22 @@ blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
 
+Output is embeds: the coloured left bar, a title, columns for the numbers, a
+footer for the caveats. The colour is severity rather than decoration. Green
+means nothing to do, blue means here is your information, amber means a decision
+is waiting, red means someone who cannot play is in your lineup, grey means a
+league that cannot answer. It reads from the notification shade without opening
+anything.
+
+Tables stay in code blocks inside the embed, because embeds are not monospace and
+alignment is the whole point of a table.
+
+Under `/week`, `/startsit`, `/waivers` and `/scoreboard` there are three buttons:
+the previous week, Refresh, and the next week. They edit the message in place
+rather than posting a new one. The buttons keep working after the bot restarts,
+which is worth knowing because most bots' buttons do not: the state lives in the
+button's own id rather than in the process that sent it.
+
 `/clear` deletes messages in the channel it is run in, and it is the only
 command in this repo that destroys anything. Read-only is about ESPN and Yahoo,
 where a write would be a real roster move; clearing the bot's own status posts

@@ -1,7 +1,8 @@
 """Shaping output for Discord.
 
-Discord caps a message at 2000 characters and wraps code blocks rather than
-scrolling them, so width and packing are correctness concerns, not cosmetics.
+Discord wraps code blocks rather than scrolling them, so table width is a
+correctness concern rather than a cosmetic one, and an embed that breaks a cap
+is rejected whole, taking the message with it. Those two are what these test.
 """
 
 from __future__ import annotations
@@ -11,10 +12,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from combine.discord_out import LIMIT, chunk, has_news, week_message
+from combine.discord_out import (
+    DESC,
+    FIELD,
+    LIMIT,
+    chunk,
+    embed_text,
+    has_news,
+    week_embeds,
+)
 from combine.platforms import Matchup, ProGame, WeeklyPlayer
 
 FUTURE = 4_000_000_000_000
+
+
+def _embed(text):
+    import discord
+
+    return discord.Embed(description=text)
 
 
 def wp(name, pos, slot, proj=10.0, status="OK"):
@@ -56,9 +71,9 @@ def test_week_message_stays_phone_readable():
               wp("Somebody Benched", "WR", "BE", 6.0)]
     m = Matchup(week=1, home_team="Me", away_team="Them", home_proj=110.0,
                 away_proj=105.0, home_lineup=lineup, away_lineup=[], mine="home")
-    messages = week_message(m, {"RB": 1, "WR": 1}, "Test League")
-    assert len(messages) == 1
-    widest = max(len(line) for line in messages[0].splitlines())
+    embeds = week_embeds(m, {"RB": 1, "WR": 1}, "Test League")
+    text = "\n".join(embed_text(e) for e in embeds)
+    widest = max(len(line) for line in text.splitlines())
     assert widest <= 60, f"widest line is {widest}"
 
 
@@ -66,8 +81,10 @@ def test_week_message_flags_a_starter_who_cannot_play():
     lineup = [wp("Hurt Guy", "RB", "RB", 11.0, status="O")]
     m = Matchup(week=1, home_team="Me", away_team="Them", home_proj=11.0,
                 away_proj=0.0, home_lineup=lineup, away_lineup=[], mine="home")
-    text = "\n".join(week_message(m, {"RB": 1}, "T"))
+    embeds = week_embeds(m, {"RB": 1}, "T")
+    text = "\n".join(embed_text(e) for e in embeds)
     assert "Cannot play" in text and "Hurt Guy" in text
+    assert embeds[0].colour.value == 0xE74C3C     # red: something is wrong
 
 
 def test_no_opponent_means_no_invented_matchup_line():
@@ -75,9 +92,9 @@ def test_no_opponent_means_no_invented_matchup_line():
     m = Matchup(week=1, home_team="Mine", away_team="(none)", home_proj=140.0,
                 away_proj=0.0, home_lineup=[wp("A", "RB", "RB")],
                 away_lineup=[], mine="home")
-    text = "\n".join(week_message(m, {"RB": 1}, "T"))
+    text = "\n".join(embed_text(e) for e in week_embeds(m, {"RB": 1}, "T"))
     assert "vs (none)" not in text
-    assert "projected from your starters" in text
+    assert "Projected from your starters" in text
 
 
 def test_silence_is_the_default():
@@ -97,7 +114,7 @@ def test_notify_stays_quiet_when_there_is_nothing_to_say(monkeypatch, capsys):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
-    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: (["a report"], False))
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: ([_embed("a report")], False))
     sent = []
     monkeypatch.setattr(bot, "_post", lambda *a: sent.append(a))
 
@@ -112,7 +129,7 @@ def test_force_posts_anyway_and_labels_itself_a_test(monkeypatch, capsys):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
-    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: (["a report"], False))
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: ([_embed("a report")], False))
     assert bot.notify(force=True, dry_run=True) == 0
     out = capsys.readouterr().out
     assert "Manual test" in out and "a report" in out
@@ -122,7 +139,7 @@ def test_dry_run_never_sends(monkeypatch, capsys):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"rcl": object()})
-    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: (["real news"], True))
+    monkeypatch.setattr(bot, "build_startsit", lambda lg, wk: ([_embed("real news")], True))
     sent = []
     monkeypatch.setattr(bot, "_post", lambda *a: sent.append(a))
     assert bot.notify(dry_run=True) == 0
@@ -139,7 +156,7 @@ def test_one_league_failing_does_not_stop_the_others(monkeypatch, capsys):
     def build(league, week):
         if league == "rcl":
             raise RuntimeError("espn cookies expired")
-        return (["dmwd news"], True)
+        return ([_embed("dmwd news")], True)
 
     monkeypatch.setattr(bot, "build_startsit", build)
     assert bot.notify(dry_run=True) == 1        # non-zero: something failed
@@ -156,10 +173,10 @@ def test_all_leagues_continues_past_one_that_fails(monkeypatch):
     def build(league, week):
         if league == "dmwd":
             raise RuntimeError("401 unauthorized")
-        return ([f"{league} report"], False)
+        return ([_embed(f"{league} report")], False)
 
     monkeypatch.setattr(bot, "build_startsit", build)
-    out = "\n".join(bot.build_startsit_all())
+    out = "\n".join(embed_text(e) for e in bot.build_startsit_all())
     assert "rcl report" in out and "work report" in out
     assert "dmwd" in out and "401 unauthorized" in out
 
@@ -168,8 +185,8 @@ def test_all_leagues_reports_every_league(monkeypatch):
     from combine import bot
 
     monkeypatch.setattr(bot.config, "leagues", lambda: {"a": object(), "b": object()})
-    monkeypatch.setattr(bot, "build_week", lambda lg, wk: [f"{lg} week"])
-    assert bot.build_week_all() == ["a week", "b week"]
+    monkeypatch.setattr(bot, "build_week", lambda lg, wk: [_embed(f"{lg} week")])
+    assert [embed_text(e) for e in bot.build_week_all()] == ["a week", "b week"]
 
 
 # --- waivers ----------------------------------------------------------------
@@ -187,56 +204,61 @@ def cand(**kw):
 def test_waivers_message_says_nothing_found_rather_than_going_silent():
     """An empty wire is an answer, not a missing report. Silence reads as a
     broken job."""
-    from combine.discord_out import waivers_message
+    from combine.discord_out import GOOD, waivers_embeds
 
-    out = waivers_message([], "The REAL Champions League", 3)
+    out = waivers_embeds([], "The REAL Champions League", 3)
     assert len(out) == 1
-    assert "Nobody on the wire" in out[0]
-    assert "week 3" in out[0]
+    assert "Nobody on the wire" in out[0].description
+    assert "week 3" in out[0].title
+    assert out[0].colour.value == GOOD
 
 
 def test_waivers_message_reports_a_league_it_cannot_see():
-    from combine.discord_out import waivers_message
+    from combine.discord_out import DEAD, waivers_embeds
 
-    out = waivers_message([], "League of Degenerates", 3,
-                          unavailable="no free agent pool without the Yahoo API")
-    assert out == ["_League of Degenerates: no free agent pool without the Yahoo API_"]
+    out = waivers_embeds([], "League of Degenerates", 3,
+                         unavailable="no free agent pool without the Yahoo API")
+    assert out[0].description == "no free agent pool without the Yahoo API"
+    assert out[0].colour.value == DEAD
 
 
 def test_waivers_message_flags_a_candidate_the_correction_carries():
     """The whole point of the note: on ESPN's published number he is worse."""
-    from combine.discord_out import waivers_message
+    from combine.discord_out import waivers_embeds
 
-    out = "\n".join(waivers_message([cand(correction=2.49, correction_n=40)],
-                                    "RCL", 3))
+    out = embed_text(waivers_embeds([cand(correction=2.49, correction_n=40)],
+                                    "RCL", 3)[0])
     assert "⚠️" in out and "2.5" in out and "40 player-weeks" in out
 
 
 def test_waivers_message_does_not_warn_when_the_correction_pushed_him_down():
     """A markdown he survived is the opposite of a caveat."""
-    from combine.discord_out import waivers_message
+    from combine.discord_out import waivers_embeds
 
-    out = "\n".join(waivers_message([cand(correction=-1.2)], "RCL", 3))
+    out = embed_text(waivers_embeds([cand(correction=-1.2)], "RCL", 3)[0])
     assert "⚠️" not in out
     assert "marked down 1.2" in out
 
 
 def test_waivers_message_separates_the_week_from_the_season():
-    from combine.discord_out import waivers_message
+    from combine.discord_out import waivers_embeds
 
-    cheap = "\n".join(waivers_message([cand(season_proj=90.0)], "RCL", 3))
+    cheap = embed_text(waivers_embeds([cand(season_proj=90.0)], "RCL", 3)[0])
     assert "+1.4" in cheap and "+20.0" in cheap        # week gain, season gain
-    costly = "\n".join(waivers_message([cand(season_proj=40.0)], "RCL", 3))
+    costly = embed_text(waivers_embeds([cand(season_proj=40.0)], "RCL", 3)[0])
     assert "-30.0" in costly and "pays for it later" in costly
 
 
 def test_waivers_message_stays_under_the_discord_limit():
-    from combine.discord_out import waivers_message
+    from combine.discord_out import waivers_embeds
 
     many = [cand(name=f"Player {i}", correction=2.0, correction_n=40)
-            for i in range(25)]
-    for message in waivers_message(many, "RCL", 3):
-        assert len(message) <= LIMIT
+            for i in range(40)]
+    for e in waivers_embeds(many, "RCL", 3):
+        assert len(e) <= 6000                       # Discord rejects the message
+        assert len(e.description) <= DESC
+        assert len(e.fields) <= 25
+        assert all(len(f.value) <= FIELD for f in e.fields)
 
 
 def test_waivers_only_interrupt_for_an_add_that_does_not_cost_the_season(monkeypatch):
@@ -257,7 +279,7 @@ def test_waivers_only_interrupt_for_an_add_that_does_not_cost_the_season(monkeyp
 
     messages, worth_telling = bot.build_waivers("rcl", 3)
     assert worth_telling is False
-    assert "D. Buckner" in "\n".join(messages)
+    assert "D. Buckner" in embed_text(messages[0])
 
     found[:] = [cand(season_proj=90.0)]                 # gains season value too
     assert bot.build_waivers("rcl", 3)[1] is True
@@ -271,4 +293,4 @@ def test_waivers_for_a_league_without_a_free_agent_pool(monkeypatch):
         lambda lg: type("C", (), {"platform": "manual", "name": "Degenerates"})())
     messages, worth_telling = bot.build_waivers("work", 3)
     assert worth_telling is False
-    assert "Yahoo API" in messages[0]
+    assert "Yahoo API" in messages[0].description

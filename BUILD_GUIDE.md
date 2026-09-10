@@ -589,6 +589,45 @@ Commands are `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
 
+**Embeds and buttons, 2026-09-10.** Every command returns
+`list[discord.Embed]` instead of `list[str]`, built in `discord_out.py`.
+
+Three decisions worth keeping.
+
+Colour is severity, not palette: GOOD, INFO, WARN, BAD, DEAD, picked so the bar
+answers "do I need to act" before the message is opened. DEAD is grey and is used
+for a league that cannot answer, like Yahoo having no free agent pool. Using red
+there would have trained him to ignore red, which is the only thing the colour is
+for.
+
+The week and scoreboard views are several stacked embeds rather than one, and the
+reason is Discord's render order: within an embed the description always comes
+before the fields, so one embed puts the lineup table above the score. The score
+is what the message is opened for. Separate embeds stack in the order given.
+
+`field()` enforces three caps and returns whether the field went in. Twenty-five
+fields, 1024 characters in a value, and 6000 characters across the whole embed
+added together. The last one is the dangerous one: Discord rejects an oversized
+embed outright, so the message never arrives, and the symptom is silence, which
+is exactly what a normal quiet week looks like. A test found it, not production.
+The budget is 5500 rather than 5900 because footers are set after the fields are
+added, so `len(embed)` at measuring time does not include one yet. Where notes do
+not all fit, the footer says "notes shown for 3 of 8" rather than dropping them
+silently.
+
+Buttons are a `discord.ui.DynamicItem`, not a plain `View`. A normal view lives in
+the process that sent it, so every button in the channel goes dead on restart and
+a button that silently does nothing is worse than no button. The whole state --
+command, league, target week -- is encoded in the custom_id, so the handler is
+rebuilt from the click. `add_dynamic_items(Nav)` in `setup_hook` is what registers
+it; without that line the buttons are decoration. The owner check is repeated in
+the button callback, because anyone who can see the message can click it and the
+slash command's check does not carry over to a component interaction.
+
+`embed_text()` flattens an embed back to text. Nothing in Discord needs it; it
+exists so `combine notify --dry-run` can still show the wording of a message that
+fires once a week, and so the tests can assert on content.
+
 `/clear`, added 2026-09-10, is the single exception and it is worth being precise
 about why it is not a violation. The read-only rule exists because a write
 against ESPN or Yahoo is a roster move with real consequences that only William

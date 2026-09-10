@@ -102,46 +102,61 @@ def _pff():
         return {}, {}, True
 
 
-def build_week(league: str, week: int | None = None) -> list[str]:
+def failure_embed(slug: str, exc: Exception) -> discord.Embed:
+    """One league failing must not take the others with it.
+
+    Expired ESPN cookies in one league should not hide the Yahoo league's
+    answer, so a failure renders as a red card in the same reply rather than
+    aborting the command.
+    """
+    from . import discord_out
+
+    return discord_out.message_embed(
+        f"`{type(exc).__name__}: {exc}`", title=f"⚠️ {slug} failed",
+        colour=discord_out.BAD)
+
+
+def build_week(league: str, week: int | None = None) -> list[discord.Embed]:
     from . import discord_out
     from .platforms import client_for
 
     client = client_for(league)
     matchup = client.matchup(week)
     stamp = datetime.now().astimezone().strftime("%H:%M %Z")
-    return discord_out.week_message(matchup, client.roster_slots(),
-                                    config.get_league(league).name, stamp)
+    return discord_out.week_embeds(matchup, client.roster_slots(),
+                                   config.get_league(league).name, stamp)
 
 
-def build_startsit_all(week: int | None = None) -> list[str]:
+def build_startsit_all(week: int | None = None) -> list[discord.Embed]:
     """Every configured league, one after another.
 
     A league that errors is reported inline rather than taking the others with
     it: expired ESPN cookies should not hide the Yahoo league's answer.
     """
-    messages: list[str] = []
+    messages: list[discord.Embed] = []
     for slug in config.leagues():
         try:
             part, _newsworthy = build_startsit(slug, week)
             messages += part
         except Exception as exc:
             log.exception("startsit failed for %s", slug)
-            messages.append(f"⚠️ `{slug}` failed: `{type(exc).__name__}: {exc}`")
+            messages.append(failure_embed(slug, exc))
     return messages
 
 
-def build_week_all(week: int | None = None) -> list[str]:
-    messages: list[str] = []
+def build_week_all(week: int | None = None) -> list[discord.Embed]:
+    messages: list[discord.Embed] = []
     for slug in config.leagues():
         try:
             messages += build_week(slug, week)
         except Exception as exc:
             log.exception("week failed for %s", slug)
-            messages.append(f"⚠️ `{slug}` failed: `{type(exc).__name__}: {exc}`")
+            messages.append(failure_embed(slug, exc))
     return messages
 
 
-def build_startsit(league: str, week: int | None = None) -> tuple[list[str], bool]:
+def build_startsit(league: str,
+                   week: int | None = None) -> tuple[list[discord.Embed], bool]:
     """(messages, whether there is anything worth interrupting for)."""
     from . import discord_out
     from .pipeline.lineup import optimal_moves
@@ -155,13 +170,14 @@ def build_startsit(league: str, week: int | None = None) -> tuple[list[str], boo
     calls, hurt = review(matchup, usage, ids, dist=dist)
     slots = client.roster_slots()
     _add, _drop, gain = optimal_moves(matchup.my_lineup, slots)
-    messages = discord_out.startsit_message(
+    messages = discord_out.startsit_embeds(
         matchup, calls, hurt, usage, ids, in_season,
         config.get_league(league).name, slots, dist)
     return messages, discord_out.has_news(calls, hurt, gain)
 
 
-def build_compare(league: str, a: str, b: str, week: int | None = None) -> list[str]:
+def build_compare(league: str, a: str, b: str,
+                  week: int | None = None) -> list[discord.Embed]:
     from .pipeline.startsit import head_to_head
     from .platforms import client_for
 
@@ -183,10 +199,16 @@ def build_compare(league: str, a: str, b: str, week: int | None = None) -> list[
     first, err_a = find(a)
     second, err_b = find(b)
     if first is None or second is None:
-        return [" ".join(x for x in (err_a, err_b) if x)]
+        from . import discord_out
+
+        return [discord_out.message_embed(
+            " ".join(x for x in (err_a, err_b) if x), "No match")]
     usage, ids, in_season = _pff()
+    from . import discord_out
+
     text = head_to_head(first, second, usage, ids, in_season, matchup.week)
-    return [f"```\n{text}\n```"]
+    return discord_out.compare_embeds(
+        text, f"{first.name} vs {second.name} · week {matchup.week}")
 
 
 @lru_cache(maxsize=8)
@@ -196,7 +218,8 @@ def _calibration(league: str):
     return load_cal(league)
 
 
-def build_waivers(league: str, week: int | None = None) -> tuple[list[str], bool]:
+def build_waivers(league: str,
+                  week: int | None = None) -> tuple[list[discord.Embed], bool]:
     """(messages, whether anything is worth interrupting for)."""
     from . import discord_out
     from .pipeline.waivers import find, season_values
@@ -204,7 +227,7 @@ def build_waivers(league: str, week: int | None = None) -> tuple[list[str], bool
 
     cfg = config.get_league(league)
     if cfg.platform != "espn":
-        return discord_out.waivers_message(
+        return discord_out.waivers_embeds(
             [], cfg.name, int(week or 0),
             unavailable="no free agent pool without the Yahoo API"), False
 
@@ -215,51 +238,47 @@ def build_waivers(league: str, week: int | None = None) -> tuple[list[str], bool
     # Only an add that does not trade away season value is worth a notification.
     # The rest belong in `/waivers` when you go looking, not in a Sunday ping.
     worth_telling = any(not c.trades_down for c in found)
-    return discord_out.waivers_message(found, cfg.name, wk), worth_telling
+    return discord_out.waivers_embeds(found, cfg.name, wk), worth_telling
 
 
-def build_waivers_all(week: int | None = None) -> list[str]:
-    messages: list[str] = []
+def build_waivers_all(week: int | None = None) -> list[discord.Embed]:
+    messages: list[discord.Embed] = []
     for slug in config.leagues():
         try:
             messages += build_waivers(slug, week)[0]
         except Exception as exc:
             log.exception("waivers failed for %s", slug)
-            messages.append(f"⚠️ `{slug}` failed: `{type(exc).__name__}: {exc}`")
+            messages.append(failure_embed(slug, exc))
     return messages
 
 
-def build_scoreboard(week: int | None = None) -> list[str]:
+def build_scoreboard(week: int | None = None) -> list[discord.Embed]:
     from . import discord_out
     from .pipeline.scoreboard import build
 
     games, missing = build(week)
-    return discord_out.scoreboard_message(games, missing)
+    return discord_out.scoreboard_embeds(games, missing)
 
 
-def build_health() -> list[str]:
+def build_health() -> list[discord.Embed]:
+    from . import discord_out
     from .platforms import client_for
 
-    lines = []
+    rows = []
     for slug, cfg in config.leagues().items():
         try:
-            lines.append(f"✅ `{slug}` ({cfg.platform}) {client_for(slug).ping()}")
+            rows.append((True, f"{slug} ({cfg.platform}) {client_for(slug).ping()}"))
         except Exception as exc:
-            lines.append(f"❌ `{slug}` ({cfg.platform}) {type(exc).__name__}: {exc}")
-    return ["**Health**\n" + "\n".join(lines)]
+            rows.append((False, f"{slug} ({cfg.platform}) "
+                                f"{type(exc).__name__}: {exc}"))
+    return discord_out.health_embeds(rows)
 
 
-def build_glossary() -> list[str]:
+def build_glossary() -> list[discord.Embed]:
     from . import discord_out
     from .pipeline.usage import GLOSSARY, OUTCOME_GLOSSARY
 
-    blocks = []
-    for title, entries in GLOSSARY:
-        blocks.append(f"**{title}**\n"
-                      + "\n".join(f"`{tok}` {meaning}" for tok, meaning in entries))
-    blocks.append("**Outcome columns**\n"
-                  + "\n".join(f"`{tok}` {meaning}" for tok, meaning in OUTCOME_GLOSSARY))
-    return discord_out.chunk(blocks)
+    return discord_out.glossary_embeds(GLOSSARY, OUTCOME_GLOSSARY)
 
 
 # --- the client -------------------------------------------------------------
@@ -279,6 +298,9 @@ class Combine(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
+        # Without this the buttons on every message already in the channel stop
+        # working the moment this process restarts.
+        self.add_dynamic_items(Nav)
         guild = discord.Object(id=GUILD_ID) if GUILD_ID else None
         if guild:
             # Guild-scoped commands appear immediately; global ones can take an
@@ -310,25 +332,131 @@ def owner_only():
     return app_commands.check(predicate)
 
 
-async def respond(interaction: discord.Interaction, work, *args):
+BUILDERS = {
+    "week": lambda league, week: (build_week(league, week) if league
+                                  else build_week_all(week)),
+    "startsit": lambda league, week: (build_startsit(league, week)[0] if league
+                                      else build_startsit_all(week)),
+    "waivers": lambda league, week: (build_waivers(league, week)[0] if league
+                                     else build_waivers_all(week)),
+    "scoreboard": lambda league, week: build_scoreboard(week),
+}
+
+
+@lru_cache(maxsize=1)
+def _week_for(_day: str) -> int:
+    """The current NFL week, resolved once a day.
+
+    The nav buttons need a concrete number to step from, and "current" is not
+    one. Cached on the date because it costs a league fetch and cannot change
+    within a day.
+    """
+    from .platforms import client_for
+
+    for slug in config.leagues():
+        try:
+            return int(client_for(slug).week)
+        except Exception:
+            log.debug("could not read the week from %s", slug, exc_info=True)
+    return 1
+
+
+def current_week() -> int:
+    return _week_for(datetime.now().astimezone().strftime("%Y-%m-%d"))
+
+
+class Nav(discord.ui.DynamicItem[discord.ui.Button],
+          template=r"cmb:(?P<kind>[a-z]+):(?P<league>[a-z-]*):(?P<week>\d+)"):
+    """Refresh and week-stepping buttons under a reply.
+
+    A DynamicItem rather than a plain View on purpose. A normal view lives in
+    the process that sent it, so every button in the channel goes dead the
+    moment the bot restarts, and a button that silently does nothing is worse
+    than no button. This carries its whole state in the custom_id, so the
+    handler is reconstructed from the click and buttons keep working across
+    restarts and redeploys forever.
+    """
+
+    def __init__(self, kind: str, league: str, week: int, label: str,
+                 style=discord.ButtonStyle.secondary, emoji: str | None = None):
+        super().__init__(discord.ui.Button(
+            label=label, style=style, emoji=emoji,
+            custom_id=f"cmb:{kind}:{league or '-'}:{max(week, 1)}"))
+        self.kind, self.league, self.week = kind, league, week
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        league = match["league"]
+        return cls(match["kind"], "" if league == "-" else league,
+                   int(match["week"]), "")
+
+    async def callback(self, interaction: discord.Interaction):
+        # The owner check has to be repeated here. Anyone who can see the
+        # message can click the button, and the check on the slash command does
+        # not carry over to a component interaction.
+        if OWNER_ID and interaction.user.id != OWNER_ID:
+            await interaction.response.send_message(
+                "This bot answers to its owner only.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        try:
+            embeds = await asyncio.to_thread(
+                BUILDERS[self.kind], self.league or None, self.week)
+        except Exception as exc:
+            log.exception("nav %s failed", self.kind)
+            embeds = [failure_embed(self.league or "all leagues", exc)]
+        await interaction.edit_original_response(
+            embeds=embeds[:10], view=nav_row(self.kind, self.league, self.week))
+
+
+def nav_row(kind: str, league: str | None, week: int | None) -> discord.ui.View:
+    """Refresh, and a step either side of the week being shown."""
+    here = int(week or current_week())
+    view = discord.ui.View(timeout=None)
+    if here > 1:
+        view.add_item(Nav(kind, league or "", here - 1, f"Week {here - 1}",
+                          emoji="◀"))
+    view.add_item(Nav(kind, league or "", here, "Refresh",
+                      style=discord.ButtonStyle.primary, emoji="🔄"))
+    view.add_item(Nav(kind, league or "", here + 1, f"Week {here + 1}", emoji="▶"))
+    return view
+
+
+async def respond(interaction: discord.Interaction, work, *args, nav=None):
     """Defer, do the blocking work in a thread, then follow up.
 
     Both halves matter: the three second deadline, and keeping synchronous I/O
     off the event loop so the gateway heartbeat survives.
+
+    `nav` is (kind, league, week) for the commands that can be refreshed or
+    stepped a week either way. Everything else gets no buttons, because a
+    glossary does not have a next page.
     """
+    from . import discord_out
+
     await interaction.response.defer(thinking=True)
     try:
-        messages = await asyncio.to_thread(work, *args)
+        embeds = await asyncio.to_thread(work, *args)
     except Exception as exc:
         log.exception("command failed")
-        await interaction.followup.send(
-            f"`{type(exc).__name__}: {exc}`\nIf this is a 401 or an empty league, "
-            f"the ESPN cookies expired: run `python scripts/refresh_espn_cookies.py`.")
+        await interaction.followup.send(embed=discord_out.message_embed(
+            f"`{type(exc).__name__}: {exc}`\n\nIf this is a 401 or an empty "
+            f"league, the ESPN cookies expired: run "
+            f"`python scripts/refresh_espn_cookies.py`.",
+            title="Command failed", colour=discord_out.BAD))
         return
-    if isinstance(messages, tuple):
-        messages = messages[0]
-    for message in messages or ["(nothing to report)"]:
-        await interaction.followup.send(message)
+    if isinstance(embeds, tuple):
+        embeds = embeds[0]
+    if not embeds:
+        embeds = [discord_out.message_embed("Nothing to report.", colour=discord_out.GOOD)]
+
+    # Discord takes ten embeds per message. The buttons go on the last one, so
+    # they sit at the bottom of the reply where a thumb lands.
+    batches = [embeds[i:i + 10] for i in range(0, len(embeds), 10)]
+    for i, batch in enumerate(batches):
+        last = i == len(batches) - 1
+        view = nav_row(*nav) if (nav and last) else discord.utils.MISSING
+        await interaction.followup.send(embeds=batch, view=view)
 
 
 @client.tree.command(description="This week's lineup, with projections and opponents")
@@ -338,10 +466,10 @@ async def respond(interaction: discord.Interaction, work, *args):
 @owner_only()
 async def week(interaction: discord.Interaction, league: str | None = None,
                week: int | None = None):
-    if league is None:
-        await respond(interaction, build_week_all, week)
-    else:
-        await respond(interaction, build_week, league, week)
+    await respond(interaction,
+                  build_week_all if league is None else build_week,
+                  *( (week,) if league is None else (league, week) ),
+                  nav=("week", league, week))
 
 
 @client.tree.command(description="Start/sit calls: only the slots with a real question")
@@ -351,11 +479,11 @@ async def week(interaction: discord.Interaction, league: str | None = None,
 @owner_only()
 async def startsit(interaction: discord.Interaction, league: str | None = None,
                    week: int | None = None):
-    if league is None:
-        await respond(interaction, build_startsit_all, week)
-    else:
-        await respond(interaction, lambda lg, wk: build_startsit(lg, wk)[0],
-                      league, week)
+    await respond(interaction,
+                  build_startsit_all if league is None
+                  else (lambda lg, wk: build_startsit(lg, wk)[0]),
+                  *( (week,) if league is None else (league, week) ),
+                  nav=("startsit", league, week))
 
 
 @client.tree.command(description="Two players head to head, in one league")
@@ -375,18 +503,19 @@ async def compare(interaction: discord.Interaction, league: str,
 @owner_only()
 async def waivers(interaction: discord.Interaction, league: str | None = None,
                   week: int | None = None):
-    if league is None:
-        await respond(interaction, build_waivers_all, week)
-    else:
-        await respond(interaction, lambda lg, wk: build_waivers(lg, wk)[0],
-                      league, week)
+    await respond(interaction,
+                  build_waivers_all if league is None
+                  else (lambda lg, wk: build_waivers(lg, wk)[0]),
+                  *( (week,) if league is None else (league, week) ),
+                  nav=("waivers", league, week))
 
 
 @client.tree.command(description="Live scores across every league")
 @app_commands.describe(week="Week number, blank for current")
 @owner_only()
 async def scoreboard(interaction: discord.Interaction, week: int | None = None):
-    await respond(interaction, build_scoreboard, week)
+    await respond(interaction, build_scoreboard, week,
+                  nav=("scoreboard", None, week))
 
 
 @client.tree.command(description="What the Role and outcome numbers mean")
@@ -431,6 +560,8 @@ async def clear(interaction: discord.Interaction, limit: int | None = None,
             "This only works in a server text channel.", ephemeral=True)
         return
 
+    from . import discord_out
+
     await interaction.response.defer(ephemeral=True, thinking=True)
     cutoff = datetime.now(UTC) - BULK_WINDOW
     where = f"#{getattr(channel, 'name', 'this channel')}"
@@ -445,8 +576,10 @@ async def clear(interaction: discord.Interaction, limit: int | None = None,
                     old += 1
             total = recent + old
             if not total:
-                await interaction.followup.send(f"{where} is already empty.",
-                                                ephemeral=True)
+                await interaction.followup.send(
+                    embed=discord_out.message_embed(
+                        f"{where} is already empty.", colour=discord_out.GOOD),
+                    ephemeral=True)
                 return
             capped = "+" if limit is None and total >= COUNT_CAP else ""
             note = ""
@@ -455,9 +588,12 @@ async def clear(interaction: discord.Interaction, limit: int | None = None,
                         f"at a time, so expect roughly {old // 60 + 1} minute(s) "
                         f"of deleting.")
             await interaction.followup.send(
-                f"Would delete **{total}{capped}** message(s) from {where}. "
-                f"This cannot be undone.{note}\n\nRun it again with "
-                f"`confirm: True` to go ahead.", ephemeral=True)
+                embed=discord_out.message_embed(
+                    f"Would delete **{total}{capped}** message(s) from {where}. "
+                    f"This cannot be undone.{note}\n\nRun it again with "
+                    f"`confirm: True` to go ahead.",
+                    title="Dry run", colour=discord_out.WARN),
+                ephemeral=True)
             return
 
         started = datetime.now(UTC)
@@ -468,8 +604,11 @@ async def clear(interaction: discord.Interaction, limit: int | None = None,
                  len(deleted), where, elapsed)
         try:
             await interaction.followup.send(
-                f"Deleted **{len(deleted)}** message(s) from {where} in "
-                f"{elapsed:.0f}s.", ephemeral=True)
+                embed=discord_out.message_embed(
+                    f"Deleted **{len(deleted)}** message(s) from {where} in "
+                    f"{elapsed:.0f}s.", title="Cleared",
+                    colour=discord_out.GOOD),
+                ephemeral=True)
         except discord.HTTPException:
             # A long purge can outlive the 15 minute interaction token. The
             # deleting already happened; only the receipt is lost.
@@ -486,6 +625,15 @@ async def clear(interaction: discord.Interaction, limit: int | None = None,
         log.exception("clear failed")
         await interaction.followup.send(f"`{type(exc).__name__}: {exc}`",
                                         ephemeral=True)
+
+
+async def send_embeds(channel, embeds: list[discord.Embed]) -> int:
+    """Discord takes ten embeds per message. Returns how many messages went."""
+    sent = 0
+    for i in range(0, len(embeds), 10):
+        await channel.send(embeds=embeds[i:i + 10])
+        sent += 1
+    return sent
 
 
 @tasks.loop(time=CHECK_AT)
@@ -515,13 +663,14 @@ async def weekly_check(bot: discord.Client):
             wire, wire_news = await asyncio.to_thread(build_waivers, slug, None)
         except Exception as exc:
             log.exception("weekly check failed for %s", slug)
-            await channel.send(f"⚠️ `{slug}` check failed: `{type(exc).__name__}: {exc}`")
+            await channel.send(embed=failure_embed(f"{slug} check", exc))
             continue
         if not (newsworthy or wire_news):
             log.info("%s: nothing worth posting", slug)
             continue
-        for message in (messages if newsworthy else []) + (wire if wire_news else []):
-            await channel.send(message)
+        await send_embeds(channel,
+                          (messages if newsworthy else [])
+                          + (wire if wire_news else []))
 
 
 def preflight() -> list[str]:
@@ -543,7 +692,7 @@ def preflight() -> list[str]:
     return problems
 
 
-async def _post(messages: list[str], channel_id: int) -> None:
+async def _post(messages: list[discord.Embed], channel_id: int) -> None:
     """Send without joining the gateway.
 
     `login` does the REST handshake only, and `fetch_channel` and `send` are
@@ -558,8 +707,7 @@ async def _post(messages: list[str], channel_id: int) -> None:
     await poster.login(os.environ["DISCORD_TOKEN"])
     try:
         channel = await poster.fetch_channel(channel_id)
-        for message in messages:
-            await channel.send(message)
+        await send_embeds(channel, messages)
     finally:
         await poster.close()
 
@@ -590,13 +738,20 @@ def notify(leagues: list[str] | None = None, force: bool = False,
             continue
 
         if force and not newsworthy:
-            messages = ["_Manual test. Nothing is actually wrong; the real check "
-                        "would have stayed silent._"] + messages
+            from . import discord_out
+
+            messages = [discord_out.message_embed(
+                "Nothing is actually wrong. The real check would have stayed "
+                "silent; this is here to prove delivery works.",
+                title="🧪 Manual test", colour=discord_out.INFO)] + messages
 
         if dry_run:
-            print(f"\n===== {slug}: would post {len(messages)} message(s) =====")
+            from . import discord_out
+
+            print(f"\n===== {slug}: would post {len(messages)} embed(s) =====")
             for message in messages:
-                print(message)
+                print(discord_out.embed_text(message))
+                print()
             posted += 1
             continue
 
@@ -606,7 +761,7 @@ def notify(leagues: list[str] | None = None, force: bool = False,
             continue
 
         asyncio.run(_post(messages, CHANNEL_ID))
-        print(f"{slug}: posted {len(messages)} message(s)")
+        print(f"{slug}: posted {len(messages)} embed(s)")
         posted += 1
 
     verb = "would post" if dry_run else "posted"

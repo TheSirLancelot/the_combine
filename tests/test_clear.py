@@ -60,8 +60,10 @@ class FakeFollowup:
     def __init__(self):
         self.sent = []
 
-    async def send(self, content, ephemeral=False):
-        self.sent.append(content)
+    async def send(self, content=None, embed=None, ephemeral=False):
+        from combine.discord_out import embed_text
+
+        self.sent.append(content if embed is None else embed_text(embed))
 
 
 class FakeResponse:

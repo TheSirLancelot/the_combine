@@ -508,6 +508,30 @@ def check_scoring() -> int:
     return 0
 
 
+def calibration() -> int:
+    """combine calibration [season]
+
+    ESPN's projection bias per position, measured from stored history. Shown
+    because a silent correction is worse than none: this is what is being
+    applied and how sure we are of it.
+    """
+    from .pipeline.calibration import load
+
+    season = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() \
+        else config.SEASON - 1
+    for slug, cfg in config.leagues().items():
+        if cfg.platform == "manual":
+            print(f"{slug}: hand-entered, no measured history\n")
+            continue
+        print(load(slug, season).describe())
+        print()
+    print("negative means ESPN projects too generously for that position.")
+    print("applied only where the sample is big enough and the bias clears two")
+    print("standard errors. it makes projections comparable ACROSS positions;")
+    print("displayed projections stay exactly as ESPN published them.")
+    return 0
+
+
 def scoreboard() -> int:
     """combine scoreboard [week] [league...]
 
@@ -591,6 +615,8 @@ def main() -> int:
         return glossary()
     if cmd == "scoring":
         return check_scoring()
+    if cmd == "calibration":
+        return calibration()
     if cmd == "scoreboard":
         return scoreboard()
     if cmd == "notify":

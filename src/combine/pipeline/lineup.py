@@ -156,19 +156,29 @@ def swaps(starters: list[WeeklyPlayer], bench: list[WeeklyPlayer],
     return sorted(out, key=lambda s: -s.edge)
 
 
-def as_candidate(p: WeeklyPlayer) -> dict:
-    """A WeeklyPlayer in the shape the optimizer wants."""
+def as_candidate(p: WeeklyPlayer, cal=None) -> dict:
+    """A WeeklyPlayer in the shape the optimizer wants.
+
+    `cal` makes projections comparable across positions. Measured benefit to the
+    lineup is inside noise (+0.2pp of win rate over 430 team-weeks against a
+    2.4pp standard error), because a roster offers few cross-position choices.
+    It is applied anyway: it is directionally positive and theoretically right,
+    and the same correction is decisive on the waiver pool, where hundreds of
+    players make cross-position comparison the common case rather than the rare
+    one.
+    """
     return {
         "espn_id": p.player_id, "name": p.name, "pos": p.pos,
         "eligible": set(p.eligible_slots), "player": p,
-        "proj": effective(p), "started": p.starting,
+        "proj": effective(p) if cal is None else cal.adjust(p.pos, effective(p)),
+        "started": p.starting,
         # A player whose game has kicked off cannot be moved in or out, so he is
         # pinned rather than optimized: a suggestion you cannot act on is noise.
         "playable": not p.locked or p.starting,
     }
 
 
-def optimal_moves(lineup: list[WeeklyPlayer], slots: dict[str, int]
+def optimal_moves(lineup: list[WeeklyPlayer], slots: dict[str, int], cal=None
                   ) -> tuple[list[WeeklyPlayer], list[WeeklyPlayer], float]:
     """(players to start, players to bench, projected points gained).
 
@@ -181,7 +191,7 @@ def optimal_moves(lineup: list[WeeklyPlayer], slots: dict[str, int]
     from .optimize import best_lineup
 
     slot_list = [slot for slot, count in slots.items() for _ in range(count)]
-    candidates = [as_candidate(p) for p in lineup]
+    candidates = [as_candidate(p, cal) for p in lineup]
     locked_in = [c for c in candidates if c["player"].locked and c["started"]]
     # Locked starters keep their slots; the optimizer works on what is left.
     for c in locked_in:

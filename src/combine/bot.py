@@ -183,6 +183,46 @@ def build_compare(league: str, a: str, b: str, week: int | None = None) -> list[
     return [f"```\n{text}\n```"]
 
 
+@lru_cache(maxsize=8)
+def _calibration(league: str):
+    from .pipeline.calibration import load as load_cal
+
+    return load_cal(league)
+
+
+def build_waivers(league: str, week: int | None = None) -> tuple[list[str], bool]:
+    """(messages, whether anything is worth interrupting for)."""
+    from . import discord_out
+    from .pipeline.waivers import find, season_values
+    from .platforms import client_for
+
+    cfg = config.get_league(league)
+    if cfg.platform != "espn":
+        return discord_out.waivers_message(
+            [], cfg.name, int(week or 0),
+            unavailable="no free agent pool without the Yahoo API"), False
+
+    client = client_for(league)
+    wk = int(week or client.week)
+    found = find(client, wk, cal=_calibration(league),
+                 season_value=season_values(client), dist=_distribution())
+    # Only an add that does not trade away season value is worth a notification.
+    # The rest belong in `/waivers` when you go looking, not in a Sunday ping.
+    worth_telling = any(not c.trades_down for c in found)
+    return discord_out.waivers_message(found, cfg.name, wk), worth_telling
+
+
+def build_waivers_all(week: int | None = None) -> list[str]:
+    messages: list[str] = []
+    for slug in config.leagues():
+        try:
+            messages += build_waivers(slug, week)[0]
+        except Exception as exc:
+            log.exception("waivers failed for %s", slug)
+            messages.append(f"⚠️ `{slug}` failed: `{type(exc).__name__}: {exc}`")
+    return messages
+
+
 def build_scoreboard(week: int | None = None) -> list[str]:
     from . import discord_out
     from .pipeline.scoreboard import build
@@ -322,6 +362,20 @@ async def compare(interaction: discord.Interaction, league: str,
     await respond(interaction, build_compare, league, player_a, player_b)
 
 
+@client.tree.command(description="Free agents who would improve your lineup")
+@app_commands.describe(league="Which league, blank for all of them",
+                       week="Week number, blank for current")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def waivers(interaction: discord.Interaction, league: str | None = None,
+                  week: int | None = None):
+    if league is None:
+        await respond(interaction, build_waivers_all, week)
+    else:
+        await respond(interaction, lambda lg, wk: build_waivers(lg, wk)[0],
+                      league, week)
+
+
 @client.tree.command(description="Live scores across every league")
 @app_commands.describe(week="Week number, blank for current")
 @owner_only()
@@ -362,14 +416,18 @@ async def weekly_check(bot: discord.Client):
     for slug in config.leagues():
         try:
             messages, newsworthy = await asyncio.to_thread(build_startsit, slug, None)
+            # A waiver upgrade that does not cost season value is the strongest
+            # validated signal here: +2.50 points a week in RCL over 216
+            # team-weeks. It belongs in the Sunday post.
+            wire, wire_news = await asyncio.to_thread(build_waivers, slug, None)
         except Exception as exc:
             log.exception("weekly check failed for %s", slug)
             await channel.send(f"⚠️ `{slug}` check failed: `{type(exc).__name__}: {exc}`")
             continue
-        if not newsworthy:
+        if not (newsworthy or wire_news):
             log.info("%s: nothing worth posting", slug)
             continue
-        for message in messages:
+        for message in (messages if newsworthy else []) + (wire if wire_news else []):
             await channel.send(message)
 
 

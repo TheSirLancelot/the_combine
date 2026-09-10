@@ -584,7 +584,8 @@ hostname, no ingress rule, no Access policy whose correctness matters and no
 inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
-Commands are `/week`, `/startsit`, `/compare`, `/glossary`, `/health`, locked to
+Commands are `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
+`/glossary`, `/health`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
 
@@ -704,6 +705,26 @@ was a `best_lineup` call sitting inside a list comprehension's CONDITION, so it
 re-ran once per roster player: 21 solves a week instead of 1. Reading the code
 twice did not find it; `cProfile` found it in a minute. The same solve was
 already being computed one line above.
+
+**Surfacing it, 2026-09-10.** `/waivers` in Discord (optional league, all three
+when omitted), a Waiver wire section at the bottom of the app's Week page, and
+folded into the Sunday `weekly_check`.
+
+The notification gate is `worth_telling = any(not c.trades_down for c in found)`.
+An add that gains the week but costs season value is real advice and belongs in
+`/waivers`; it is not worth interrupting a Sunday morning for, because the answer
+depends on how the rest of your season looks and only you know that. RCL produces
+three candidates in week 1 and none of them clear that gate, which is the
+behaviour we want rather than a bug.
+
+The Discord message is prose, not a table, unlike every other output here. Each
+line carries a caveat — which correction applied, how well measured it is, what
+the drop costs — and a caveat has to wrap. A table would either truncate them or
+blow past phone width.
+
+The app caches waivers at `ttl=300`. The wire does not move minute to minute and
+the sweep scores a 350-player pool, so a five minute cache is the difference
+between a page that loads and one you wait on.
 
 ## Known soft spots
 

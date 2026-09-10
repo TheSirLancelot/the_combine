@@ -98,8 +98,8 @@ down this file, and restarting is the fix in both directions.
 `launchctl kickstart -k gui/$(id -u)/com.thecombine.bot` restarts just the bot if
 you would rather not re-run the installer.
 
-Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. `/week` and
-`/startsit` take an optional league and cover all of them when you leave it
+Commands: `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
+`/glossary`, `/health`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
@@ -215,6 +215,37 @@ whose numbers really are moving.
 The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
 hand-entered league has none, so it shows as unavailable with the reason rather
 than silently going missing. It joins when the API is approved.
+
+## Waiver wire
+
+```bash
+uv run combine waivers              # every league, this week
+uv run combine waivers rcl 3        # one league, a specific week
+```
+
+Free agents who would improve this week's lineup. The number is what the whole
+lineup is worth afterwards rather than a head to head, so a cascade counts: an
+add that only helps because he frees a flex spot is still an upgrade, and one
+who beats a starter you would not have started anyway is not.
+
+Two figures, on purpose. The week's gain is calibrated, so a position ESPN
+systematically over-projects is marked down before the comparison. Season value
+given up by the drop is reported separately, because a week is not worth a
+season, and a line that mixed them would hide which one you are trading.
+
+Where a candidate only clears the bar because of the calibration, it says so
+along with how many player-weeks that correction rests on. DT is the live
+example: +2.49 measured on 40 observations is a real finding on a thin sample,
+and you should see the sample rather than a confident number.
+
+Also `/waivers` in Discord, with an optional league, and a Waiver wire section at
+the bottom of the app's Week page. The Sunday check only pings you about an add
+that does not cost season value; one that buys a week and pays for it later
+waits until you go looking, which is what `/waivers` is for.
+
+The Yahoo league cannot answer this. Free agents need the API, so it reports the
+reason rather than an empty list. Kickers and team defenses are not covered in
+any league yet.
 
 ## The week (CLI)
 

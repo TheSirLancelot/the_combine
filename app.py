@@ -243,6 +243,27 @@ def missing_inputs(league: str) -> list[tuple[str, str, str]]:
     return out
 
 
+@st.cache_data(ttl=300, show_spinner="reading the wire...")
+def load_waivers(league: str, week: int, _nonce: int, _version: str) -> dict:
+    """Free agent upgrades. Its own loader with a long ttl, because it pulls a
+    350 player pool and the wire does not move minute to minute."""
+    from combine.pipeline.calibration import load as load_cal
+    from combine.pipeline.waivers import find, season_values
+
+    cfg = leagues[league]
+    if cfg.platform != "espn":
+        return {"candidates": [], "unavailable":
+                "no free agent pool without the Yahoo API"}
+    try:
+        client = client_for(league)
+        found = find(client, week or None, cal=load_cal(league),
+                     season_value=season_values(client),
+                     dist=outcome_distribution(config.SEASON - 1))
+        return {"candidates": found, "unavailable": ""}
+    except Exception as exc:
+        return {"candidates": [], "unavailable": f"{type(exc).__name__}: {exc}"}
+
+
 @st.cache_data(ttl=30, show_spinner="pulling live scores...")
 def load_scores(week: int, _nonce: int, _version: str) -> dict:
     """Every league's matchups. Short ttl because this is the one view where
@@ -732,6 +753,49 @@ def week_page():
             hide_index=True, use_container_width=True, column_config=WEEK_COLS)
 
     role_legend(data["in_season"], config.SEASON - 1 if data["dist"] else None)
+
+    st.divider()
+    st.markdown("**Waiver wire**")
+    st.caption(
+        "Free agents who would improve this lineup. Gain is what the whole "
+        "lineup is worth afterwards, not a head to head, so it already accounts "
+        "for who shifts where. Backtested at +2.50 points a week in RCL and "
+        "+0.79 in DMWD over 216 team-weeks each.")
+    wire = load_waivers(league, int(week_no), st.session_state.nonce,
+                        _code_version())
+    if wire["unavailable"]:
+        st.info(wire["unavailable"])
+    elif not wire["candidates"]:
+        st.success("Nobody on the wire improves the lineup. That is the normal "
+                   "answer: the pool is unrostered for a reason.")
+    else:
+        for c in wire["candidates"]:
+            with st.container(border=True):
+                st.markdown(f"**{c.name}** ({c.pos} {c.team or '--'}) "
+                            f"{c.week_proj:.1f} projected &nbsp;·&nbsp; "
+                            f"**+{c.week_gain:.1f}** to the lineup"
+                            + (f" &nbsp;·&nbsp; starts over {c.displaces}"
+                               if c.displaces else ""))
+                if c.trades_down:
+                    st.markdown(f"Drop **{c.drop_name}** ({c.drop_pos}): costs "
+                                f"{abs(c.season_cost):.0f} projected points of "
+                                f"season value, so this buys a week and pays for "
+                                f"it later.")
+                else:
+                    st.markdown(f"Drop **{c.drop_name}** ({c.drop_pos}): gains "
+                                f"{c.season_cost:.0f} projected points of season "
+                                f"value too.")
+                if c.correction_carries_it:
+                    st.warning(
+                        f"Ranks here only because {c.pos} projections are "
+                        f"corrected UP by {c.correction:.1f}, measured on "
+                        f"{c.correction_n} player-weeks. On ESPN's raw number he "
+                        f"does not clear the bar.")
+                elif c.clears_despite_correction:
+                    st.caption(
+                        f"Clears the bar even after {c.pos} projections are marked "
+                        f"DOWN {abs(c.correction):.1f} for being systematically "
+                        f"over-projected.")
 
     if final:
         st.caption("week is final")

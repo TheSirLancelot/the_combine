@@ -207,3 +207,46 @@ def scoreboard_message(games, missing) -> list[str]:
     for item in missing:
         blocks.append(f"_{item.league_name}: not on the scoreboard. {item.reason}_")
     return chunk(blocks)
+
+
+def waivers_message(candidates, league_name: str, week: int,
+                    unavailable: str = "") -> list[str]:
+    """Waiver upgrades, phone width.
+
+    Prose rather than a table: every line is a claim with a caveat attached, and
+    caveats need to wrap.
+    """
+    if unavailable:
+        return [f"_{league_name}: {unavailable}_"]
+    if not candidates:
+        return [
+            (
+                f"**{league_name} — week {week}**\nNobody on the wire improves the "
+                f"lineup. That is the normal answer: the pool is unrostered for a "
+                f"reason."
+            )
+        ]
+
+    lines = [f"**{league_name} — week {week} · waiver upgrades**"]
+    for c in candidates:
+        lines.append(f"**{c.name}** ({c.pos} {c.team or '--'}) {c.week_proj:.1f} "
+                     f"projected · **+{c.week_gain:.1f}** to the lineup")
+        if c.displaces:
+            lines.append(f"  starts over {c.displaces}")
+        if c.correction_carries_it:
+            lines.append(f"  ⚠️ only clears the bar because {c.pos} projections are "
+                         f"corrected up {c.correction:.1f}, measured on "
+                         f"{c.correction_n} player-weeks")
+        elif c.clears_despite_correction:
+            lines.append(f"  clears even after {c.pos} is marked down "
+                         f"{abs(c.correction):.1f}")
+        if c.trades_down:
+            lines.append(f"  drop {c.drop_name}: costs {abs(c.season_cost):.0f} "
+                         f"points of season value, so it buys a week and pays later")
+        else:
+            lines.append(f"  drop {c.drop_name}: gains {c.season_cost:.0f} points "
+                         f"of season value too")
+    lines.append("_Gain is what the lineup is worth afterwards, not a head to "
+                 "head. Season value is separate because a week is not worth a "
+                 "season._")
+    return chunk(["\n".join(lines)])

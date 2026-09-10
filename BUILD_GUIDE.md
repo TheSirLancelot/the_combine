@@ -1015,6 +1015,27 @@ chosen to land on rounding boundaries.
 William asked for this while learning the tool and expects to want the terse
 version back later, so it is one method with three call sites.
 
+## The pre-kickoff alert
+
+`kickoff_problems()` and `kickoff_check`, added 2026-09-11. Every other output
+in this system keeps until William looks at it. This one expires, which is what
+justifies interrupting for it: the window closes at kickoff and the cost of
+missing it is a zero in a starting slot.
+
+Two failure modes, and the design is mostly about the second one. Missing the
+window costs points. Firing every fifteen minutes for ninety minutes costs the
+channel, and a muted channel misses the next one too -- so the alert is gated
+through `already_said` under a `kickoff:<league>` slug, which keeps it separate
+from the morning report's own gate so the two can never silence each other.
+
+The cheap-first ordering matters for a loop that runs all week. The pro schedule
+is cached per week, so a poll with no imminent kickoff returns before touching a
+box score. Without that it is 96 ESPN calls a day per league to learn that it is
+Wednesday. There is a test asserting the box score is never fetched in that case,
+because it is the kind of thing a later refactor quietly breaks.
+
+Non-ESPN leagues are skipped: the hand-entered league has no kickoff times.
+
 ## Scorecard
 
 `pipeline/scorecard.py` and the `recommendation` table, added 2026-09-11.

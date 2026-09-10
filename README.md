@@ -260,6 +260,21 @@ The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
 hand-entered league has none, so it shows as unavailable with the reason rather
 than silently going missing. It joins when the API is approved.
 
+## Pre-kickoff alert
+
+The bot polls every 15 minutes and pings you when a starter who cannot play has
+a game kicking off within 90 minutes. This is the one alert that expires:
+everything else it says keeps until you look, but once a game kicks off the
+lineup is locked, and a starter ruled out at 10am is a zero you can still avoid
+at 11:00 and cannot avoid at 13:01. The 08:30 morning check structurally cannot
+see a downgrade that lands after it.
+
+It fires once per player per week, not once per poll, or a single ruled-out
+starter would be six pings in ninety minutes.
+
+The poll is free when nothing is imminent. The pro schedule is cached per week,
+so a Wednesday afternoon check returns without ever fetching a lineup.
+
 ## Scorecard
 
 ```bash

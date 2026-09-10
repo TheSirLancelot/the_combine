@@ -387,6 +387,7 @@ class Combine(discord.Client):
         if CHANNEL_ID:
             daily_check.start(self)
             weekly_score.start(self)
+            kickoff_check.start(self)
 
 
 client = Combine()
@@ -768,6 +769,96 @@ async def daily_check(bot: discord.Client):
         await send_embeds(channel, parts)
 
 
+# The last chance to act. Once a game kicks off the lineup is locked, so a
+# starter ruled out at 10am on Sunday is a zero you can still avoid at 11:00 and
+# cannot avoid at 13:01. The morning check runs at 08:30 and cannot see a
+# downgrade that lands after it.
+KICKOFF_WARNING = timedelta(minutes=90)
+KICKOFF_POLL = 15          # minutes
+
+
+def kickoff_problems(league: str, now_ms: int | None = None):
+    """Starters who cannot play and whose game is about to lock. (week, players).
+
+    Cheap first: the pro schedule is cached per week, so a poll on a Wednesday
+    afternoon costs nothing and returns before touching a box score. Only a
+    kickoff inside the window is worth paying for a lineup.
+    """
+    import time
+
+    from .pipeline.lineup import BAD_STATUS, split
+    from .platforms import client_for
+
+    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    horizon = now_ms + int(KICKOFF_WARNING.total_seconds() * 1000)
+
+    client = client_for(league)
+    week = int(client.week)
+    schedule = client.pro_schedule(week)
+    imminent = {team for team, game in schedule.items()
+                if now_ms < game.kickoff_ms <= horizon}
+    if not imminent:
+        return week, []
+
+    starters, _bench = split(client.matchup(week).my_lineup)
+    return week, [p for p in starters
+                  if (p.team in imminent)
+                  and (p.on_bye or p.status in BAD_STATUS)]
+
+
+def build_kickoff_alert(league: str, week: int, players) -> list[discord.Embed]:
+    from . import discord_out
+
+    cfg = config.get_league(league)
+    e = discord.Embed(
+        title=f"🚨 Kicking off soon · {cfg.name}", colour=discord_out.BAD,
+        description=("These starters cannot play and their game locks within "
+                     "the hour and a half. After kickoff you are stuck with "
+                     "them."))
+    for p in players:
+        discord_out.field(
+            e, f"{p.slot} · {p.name}",
+            f"{'on bye' if p.on_bye else p.status} · {p.opponent} · "
+            f"projected {p.projected:.1f}")
+    e.set_footer(text=f"week {week}")
+    return [e]
+
+
+@tasks.loop(minutes=KICKOFF_POLL)
+async def kickoff_check(bot: discord.Client):
+    """The one alert worth interrupting for, because it expires.
+
+    Everything else this bot says keeps until you look. This does not: the
+    window closes at kickoff and the cost of missing it is a zero in a starting
+    slot.
+    """
+    if not CHANNEL_ID:
+        return
+    for slug, cfg in config.leagues().items():
+        if cfg.platform != "espn":
+            continue           # no kickoff times without the API
+        try:
+            week, players = await asyncio.to_thread(kickoff_problems, slug)
+        except Exception:
+            log.exception("kickoff check failed for %s", slug)
+            continue
+        if not players:
+            continue
+        # Once per player per week. The poll runs every 15 minutes and the
+        # window is 90, so without this one ruled-out starter is six pings.
+        signature = tuple(f"kickoff:{p.player_id}:{p.status}" for p in players)
+        if already_said(f"kickoff:{slug}", week, signature):
+            continue
+        channel = bot.get_channel(CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(CHANNEL_ID)
+            except Exception:
+                log.warning("channel %s unreachable for a kickoff alert", CHANNEL_ID)
+                return
+        await send_embeds(channel, build_kickoff_alert(slug, week, players))
+
+
 # Tuesday morning Pacific, after Monday night is final and scored.
 SCORE_AT = dtime(hour=16, minute=0, tzinfo=UTC)     # 09:00 PT
 SCORE_DAY = 2                                        # Tuesday, as isoweekday
@@ -812,7 +903,7 @@ async def weekly_score(bot: discord.Client):
     if datetime.now(UTC).isoweekday() != SCORE_DAY:
         return
     try:
-        week, done, missing = await asyncio.to_thread(score_last_week)
+        week, done, _unresolved = await asyncio.to_thread(score_last_week)
     except Exception:
         log.exception("weekly scoring failed")
         return

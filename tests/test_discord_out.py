@@ -225,9 +225,9 @@ def test_waivers_message_separates_the_week_from_the_season():
     from combine.discord_out import waivers_message
 
     cheap = "\n".join(waivers_message([cand(season_proj=90.0)], "RCL", 3))
-    assert "gains 20 points" in cheap
+    assert "+1.4" in cheap and "+20.0" in cheap        # week gain, season gain
     costly = "\n".join(waivers_message([cand(season_proj=40.0)], "RCL", 3))
-    assert "costs 30 points" in costly and "pays later" in costly
+    assert "-30.0" in costly and "pays for it later" in costly
 
 
 def test_waivers_message_stays_under_the_discord_limit():

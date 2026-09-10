@@ -713,14 +713,17 @@ folded into the Sunday `weekly_check`.
 The notification gate is `worth_telling = any(not c.trades_down for c in found)`.
 An add that gains the week but costs season value is real advice and belongs in
 `/waivers`; it is not worth interrupting a Sunday morning for, because the answer
-depends on how the rest of your season looks and only you know that. RCL produces
-three candidates in week 1 and none of them clear that gate, which is the
-behaviour we want rather than a bug.
+depends on how the rest of your season looks and only you know that. In RCL week
+1 the top candidate trades down and the other two do not, so the check does ping,
+and it pings for the two that are unambiguous.
 
-The Discord message is prose, not a table, unlike every other output here. Each
-line carries a caveat — which correction applied, how well measured it is, what
-the drop costs — and a caveat has to wrap. A table would either truncate them or
-blow past phone width.
+All three surfaces are a table plus numbered notes. The numbers belong in
+columns — WEEK and SEASON both signed, since the whole point is that they can
+disagree — but the caveats do not fit in a column and truncating one would leave
+a confident number with its qualifier cut off. So the caveats go underneath,
+keyed by row number, and the Discord table is 38 characters wide to survive phone
+wrapping. Names go through `short_name()` for the same reason: a hard truncation
+to column width gave "DeForest Buck", which is both ugly and ambiguous.
 
 The app caches waivers at `ttl=300`. The wire does not move minute to minute and
 the sweep scores a 350-player pool, so a five minute cache is the difference

@@ -272,11 +272,31 @@ def render(candidates: list[Candidate], league_name: str, week: int) -> str:
         return (f"{league_name} — week {week}\n"
                 f"Nobody on the wire improves the lineup. That is the normal "
                 f"answer:\nthe pool is unrostered for a reason.")
-    out = [f"{league_name} — week {week}", "WAIVER UPGRADES"]
-    for c in candidates:
-        out.append("  " + c.describe())
-    out.append("\nGain is what the whole lineup is worth afterwards, not a "
-               "head to head,\nso it already accounts for who shifts where. "
-               "Season value is shown\nseparately because a week is not worth a "
-               "season.")
+    out = [f"{league_name} — week {week}", "WAIVER UPGRADES", ""]
+    out.append(f"  {'':<3}{'ADD':<22}{'POS':<5}{'PROJ':>6}{'WEEK':>7}"
+               f"{'SEASON':>8}  {'DROP':<22}{'STARTS OVER'}")
+    for i, c in enumerate(candidates, start=1):
+        flag = "*" if c.correction_carries_it else " "
+        out.append(f"  {str(i) + flag:<3}{c.name[:21]:<22}{c.pos[:4]:<5}"
+                   f"{c.week_proj:>6.1f}{c.week_gain:>+7.1f}"
+                   f"{c.season_cost:>+8.1f}  "
+                   f"{f'{c.drop_name} ({c.drop_pos})'[:21]:<22}"
+                   f"{c.displaces or '--'}")
+    out.append("")
+    for i, c in enumerate(candidates, start=1):
+        if c.correction_carries_it:
+            out.append(f"  {i}* ranks here only because {c.pos} projections are "
+                       f"corrected UP by {c.correction:.1f},\n     measured on "
+                       f"{c.correction_n} player-weeks. On ESPN's raw number he "
+                       f"does not clear the bar.")
+        elif c.clears_despite_correction:
+            out.append(f"  {i}  clears the bar even after {c.pos} projections are "
+                       f"marked DOWN\n     {abs(c.correction):.1f} for being "
+                       f"systematically over-projected.")
+    out.append("\nWEEK is what the whole lineup is worth afterwards, not a head "
+               "to head,\nso it already accounts for who shifts where. SEASON is "
+               "what the drop\ncosts or gains for the rest of the year, kept "
+               "separate because a week\nis not worth a season.\n\nEach row is an "
+               "alternative, not a sequence: every one is measured\nagainst the "
+               "lineup you have now, which is why they can name the same drop.")
     return "\n".join(out)

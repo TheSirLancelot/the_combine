@@ -23,6 +23,16 @@ NAME = 16          # widest a player name gets before truncation
 CODE = "```"
 
 
+def short_name(name: str, width: int = 16) -> str:
+    """"DeForest Buckner" -> "D. Buckner". A hard truncation to column width
+    gives "DeForest Buck", which is both ugly and ambiguous between two players
+    with the same first name."""
+    parts = (name or "").split()
+    if len(parts) > 1:
+        name = f"{parts[0][0]}. {' '.join(parts[1:])}"
+    return name[:width]
+
+
 def chunk(blocks: list[str]) -> list[str]:
     """Pack pre-formed blocks into as few messages as possible.
 
@@ -213,8 +223,10 @@ def waivers_message(candidates, league_name: str, week: int,
                     unavailable: str = "") -> list[str]:
     """Waiver upgrades, phone width.
 
-    Prose rather than a table: every line is a claim with a caveat attached, and
-    caveats need to wrap.
+    A table for the numbers and numbered notes underneath for the caveats. The
+    caveats do not fit in a column and truncating them would leave a confident
+    number with its qualifier cut off, which is the one failure worth avoiding
+    here.
     """
     if unavailable:
         return [f"_{league_name}: {unavailable}_"]
@@ -227,26 +239,31 @@ def waivers_message(candidates, league_name: str, week: int,
             )
         ]
 
-    lines = [f"**{league_name} — week {week} · waiver upgrades**"]
-    for c in candidates:
-        lines.append(f"**{c.name}** ({c.pos} {c.team or '--'}) {c.week_proj:.1f} "
-                     f"projected · **+{c.week_gain:.1f}** to the lineup")
+    table = [f"{'':<3}{'ADD':<17}{'POS':<5}{'WK':>6}{'SZN':>7}"]
+    notes: list[str] = []
+    for i, c in enumerate(candidates, start=1):
+        flag = "*" if c.correction_carries_it else " "
+        table.append(f"{str(i) + flag:<3}{short_name(c.name):<17}{c.pos[:4]:<5}"
+                     f"{c.week_gain:>+6.1f}{c.season_cost:>+7.1f}")
+        note = f"{i}. drop {c.drop_name}"
         if c.displaces:
-            lines.append(f"  starts over {c.displaces}")
-        if c.correction_carries_it:
-            lines.append(f"  ⚠️ only clears the bar because {c.pos} projections are "
-                         f"corrected up {c.correction:.1f}, measured on "
-                         f"{c.correction_n} player-weeks")
-        elif c.clears_despite_correction:
-            lines.append(f"  clears even after {c.pos} is marked down "
-                         f"{abs(c.correction):.1f}")
+            note += f", starts over {c.displaces}"
         if c.trades_down:
-            lines.append(f"  drop {c.drop_name}: costs {abs(c.season_cost):.0f} "
-                         f"points of season value, so it buys a week and pays later")
-        else:
-            lines.append(f"  drop {c.drop_name}: gains {c.season_cost:.0f} points "
-                         f"of season value too")
-    lines.append("_Gain is what the lineup is worth afterwards, not a head to "
-                 "head. Season value is separate because a week is not worth a "
-                 "season._")
-    return chunk(["\n".join(lines)])
+            note += ". Buys a week and pays for it later."
+        if c.correction_carries_it:
+            note += (f"\n   ⚠️ only clears the bar because {c.pos} projections "
+                     f"are corrected up {c.correction:.1f}, measured on "
+                     f"{c.correction_n} player-weeks")
+        elif c.clears_despite_correction:
+            note += (f"\n   clears even after {c.pos} is marked down "
+                     f"{abs(c.correction):.1f}")
+        notes.append(note)
+
+    head = (f"**{league_name} — week {week} · waiver upgrades**\n"
+            f"{CODE}\n" + "\n".join(table) + f"\n{CODE}")
+    tail = ("_WK is what the lineup gains this week, SZN what the drop costs or "
+            "gains for the rest of the season. They are separate because a week "
+            "is not worth a season. Each row is an alternative, not a sequence: "
+            "every one is measured against the lineup you have now, which is why "
+            "they can name the same drop._")
+    return chunk([head, "\n".join(notes), tail])

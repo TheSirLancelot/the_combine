@@ -228,13 +228,18 @@ lineup is worth afterwards rather than a head to head, so a cascade counts: an
 add that only helps because he frees a flex spot is still an upgrade, and one
 who beats a starter you would not have started anyway is not.
 
-Two figures, on purpose. The week's gain is calibrated, so a position ESPN
-systematically over-projects is marked down before the comparison. Season value
-given up by the drop is reported separately, because a week is not worth a
-season, and a line that mixed them would hide which one you are trading.
+Two columns, on purpose. WEEK is the calibrated gain, so a position ESPN
+systematically over-projects is marked down before the comparison. SEASON is
+what the drop costs or gains for the rest of the year, kept in its own column
+because a week is not worth a season, and one blended number would hide which of
+the two you are trading. Both are signed, so a move that wins Sunday and costs
+you November reads as `+1.7 / -12.8` rather than as a recommendation.
 
-Where a candidate only clears the bar because of the calibration, it says so
-along with how many player-weeks that correction rests on. DT is the live
+Each row is an alternative, not a sequence. Every one is scored against the
+lineup you have right now, which is why three rows can all name the same drop.
+
+A row marked `*` (⚠️ in the app) only clears the bar because of the calibration,
+and the note underneath says how many player-weeks that correction rests on. DT is the live
 example: +2.49 measured on 40 observations is a real finding on a thin sample,
 and you should see the sample rather than a confident number.
 

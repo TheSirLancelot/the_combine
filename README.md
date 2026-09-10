@@ -55,10 +55,17 @@ The in-season interface from anywhere. Slash commands for asking, and a Sunday
 morning check that stays silent unless there is something to act on.
 
 ```bash
-uv run combine bot          # foreground, for testing
-cp scripts/com.thecombine.bot.plist ~/Library/LaunchAgents/   # then edit <REPO>
-launchctl load -w ~/Library/LaunchAgents/com.thecombine.bot.plist
+uv run combine bot                 # foreground, for testing
+./scripts/install_agents.sh        # background, survives reboots
 ```
+
+The installer fills in the repo path and the absolute path to `uv`, creates
+`logs/`, and loads the agent. Both substitutions matter because launchd is not a
+shell: it starts with a minimal PATH and no working directory, so `uv run` alone
+fails with command not found and the job dies at boot with nothing obvious in
+the logs. Run it again after pulling; it reloads rather than duplicating.
+
+Add `--with-app` to also run the Streamlit app, `--uninstall` to remove both.
 
 Commands: `/week`, `/startsit`, `/compare`, `/glossary`, `/health`. All of them
 answer to the owner only, because otherwise anyone who can see the bot can read
@@ -109,9 +116,7 @@ Then run it as a launchd agent so it survives reboots and never competes with
 Plex:
 
 ```bash
-cp scripts/com.thecombine.app.plist ~/Library/LaunchAgents/
-# edit the <REPO> paths inside first
-launchctl load -w ~/Library/LaunchAgents/com.thecombine.app.plist
+./scripts/install_agents.sh --with-app
 ```
 
 It launches under `taskpolicy -b`, macOS background QoS, so any Plex transcode

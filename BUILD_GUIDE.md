@@ -866,13 +866,28 @@ option. `PffApi.regular_weeks()` builds the list and `usage.load()` is the only
 caller that needs it; `crosswalk.py` still uses season totals on purpose, since
 it only wants names and ids and more rows is better there.
 
-**The fallback.** In week 2 a player with two games has rates built on two
-games, so `load()` keeps last season per player until this season reaches
-`SMALL_SAMPLE` games. The threshold is self-consistent rather than measured: the
-tool starts trusting a number at exactly the point it would stop printing "only
-N games charted" beside it. It is inherited, not derived, and it is one constant
-in one place. A rookie with no prior season keeps his thin current-season row,
-since one real regular-season game beats a blank.
+**The fallback.** `USAGE_MIN_GAMES = 1` from `USAGE_FROM_WEEK = 2`: anyone who
+has played this season reads this season, and anyone who has not keeps last
+season. His call, and the reasoning holds up. Role is what these lines are FOR,
+and role is the half that stabilises immediately -- route/g, touch/g and snap/g
+mean something from a player's first game, and they are also the half most
+likely to have changed over an offseason, which is precisely when last season
+stops being a good prior. The rates sharing the line, yprr and grade and brk%,
+are close to noise at one game; what carries that is the season/games tag on
+every line and the `SMALL_SAMPLE` caveat, which fires constantly through
+September and should.
+
+The week 2 floor is so the table does not half-switch mid-week-1, when three
+teams have played and the rest have not; splitting the table on kickoff order
+would be worse than either answer. Checked against live data: at week 1 it is
+2025 for 1610 of 1614 players (the four are rookies with no prior), and
+simulating week 2 flips exactly the 55 who have played, Rhamondre Stevenson to
+`2026 1g` while Jahmyr Gibbs stays `2025 17g`.
+
+Keeping last season for a player with zero current-season games is a deliberate
+softening of "only show 2026". Hurt, inactive or not yet played all produce the
+same blank otherwise, and a real role from last year beats an empty cell when
+the tag says which year it is.
 
 Because the table now mixes seasons by design, every role line is tagged with
 the season and game count it describes (`2025 17g`). And `caveats()` compares

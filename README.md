@@ -319,9 +319,14 @@ than broken.
 ## Role numbers and which season they are
 
 Every role line is tagged with the season and how many games are charted, like
-`2025 17g`. Early in a year most rows are last season on purpose: two games of
-this season is a rate built on two games, so the tool keeps last year until a
-player has enough games that it would stop warning about the sample.
+`2025 17g`. From week 2, anyone who has played this season reads this season,
+even on one game: role is what these lines are for and role is the part that
+means something immediately, while last year's role is the part most likely to
+have changed. The rates on the same line are noisy that early, which is what the
+tag and the "only N games charted" caveat are there to tell you.
+
+A player with no games this season yet, hurt or inactive, keeps last season
+rather than going blank.
 
 All of these are regular season only. PFF's season totals quietly include
 preseason and playoff snaps, which is not cosmetic: Drake Maye's 2025 total is

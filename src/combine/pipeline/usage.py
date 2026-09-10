@@ -27,6 +27,23 @@ AREAS = ("passing", "rushing", "receiving", "defense")
 IDP = frozenset({"LB", "DL", "DE", "DT", "DB", "CB", "S", "DP", "EDGE"})
 SMALL_SAMPLE = 8
 
+# How many regular-season games this season needs before its numbers replace
+# last season's, and how far into the season that rule starts applying.
+#
+# One game, from week 2. The reasoning is that ROLE is what these lines are for,
+# and role is the half that stabilises immediately: route/g, touch/g and snap/g
+# are meaningful from a player's first game, and they are also the half most
+# likely to have changed over an offseason, which is exactly when last season
+# stops being a good prior. The rates sharing those lines -- yprr, grade, brk%
+# -- are close to noise at one game, and what carries that is the season/games
+# tag on every line plus the SMALL_SAMPLE caveat, which will fire constantly
+# through September. That is correct rather than annoying.
+#
+# The week 2 floor exists so the table does not half-switch in the middle of
+# week 1, when three teams have played and the rest have not.
+USAGE_MIN_GAMES = 1
+USAGE_FROM_WEEK = 2
+
 
 def family(pos: str) -> str:
     """Which usage currency a position is paid in.
@@ -202,16 +219,12 @@ def load(api, season: int | None = None, areas=AREAS) -> dict[int, Usage]:
     """{pff player_id: Usage}, this season where it says anything, last season
     where it does not.
 
-    A player with two games charted has rates built on two games, and in week 1
-    most starters have none at all because they sat out the preseason. Last
-    season is the better prior until this season has enough games that the
-    small-sample caveat would stop firing, so SMALL_SAMPLE is the switch: the
-    tool starts trusting a number at exactly the point it would stop warning
-    about it. That threshold is inherited rather than measured, and it is one
-    constant in one place if it turns out to be wrong.
+    Anyone who has played this season reads this season, from week 2 onward.
+    Anyone who has not -- hurt, inactive, or the week not played yet -- keeps
+    last season, because a real role from last year beats an empty cell and the
+    tag says which one you are looking at.
 
-    Every Usage carries the season it came from, so a role line is never
-    ambiguous about which year it is describing.
+    See USAGE_MIN_GAMES for why the bar is one game.
     """
     if season is not None:
         return _one_season(api, season, areas)
@@ -222,9 +235,10 @@ def load(api, season: int | None = None, areas=AREAS) -> dict[int, Usage]:
         return prior
 
     current = _one_season(api, state.season, areas)
+    bar = USAGE_MIN_GAMES if state.week >= USAGE_FROM_WEEK else SMALL_SAMPLE
     merged = dict(prior)
     for pid, usage in current.items():
-        if usage.games >= SMALL_SAMPLE or pid not in merged:
+        if usage.games >= bar or pid not in merged:
             merged[pid] = usage
     return merged
 

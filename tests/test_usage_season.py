@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from combine.pipeline.providers.pff_api import REGULAR_WEEKS, SeasonState
-from combine.pipeline.usage import SMALL_SAMPLE, Usage, load
+from combine.pipeline.usage import Usage, load
 
 
 class FakeApi:
@@ -75,25 +75,38 @@ def test_preseason_reads_last_season_and_does_not_ask_for_this_one():
     assert {season for _a, season, _w in api.calls} == {2025}
 
 
-def test_a_thin_current_season_keeps_last_season():
-    """Week 2 rates built on two games are noise. Last season is the better
-    prior until this season has enough games to stop warning about it."""
+def test_one_game_is_enough_once_the_season_is_under_way():
+    """Role is what these lines are for, and role is the half that stabilises
+    immediately. The rates on the same line are noisy at one game, which is what
+    the tag and the small-sample caveat are for."""
     api = FakeApi(season=2026, week=2, rows={
         ("passing", 2025): [row(1, 17, dropbacks=600)],
-        ("passing", 2026): [row(1, 2, dropbacks=70)],
+        ("passing", 2026): [row(1, 1, dropbacks=35)],
+    })
+    out = load(api, areas=("passing",))
+    assert out[1].season == 2026 and out[1].games == 1
+
+
+def test_week_one_does_not_half_switch_mid_week():
+    """In week 1 three teams have played and the rest have not, so switching
+    then would split the table on nothing more than kickoff order."""
+    api = FakeApi(season=2026, week=1, rows={
+        ("passing", 2025): [row(1, 17, dropbacks=600)],
+        ("passing", 2026): [row(1, 1, dropbacks=35)],
+    })
+    out = load(api, areas=("passing",))
+    assert out[1].season == 2025 and out[1].games == 17
+
+
+def test_a_player_who_has_not_played_this_season_keeps_last_season():
+    """Hurt, inactive, or on bye. A real role from last year beats a blank
+    cell, and the tag says which year it is."""
+    api = FakeApi(season=2026, week=6, rows={
+        ("passing", 2025): [row(1, 17, dropbacks=600)],
+        ("passing", 2026): [],
     })
     out = load(api, areas=("passing",))
     assert out[1].season == 2025
-    assert out[1].games == 17
-
-
-def test_enough_games_switches_to_this_season():
-    api = FakeApi(season=2026, week=10, rows={
-        ("passing", 2025): [row(1, 17, dropbacks=600)],
-        ("passing", 2026): [row(1, SMALL_SAMPLE, dropbacks=300)],
-    })
-    out = load(api, areas=("passing",))
-    assert out[1].season == 2026
 
 
 def test_a_rookie_with_no_prior_still_gets_what_there_is():

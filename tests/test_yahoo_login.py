@@ -40,3 +40,22 @@ def test_a_url_with_no_code_is_not_mistaken_for_a_code():
     sending the entire URL as if it were a code."""
     pasted = "https://localhost:8000/?error=access_denied"
     assert yahoo_login.code_from(pasted) == pasted
+
+
+def test_an_error_redirect_is_read_as_an_error_not_a_code():
+    """Yahoo answers the authorize request with ?error=... instead of ?code=...
+    when it refuses. Sending that on as if it were a code turns a clear message
+    into a confusing one."""
+    said = yahoo_login.error_from(
+        "https://localhost:8000/?error=invalid_scope&error_description=invalid+scope")
+    assert "invalid_scope" in said
+    assert "invalid scope" in said
+
+
+def test_a_good_redirect_has_no_error():
+    assert yahoo_login.error_from("https://localhost:8000/?code=abc123") == ""
+
+
+def test_an_error_without_a_description_still_reads():
+    assert yahoo_login.error_from(
+        "https://localhost:8000/?error=access_denied") == "access_denied"

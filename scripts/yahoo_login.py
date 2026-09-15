@@ -56,7 +56,26 @@ REDIRECT = "https://localhost:8000"
 # for `fspt-r` and should keep asking for exactly that: a token that cannot
 # write is a guarantee no future bug can make a roster move, which is worth
 # more than the convenience.
+# Overridable because the right value is currently an open question: Yahoo
+# answered `error=invalid_scope` to fspt-r on this app (2026-09-15). Set
+# YAHOO_SCOPE in .env to try another, or to an empty string to send none.
 SCOPE = "fspt-r"
+
+
+def error_from(pasted: str) -> str:
+    """Yahoo's own complaint, when the redirect carries one instead of a code.
+
+    Worth reading rather than being sent on as if it were a code: an
+    `invalid_scope` redirect means the authorize request was refused before any
+    login happened, which is a different problem from a code that fails to
+    exchange.
+    """
+    query = parse_qs(urlparse(pasted).query)
+    if "error" not in query:
+        return ""
+    error = query["error"][0]
+    detail = query.get("error_description", [""])[0]
+    return f"{error}: {detail}" if detail else error
 
 
 def code_from(pasted: str) -> str:
@@ -101,6 +120,8 @@ def exchange(key: str, secret: str, code: str) -> dict:
 
 
 def main() -> int:
+    scope = env("YAHOO_SCOPE")
+    scope = SCOPE if scope is None else scope
     key, secret = env("YAHOO_CONSUMER_KEY"), env("YAHOO_CONSUMER_SECRET")
     if not key or not secret:
         raise SystemExit("set YAHOO_CONSUMER_KEY and YAHOO_CONSUMER_SECRET in "
@@ -109,19 +130,29 @@ def main() -> int:
 
     url = f"{OAUTH}/request_auth?" + urlencode(
         {"client_id": key, "redirect_uri": REDIRECT, "response_type": "code",
-         "scope": SCOPE})
+         **({"scope": scope} if scope else {})})
     print("Opening Yahoo for authorisation. If the browser does not open, use:")
     print(f"\n  {url}\n")
     webbrowser.open_new_tab(url)
 
-    print(f"Asking for scope {SCOPE} (Fantasy Sports, read only).")
+    print(f"Asking for scope {scope!r}." if scope
+          else "Sending no scope (Yahoo will issue a profile-only token).")
     print("The consent screen should mention Fantasy Sports. If it only asks")
     print("about your profile, stop: the token will not work and pasting the")
     print("code just repeats the last failure.\n")
     print("Approve the app. The browser will then fail to load a page at")
     print(f"{REDIRECT} -- that is expected, there is nothing listening there.")
     print("Copy the whole address from the bar and paste it here.\n")
-    code = code_from(input("Redirected URL (or just the code): "))
+    pasted = input("Redirected URL (or just the code): ")
+    complaint = error_from(pasted)
+    if complaint:
+        raise SystemExit(
+            f"\nYahoo refused the authorize request: {complaint}\n\n"
+            f"Nothing was wrong with the paste; this came back instead of a "
+            f"code.\nIf it says invalid_scope, this app is not entitled to "
+            f"{SCOPE!r}.\nThat is a Yahoo-side entitlement, not something this "
+            f"script can\nwork around. See the Yahoo section of BUILD_GUIDE.md.")
+    code = code_from(pasted)
     if not code:
         raise SystemExit("nothing pasted")
 

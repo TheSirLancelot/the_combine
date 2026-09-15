@@ -635,9 +635,34 @@ Auction, on an existing app and on a freshly created one. There is nothing to
 tick. Fantasy Sports is not an app permission at all on this account: it is a
 SCOPE, asked for in the authorize request.
 
-`scripts/yahoo_login.py` now sends `scope=fspt-r`. Without a scope parameter
-Yahoo issues a profile-only token, which is exactly the token that completes
-OAuth and then gets refused by every fantasy endpoint.
+`scripts/yahoo_login.py` sends `scope=fspt-r`. Without a scope parameter Yahoo
+issues a profile-only token, which is exactly the token that completes OAuth and
+then gets refused by every fantasy endpoint.
+
+**And that is where it stands as of 2026-09-15: BLOCKED ON YAHOO, not on code.**
+Asking for `fspt-r` gets the authorize request refused outright:
+
+```
+https://localhost:8000/?error=invalid_scope&error_description=invalid+scope
+```
+
+So both doors are shut. No scope gives a token every fantasy endpoint refuses;
+the fantasy scope is refused before a token is issued; and the app's API
+Permissions list offers only OpenID Connect and TW Auction, on an existing app
+and on a newly created one, so there is nothing to grant locally.
+
+Yahoo rejects a scope an app is not entitled to, so all three symptoms are the
+same fact: this client id has no Fantasy Sports entitlement attached, whatever
+the approval email says. The email confirms the APPLICATION was approved; it is
+evidently not the same thing as the entitlement landing on the client id.
+
+Worth checking before chasing Yahoo: that the client id in `.env` belongs to the
+app named in the access application, and that the Yahoo account approving the
+consent screen is the account that applied. A second app created later is not
+covered by the approval.
+
+`YAHOO_SCOPE` in `.env` overrides the requested scope so a different value can
+be tried without editing code; empty sends none.
 
 `fspt-r` is read, `fspt-w` is read and write. This asks for `fspt-r` and should
 keep asking for exactly that. Read-only is the hard rule for this project, and a

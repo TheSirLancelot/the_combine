@@ -1394,6 +1394,30 @@ know which one William wants.
 Tyrique Stevenson 139 against Christian Gonzalez 172, flagged as currently
 starting and the only CB on the roster.
 
+**Two corrections the same day, both from William asking whether Malik Willis
+was really the best QB available.**
+
+`projected_total_points` is a FULL SEASON projection, not rest-of-season.
+Verified by arithmetic: Jayden Daniels reads 367.7 against a weekly 21.8, which
+is 16.9 games, and Saquon Barkley 273.2 against 16.9 is 16.2. Every label
+calling it rest-of-season was wrong. In week 2 that is a 6% overstatement and by
+week 10 it is more than half, so this would have quietly got worse all season.
+Comparisons between two players stay valid, since both are overstated the same
+way; the wording is what was wrong.
+
+And "best available" was an overclaim. The top of a position is usually a
+cluster: Willis 284.4, Young 284.2, Smith 279.9. `noise_band()` is MIN_EDGE
+times the games in a season, on the reasoning that a season projection is a
+weekly gap repeated, so the measured weekly floor scales the same way. Anything
+inside it is reported as "N QBs within the noise, so take whichever you like"
+rather than ranked. DMWD's receivers came back as ten within the noise, which is
+the honest answer.
+
+Not a correction, but worth recording: the pool in that run had visibly changed
+under us, because William had claims in on both Tucker and Willis. The skip
+worked and the view moved to the next man down, which is the pending-claim
+handling doing its job.
+
 ## The app has a Waivers tab
 
 Moved 2026-09-15. The wire section had grown past being a footnote on the Week

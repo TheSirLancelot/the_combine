@@ -26,7 +26,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .lineup import MIN_EDGE
 from .waivers import IR_STATUS, NEVER_STREAM, pending_adds
+
+# Games left in a 17 game regular season, used only to size the noise band
+# below. Deliberately not used to convert anything.
+SEASON_GAMES = 17
 
 
 @dataclass(frozen=True)
@@ -35,13 +40,14 @@ class Gap:
 
     name: str
     pos: str
-    season: float                 # his rest-of-season projection
+    season: float                 # ESPN's FULL SEASON projection, not remaining
     best_name: str                # best free agent at the same position
     best_season: float
     slot: str
     in_lineup: bool               # started this week
     status: str
     only_one: bool                # the only player he has at this position
+    alternatives: int = 1         # free agents at this position within the noise
 
     @property
     def surplus(self) -> float:
@@ -57,6 +63,9 @@ class Gap:
                 f"{self.best_name} {self.best_season:.0f} free: "
                 f"{self.gain:.0f} points of season")
         notes = []
+        if self.alternatives > 1:
+            notes.append(f"{self.alternatives} {self.pos}s within the noise, "
+                         f"so take whichever you like")
         if self.status and self.status.upper() not in ("OK", "ACTIVE"):
             notes.append(self.status)
         if self.in_lineup:
@@ -66,15 +75,34 @@ class Gap:
         return line + (f"  [{', '.join(notes)}]" if notes else "")
 
 
-def best_available(client, pool_size: int = 350,
-                   skip: dict[str, str] | None = None) -> dict[str, tuple[str, float]]:
-    """{position: (name, rest-of-season projection)} for the best free agent.
+def noise_band(weeks_left: int = SEASON_GAMES) -> float:
+    """How far apart two season projections have to be to mean anything.
 
-    This is replacement level, observed. A player already claimed is skipped:
-    he is not available to be added again.
+    MIN_EDGE is the measured floor below which a WEEKLY projection gap does not
+    predict which player outscores the other. A season projection is that gap
+    repeated, so the season-scale equivalent is MIN_EDGE times the games left.
+
+    The point is not precision. It is that Malik Willis at 284.4, Bryce Young
+    at 284.2 and Geno Smith at 279.9 are one player as far as these numbers can
+    tell, and calling any of them "the best available" is a confidence the data
+    does not support.
+    """
+    return MIN_EDGE * max(1, weeks_left)
+
+
+def best_available(client, pool_size: int = 350,
+                   skip: dict[str, str] | None = None
+                   ) -> dict[str, list[tuple[str, float]]]:
+    """{position: [(name, season projection)]}, best first.
+
+    A LIST rather than a single best, because the top of a position is often a
+    cluster that nothing here can separate. Replacement level itself is the
+    first entry: in season the best free agent at a position IS the
+    replacement, observed rather than estimated. A player already claimed is
+    skipped, since he is not available to add again.
     """
     skip = skip or {}
-    out: dict[str, tuple[str, float]] = {}
+    out: dict[str, list[tuple[str, float]]] = {}
     for raw in client.league.free_agents(size=pool_size):
         pos = (getattr(raw, "position", "") or "").upper()
         if not pos or pos in NEVER_STREAM:
@@ -84,9 +112,9 @@ def best_available(client, pool_size: int = 350,
         season = float(getattr(raw, "projected_total_points", 0.0) or 0.0)
         if season <= 0:
             continue
-        current = out.get(pos)
-        if current is None or season > current[1]:
-            out[pos] = (getattr(raw, "name", "?"), season)
+        out.setdefault(pos, []).append((getattr(raw, "name", "?"), season))
+    for pos in out:
+        out[pos].sort(key=lambda row: -row[1])
     return out
 
 
@@ -106,15 +134,18 @@ def find(client, season_value: dict[str, float], lineup, base_ids: set[str],
         if (p.status or "").upper() in IR_STATUS and p.slot == "IR":
             continue
         pos = p.pos.upper()
-        best = wire.get(pos)
-        if not best:
+        options = wire.get(pos)
+        if not options:
             continue
+        best = options[0]
         mine = season_value.get(p.player_id, 0.0)
         if mine <= 0 or mine >= best[1]:
             continue
+        band = noise_band()
         gaps.append(Gap(
             name=p.name, pos=p.pos, season=mine, best_name=best[0],
             best_season=best[1], slot=p.slot,
+            alternatives=sum(1 for _n, v in options if best[1] - v <= band),
             in_lineup=p.player_id in base_ids, status=p.status or "",
             only_one=counts.get(pos, 0) <= 1))
     gaps.sort(key=lambda g: g.surplus)
@@ -153,10 +184,12 @@ def render(gaps: list[Gap], league_name: str) -> str:
         out.append("")
         for g in notes:
             out.append(f"  {g.describe()}")
-    out.append("\nRest-of-season projections, compared only inside a position: "
-               "a quarterback's\npoints are not a receiver's. Replacement level "
-               "is the best free agent at\nthat position, which in season is "
-               "observed rather than estimated.\n\nThis is a roster question, "
+    out.append("\nESPN FULL SEASON projections, compared only inside a "
+               "position: a\nquarterback's points are not a receiver's. These "
+               "count the whole year,\nnot the part still to play, so read the "
+               "gap as a rate and not a total.\n\nReplacement level is the best "
+               "free agent at that position, which in\nseason is observed "
+               "rather than estimated.\n\nThis is a roster question, "
                "not a lineup one. None of these change what you\nscore on "
                "Sunday, which is why the waiver view does not raise them.")
     return "\n".join(out)

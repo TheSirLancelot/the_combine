@@ -133,3 +133,36 @@ def test_a_player_with_no_season_projection_is_skipped():
     lineup = [player("Unknown", "WR")]
     client = Client([PoolPlayer("Better", "WR", 200.0)])
     assert find(client, {}, lineup, set()) == []
+
+
+def test_a_cluster_at_the_top_is_reported_as_a_cluster():
+    """Malik Willis 284.4, Bryce Young 284.2 and Geno Smith 279.9 are one
+    player as far as a season projection can tell. Calling any of them 'the
+    best available' is a confidence the data does not support."""
+    lineup = [player("My QB", "QB")]
+    client = Client([PoolPlayer("Willis", "QB", 284.4),
+                     PoolPlayer("Young", "QB", 284.2),
+                     PoolPlayer("Smith", "QB", 279.9),
+                     PoolPlayer("Nobody", "QB", 120.0)])
+    gap = find(client, {"My QB": 200.0}, lineup, set())[0]
+    assert gap.alternatives == 3            # not the fourth
+    assert "3 QBs within the noise" in gap.describe()
+
+
+def test_a_clear_best_is_not_hedged():
+    lineup = [player("My WR", "WR")]
+    client = Client([PoolPlayer("Clear", "WR", 250.0),
+                     PoolPlayer("Far Behind", "WR", 120.0)])
+    gap = find(client, {"My WR": 100.0}, lineup, set())[0]
+    assert gap.alternatives == 1
+    assert "within the noise" not in gap.describe()
+
+
+def test_the_band_is_the_weekly_floor_scaled_to_a_season():
+    """A season projection is a weekly gap repeated, so the season-scale
+    equivalent of MIN_EDGE is MIN_EDGE times the games."""
+    from combine.pipeline.depth import SEASON_GAMES, noise_band
+    from combine.pipeline.lineup import MIN_EDGE
+
+    assert noise_band() == MIN_EDGE * SEASON_GAMES
+    assert noise_band(4) == MIN_EDGE * 4

@@ -344,9 +344,12 @@ def waivers_embeds(candidates, league_name: str, week: int,
                         "normal answer: the pool is unrostered for a reason.")
         if stash:
             # Worth saying with nothing else to report: an unused IR slot is a
-            # roster spot he already owns.
-            e.colour = WARN
-            field(e, "🆓 Unused IR slot", stash)
+            # roster spot he already owns. A blocked roster is a different
+            # severity, and the colour is what he reads first.
+            blocked = stash.startswith("⚠️")
+            e.colour = BAD if blocked else WARN
+            field(e, "🚫 Roster is invalid" if blocked else "🆓 Unused IR slot",
+                  stash)
         return [e]
 
     table = [f"{'':<3}{'ADD':<17}{'POS':<5}{'WK':>6}{'SZN':>7}"]
@@ -360,15 +363,20 @@ def waivers_embeds(candidates, league_name: str, week: int,
     e = discord.Embed(title=title, colour=INFO,
                       description=code("\n".join(table))[:DESC])
     if stash:
-        field(e, "🆓 Unused IR slot", stash)
+        blocked = stash.startswith("⚠️")
+        if blocked:
+            e.colour = BAD
+        field(e, "🚫 Roster is invalid" if blocked else "🆓 Unused IR slot", stash)
     shown = 0
     for i, c in enumerate(candidates, start=1):
         lines = [f"Drop **{c.drop_name}** ({c.drop_pos})"]
         if c.is_stash:
             # Not a drop at all. Nothing leaves the roster, which is a different
             # decision from every other row in this table.
-            lines = [f"🆓 Move **{c.stash_name}** ({c.stash_pos}, "
-                     f"{c.stash_status}) to IR. Nothing is dropped."]
+            lines = [
+                (f"🆓 Move **{c.stash_name}** ({c.stash_pos}, "
+                 f"{c.stash_status}) to IR. Nothing is dropped.")
+            ]
         if c.displaces:
             lines.append(f"Starts over {c.displaces}")
         note = c.blocked_note()

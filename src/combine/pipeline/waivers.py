@@ -73,16 +73,23 @@ NEVER_STREAM = frozenset({"K"})
 # answering a question nobody asked.
 STREAMED = frozenset({"D/ST", "DST", "DEF"})
 
-# Statuses that can go in ESPN's IR slot. ESPN does NOT publish the rule: it is
-# absent from rosterSettings, which carries lineupSlotCounts and position limits
-# and nothing about IR eligibility. So this is a stated assumption, not a
-# measured one, and it is deliberately conservative: OUT, IR and SUSPENDED only.
-# Questionable and Doubtful are left out because ESPN does not accept them, and
-# a stash it refuses is worse than one it never suggested.
+# Statuses ESPN accepts into the IR slot. This is no longer a guess: ESPN's own
+# help says "players with either the Out (O) or Injured/Reserve (IR) status may
+# be placed into the IR slot", and, explicitly, that SUSPENDED players are NOT
+# eligible. The first version of this included SUSP on the reasoning that a
+# suspension is an absence like any other. It is not, to ESPN.
 #
-# The cost of being wrong is one rejected click, because this tool never makes
-# the move. William does, and ESPN tells him immediately.
-IR_STATUS = frozenset({"O", "OUT", "IR", "SUSP"})
+# The rule is absent from the API -- rosterSettings carries lineupSlotCounts and
+# position limits and nothing about IR -- so it has to be encoded here from the
+# documentation rather than read at runtime.
+IR_STATUS = frozenset({"O", "OUT", "IR"})
+
+# Statuses that mean "no injury designation". A player in the IR slot who
+# reaches one of these makes the roster INVALID: ESPN blocks lineup changes and
+# acquisitions until he is moved out. Q and D deliberately are not here -- a
+# player already in the slot may stay there when he improves to Questionable or
+# Doubtful, and only a clean bill of health forces the move.
+NO_DESIGNATION = frozenset({"OK", "ACTIVE", "", "NORMAL"})
 
 
 def ir_room(client, lineup) -> int:
@@ -100,6 +107,18 @@ def ir_room(client, lineup) -> int:
     return max(0, total - used)
 
 
+def ir_invalid(lineup) -> list[WeeklyPlayer]:
+    """Players in an IR slot who no longer carry any injury designation.
+
+    Worth surfacing loudly and separately from everything else here, because it
+    is not advice: ESPN marks the roster INVALID and blocks lineup changes and
+    waiver claims until he is moved out. Every other recommendation this tool
+    makes is unactionable while this is true.
+    """
+    return [p for p in lineup
+            if p.slot == "IR" and (p.status or "").upper() in NO_DESIGNATION]
+
+
 def stashable(lineup) -> list[WeeklyPlayer]:
     """Rostered players who could be moved to IR, worst injury first.
 
@@ -107,7 +126,7 @@ def stashable(lineup) -> list[WeeklyPlayer]:
     for every player on the roster, healthy ones included, so it says nothing
     about who can actually be stashed.
     """
-    order = {"IR": 0, "SUSP": 1, "OUT": 2, "O": 2}
+    order = {"IR": 0, "OUT": 1, "O": 1}
     return sorted(
         (p for p in lineup
          if p.slot != "IR" and (p.status or "").upper() in IR_STATUS),
@@ -479,6 +498,13 @@ def stash_note(client, lineup) -> str:
     and are not using. That is worth saying even when nothing on the wire clears
     the bar, and it is the reason this is not simply part of the candidate loop.
     """
+    stuck = ir_invalid(lineup)
+    if stuck:
+        who = ", ".join(p.name for p in stuck)
+        return (f"⚠️ {who} is in an IR slot with no injury designation, so ESPN "
+                f"has your roster marked INVALID. Lineup changes and waiver "
+                f"claims are blocked until you move him out. Nothing else here "
+                f"can be acted on first.")
     room = ir_room(client, lineup)
     if not room:
         return ""

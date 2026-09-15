@@ -452,3 +452,52 @@ def test_no_note_when_the_ir_slots_are_full():
 
     lineup = [hurt("On IR", "WR", "IR"), hurt("Also Hurt", "WR", "BE")]
     assert stash_note(IRClient(lineup, [], ir_slots=1), lineup) == ""
+
+
+def test_suspended_players_are_not_ir_eligible():
+    """ESPN's help says so explicitly. The first version of this assumed a
+    suspension was an absence like any other; it is not, to ESPN."""
+    from combine.pipeline.waivers import stashable
+
+    assert stashable([hurt("Banned", "WR", "BE", status="SUSP")]) == []
+    assert stashable([hurt("Banned", "WR", "BE", status="SSPD")]) == []
+
+
+def test_out_and_ir_are_eligible():
+    from combine.pipeline.waivers import stashable
+
+    for status in ("O", "OUT", "IR"):
+        assert [p.name for p in
+                stashable([hurt("Guy", "WR", "BE", status=status)])] == ["Guy"]
+
+
+def test_a_healthy_player_in_an_ir_slot_invalidates_the_roster():
+    """Not advice. ESPN blocks lineup changes and waiver claims until he is
+    moved, so every other recommendation is unactionable while this is true."""
+    from combine.pipeline.waivers import ir_invalid
+
+    lineup = [hurt("Recovered", "WR", "IR", status="OK"),
+              rostered("Fine", "WR", "WR")]
+    assert [p.name for p in ir_invalid(lineup)] == ["Recovered"]
+
+
+def test_questionable_in_an_ir_slot_is_allowed_to_stay():
+    """ESPN's own rule: a player already in the slot may stay when he improves
+    to Questionable or Doubtful. Only losing the designation entirely forces
+    the move."""
+    from combine.pipeline.waivers import ir_invalid
+
+    assert ir_invalid([hurt("Improving", "WR", "IR", status="Q")]) == []
+    assert ir_invalid([hurt("Improving", "WR", "IR", status="D")]) == []
+
+
+def test_the_blocking_problem_outranks_the_free_spot():
+    """An invalid roster cannot make the add, so leading with the free slot
+    would be advice he cannot take."""
+    from combine.pipeline.waivers import stash_note
+
+    lineup = [hurt("Recovered", "WR", "IR", status="OK"),
+              hurt("Still Out", "WR", "BE", status="O")]
+    said = stash_note(IRClient(lineup, [], ir_slots=2), lineup)
+    assert "INVALID" in said and "Recovered" in said
+    assert "frees a roster spot" not in said

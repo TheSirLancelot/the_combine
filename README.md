@@ -408,10 +408,14 @@ whether a week is worth a season, does not arise when nothing is given up.
 The unused slot is reported on its own too, even when nothing on the wire clears
 the bar, because it is a roster spot you already own and are not using.
 
-ESPN does not publish its IR eligibility rule anywhere in the league settings,
-so the tool assumes OUT, IR and SUSPENDED qualify and Questionable and Doubtful
-do not. That is a stated assumption rather than a measured one. It is read only
-either way, so the cost of being wrong is one rejected click.
+Only OUT and IR statuses can be stashed. Suspended players cannot, which is
+ESPN's rule rather than a guess, and Questionable and Doubtful were never
+eligible in the first place.
+
+If a player sitting in an IR slot loses his injury designation entirely, ESPN
+marks your roster invalid and blocks lineup changes and waiver claims until you
+move him out. The tool leads with that when it happens, ahead of everything
+else, because nothing else it suggests can be acted on until you do.
 
 The Yahoo league cannot answer this. Free agents need the API, so it reports the
 reason rather than an empty list.

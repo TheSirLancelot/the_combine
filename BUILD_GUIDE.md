@@ -1246,10 +1246,21 @@ obvious signal is useless and eligibility has to come from injury status.
 
 ESPN does not publish the IR eligibility RULE at all. `rosterSettings` carries
 `lineupSlotCounts`, `positionLimits` and `lineupSlotStatLimits`, and nothing
-about which statuses the IR slot accepts. So `IR_STATUS` is a stated assumption,
-conservative on purpose: OUT, IR and SUSPENDED, never Questionable or Doubtful.
-A stash ESPN refuses is worse than one never suggested, and the tool is read
-only, so being wrong costs one rejected click rather than a bad move.
+about which statuses the IR slot accepts, so it has to be encoded from ESPN's
+documentation rather than read at runtime.
+
+**Corrected 2026-09-15 from ESPN's own help page.** The first version allowed
+OUT, IR and SUSPENDED, reasoning that a suspension is an absence like any other.
+ESPN says otherwise, explicitly: "Suspended players (SSPD) are NOT eligible for
+IR on FFL." `IR_STATUS` is now OUT and IR only.
+
+The same page turned up a case worth alerting on that nobody had thought to look
+for. A player in the IR slot who improves to Questionable or Doubtful may STAY
+there, but one who loses his injury designation entirely makes the roster
+INVALID, and ESPN then blocks lineup changes and waiver claims until he is moved
+out. `ir_invalid()` detects that and `stash_note()` leads with it, ahead of the
+free-slot advice, because every other recommendation in the tool is unactionable
+while it is true. It renders red rather than amber for the same reason.
 
 The week's arithmetic needed no special case, which is worth knowing. `as_candidate`
 already values a player through `effective()`, so an OUT player counts zero in

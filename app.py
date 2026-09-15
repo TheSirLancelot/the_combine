@@ -925,7 +925,14 @@ def waivers_page():
         # Three different messages can land here -- a blocked roster, a pending
         # claim, an unused IR slot -- so this must not label them as one thing.
         note = wire["stash"]
-        (st.error if "INVALID" in note else st.warning)(note)
+        # A pending claim is information, not a warning. Only a blocked roster
+        # is an actual problem.
+        if "INVALID" in note:
+            st.error(note)
+        elif "Claim pending" in note:
+            st.info(note)
+        else:
+            st.warning(note)
     if wire["unavailable"]:
         st.info(wire["unavailable"])
     elif not wire["candidates"]:

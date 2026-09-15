@@ -201,14 +201,16 @@ def pending_note(claims: dict[str, Claim]) -> str:
     tail = (f"{spots} roster spot(s) already spoken for. " if spots
             else "Each names its own drop, so no roster spot is waiting. ")
 
-    # Two claims that drop the same man cannot both land: once the first
-    # processes he is gone, and the second needs a drop that no longer exists.
+    # Several claims sharing a drop is a PRIORITY LADDER, not a mistake: it is
+    # how you say "get me whichever of these I can, dropping this man". The
+    # first version called it out as a problem, which is how a banner teaches
+    # you to stop reading it.
     shared = sorted({c.drop_name for c in claims.values() if c.drop_name
                      and sum(1 for o in claims.values()
                              if o.drop_name == c.drop_name) > 1})
     if shared:
-        tail += (f"More than one claim drops {', '.join(shared)}, so they "
-                 f"cannot all land. ")
+        tail += (f"Several claims drop {', '.join(shared)}, so they are "
+                 f"alternatives: the first to process takes the spot. ")
     return (f"Claim pending on {', '.join(lines)}. {tail}Everything below is "
             f"what to do INSTEAD if a claim fails, not as well. No way to see "
             f"who else bid.")

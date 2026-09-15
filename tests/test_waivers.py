@@ -790,20 +790,22 @@ def test_a_claim_that_names_its_own_drop_costs_no_roster_spot():
     assert roster_room(client, lineup, bare) == 2
 
 
-def test_claims_sharing_a_drop_cannot_all_land():
-    """Once the first processes he is gone, and the second needs a drop that no
-    longer exists."""
+def test_claims_sharing_a_drop_are_described_as_a_ladder_not_a_mistake():
+    """This is how you say "get me whichever of these I can, dropping this
+    man". Calling it a problem is how a banner teaches you to stop reading
+    it."""
     from combine.pipeline.waivers import Claim, pending_note
 
     said = pending_note({
         "1": Claim("1", "Gibbens", "Josh Downs"),
         "2": Claim("2", "Thomas", "Josh Downs"),
     })
-    assert "cannot all land" in said and "Josh Downs" in said
+    assert "alternatives" in said and "Josh Downs" in said
+    assert "cannot" not in said
 
 
 def test_distinct_drops_are_not_flagged():
     from combine.pipeline.waivers import Claim, pending_note
 
     said = pending_note({"1": Claim("1", "A", "X"), "2": Claim("2", "B", "Y")})
-    assert "cannot all land" not in said
+    assert "alternatives" not in said

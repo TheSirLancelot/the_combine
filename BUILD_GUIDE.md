@@ -1474,10 +1474,18 @@ every pending claim as if each consumed a spot, which understated what was
 available. Only a bare add costs a spot now, and `Claim.costs_a_spot` says
 which is which.
 
-**And something worth surfacing that the drop item made visible.** Two claims
-that drop the same player cannot both land: once the first processes he is gone
-and the second needs a drop that no longer exists. RCL had exactly that, with
-Gibbens and Thomas both dropping Josh Downs, so the note says so.
+**And something worth surfacing that the drop item made visible.** Several
+claims sharing a drop is a PRIORITY LADDER: it is how you say "get me whichever
+of these I can, dropping this man". RCL had exactly that, with Gibbens and
+Thomas both dropping Josh Downs.
+
+The first version called it out as a problem -- "they cannot all land" -- which
+is true and is also how a banner teaches you to stop reading it. It now
+describes what it is: alternatives, first to process takes the spot. The same
+correction applies to severity, so a pending claim renders as info rather than
+as a warning in the app, and only a blocked roster is an error. Flagging correct
+strategy as a mistake is worse than saying nothing, because it costs the
+credibility of every other thing in the banner.
 
 ## Known soft spots
 

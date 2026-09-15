@@ -611,6 +611,18 @@ It finishes by listing the NFL leagues on the account, which both proves the
 token end to end rather than trusting a 200, and hands over the league id that
 still has to go in `.env`.
 
+**The first authorised call fails, and not because of the token.** yahoofantasy
+carries a HARDCODED season -> game id table that ends at 2025, so any 2026 call
+dies with `ValueError: 2026 is not a valid season for nfl` before it reaches
+Yahoo. That reads like a broken login and is not one -- worth knowing, because
+the obvious response is to go back and redo the OAuth.
+
+`platforms/yahoo.py:ensure_game()` resolves the id from Yahoo and registers it
+in the library's table, using `_find_game_id`, which the library ships for
+exactly this. Asking rather than pinning a number, because a pinned number goes
+stale again next September. Known seasons are not re-queried, so this costs one
+call the first time a process touches a new season and nothing after that.
+
 **11. Rescore properly. DONE 2026-09-10**, in item 8. `scoring.py` reads each
 league's scoring as ESPN stat ids and validates against ESPN's own scored
 breakdowns: 209/209 on DMWD and 184/185 on RCL. The one miss is a known

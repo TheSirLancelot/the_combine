@@ -128,9 +128,15 @@ def main() -> int:
     print("\nChecking the token works...")
     from yahoofantasy import Context
 
+    from combine.config import SEASON
+    from combine.platforms.yahoo import ensure_game
+
     ctx = Context()
     try:
-        leagues = ctx.get_leagues("nfl", 2026)
+        # The library's season -> game id table is hardcoded and ends at 2025,
+        # so this has to be resolved from Yahoo before any call for 2026.
+        print(f"  {SEASON} NFL game id: {ensure_game(ctx, SEASON)}")
+        leagues = ctx.get_leagues("nfl", SEASON)
     except Exception as exc:
         print(f"  authorised, but the first call failed: {type(exc).__name__}: {exc}")
         print("  the token is saved; this is worth probing before writing the adapter.")

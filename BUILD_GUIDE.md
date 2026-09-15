@@ -1281,6 +1281,39 @@ three empty IR slots, so stashing him buys Jack Gibbens at +4.6 for the week and
 per run even when several slots are open. The standalone note lists everyone who
 qualifies, so nothing is hidden, but the candidate list does not compound them.
 
+## How waiver candidates are ordered
+
+Changed 2026-09-15, because the old ordering was visibly wrong. It sorted on
+weekly gain alone, which in RCL week 2 put Jack Gibbens (+4.6 week, +81.8
+season) above Christian Elliss (+4.0, +205.8): 124 points of season traded for
+six tenths of a Sunday, on two adds that were both free, so nothing was being
+bought with it.
+
+**The fix that was tried first and rejected.** Convert the season number to
+points a week and add them: `week_gain + season_cost / weeks_left`. It ranks
+Elliss correctly, and it is wrong anyway. It invents an exchange rate between a
+point now and a point in November that is not measured and cannot be measured
+from anything on hand. And with seventeen weeks left the season term is roughly
+three times the weekly one, so it stops being a tiebreak and becomes the entire
+ranking: Gibbens fell off the list completely, which is the wrong answer for
+anyone trying to win this week.
+
+**What it does instead.** Bucket the weekly gain by `MIN_EDGE` and order by
+season value inside a bucket. MIN_EDGE is already the measured floor below which
+a projection gap does not predict which player outscores the other, so two
+candidates inside it are genuinely indistinguishable for this week and season
+value is the only thing left that separates them. Preferring it costs nothing
+that can be shown to exist, which is a much weaker claim than an exchange rate
+and the reason this one is defensible.
+
+Live result: Elliss first, Gibbens still second rather than buried.
+
+**Known softness.** The season half is gross rather than marginal for an IR
+stash, because nothing is dropped, so a free add flatters against a swap.
+Computing the marginal version needs to know who he displaces in every future
+week, which is a projection and not available. Within one list it is consistent,
+which is all a sort needs.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

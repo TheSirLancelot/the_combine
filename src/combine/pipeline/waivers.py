@@ -39,7 +39,14 @@ from dataclasses import dataclass
 
 from ..platforms import ProGame, WeeklyPlayer
 from .calibration import EMPTY, Calibration
-from .lineup import BAD_STATUS, as_candidate, effective, required_edge, split
+from .lineup import (
+    BAD_STATUS,
+    MIN_EDGE,
+    as_candidate,
+    effective,
+    required_edge,
+    split,
+)
 from .optimize import best_lineup
 
 # How many of the least valuable bench players to consider dropping. The best
@@ -219,6 +226,35 @@ class Candidate:
     @property
     def trades_down(self) -> bool:
         return self.season_cost < 0
+
+    def rank(self, band: float = MIN_EDGE) -> tuple[float, float]:
+        """Sort key: the week first, the season where the week cannot tell them
+        apart.
+
+        Ranking on the weekly gain alone was wrong and visibly so. In RCL week 2
+        it put Jack Gibbens (+4.6 week, +81.8 season) above Christian Elliss
+        (+4.0, +205.8), trading 124 points of season for six tenths of a Sunday.
+        Both were free adds, so there was nothing being bought with it.
+
+        The tempting fix is to convert the season number to points a week and
+        add. That invents an exchange rate between a point now and a point in
+        November, which is not measured and is not measurable from anything on
+        hand. Worse, with seventeen weeks left the season term is three times
+        the weekly one, so it stops being a tiebreak and becomes the whole
+        ranking, burying the best win-now add completely.
+
+        So: bucket the weekly gain by `band` and order by season value inside a
+        bucket. `band` is MIN_EDGE, the measured floor below which a projection
+        gap does not predict which player scores more. Two candidates inside it
+        are genuinely indistinguishable for this week, so season value is the
+        only thing left that separates them, and preferring it costs nothing
+        that can be shown to exist.
+
+        The season half is gross rather than marginal for an IR stash, since
+        nothing is dropped, so it flatters a free add against a swap. Inside one
+        list that is consistent, which is all sorting needs.
+        """
+        return (-(self.week_gain // band), -self.season_cost)
 
     def blocked_note(self) -> str:
         """Why the drop is not the one you would pick, in a sentence.
@@ -471,7 +507,7 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
                           if cal.biases.get(candidate.pos.upper()) else 0),
         ))
 
-    out.sort(key=lambda c: -c.week_gain)
+    out.sort(key=lambda c: c.rank())
     return out[:limit]
 
 
@@ -554,7 +590,11 @@ def render(candidates: list[Candidate], league_name: str, week: int,
             out.append(f"  {i}  clears the bar even after {c.pos} projections are "
                        f"marked DOWN\n     {abs(c.correction):.1f} for being "
                        f"systematically over-projected.")
-    out.append("\nWEEK is what the whole lineup is worth afterwards, not a head "
+    out.append("\nOrdered by WEEK, with SEASON breaking ties the week cannot "
+               "settle: two\ncandidates inside the measured edge are "
+               "indistinguishable for Sunday,\nso season value is the only "
+               "thing left that separates them."
+               "\n\nWEEK is what the whole lineup is worth afterwards, not a head "
                "to head,\nso it already accounts for who shifts where. SEASON is "
                "what the drop\ncosts or gains for the rest of the year, kept "
                "separate because a week\nis not worth a season.\n\nEach row is an "

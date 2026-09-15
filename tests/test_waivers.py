@@ -501,3 +501,59 @@ def test_the_blocking_problem_outranks_the_free_spot():
     said = stash_note(IRClient(lineup, [], ir_slots=2), lineup)
     assert "INVALID" in said and "Recovered" in said
     assert "frees a roster spot" not in said
+
+
+# --- ordering ---------------------------------------------------------------
+
+def test_season_value_breaks_a_tie_the_week_cannot_settle():
+    """The bug this fixes, with the real numbers. Gibbens (+4.6 week, +81.8
+    season) ranked above Elliss (+4.0, +205.8), trading 124 points of season for
+    six tenths of a Sunday, and both were free adds so nothing was bought."""
+    gibbens = candidate(name="Gibbens", week_gain=4.63, season_proj=81.8,
+                        drop_season_proj=0.0)
+    elliss = candidate(name="Elliss", week_gain=4.04, season_proj=205.8,
+                       drop_season_proj=0.0)
+    assert min([gibbens, elliss], key=lambda c: c.rank()).name == "Elliss"
+
+
+def test_a_real_weekly_edge_still_wins():
+    """Season value is a tiebreak, not the ranking. A candidate a full measured
+    edge better this week goes first however the season looks."""
+    now = candidate(name="Now", week_gain=6.5, season_proj=50.0,
+                    drop_season_proj=0.0)
+    later = candidate(name="Later", week_gain=4.0, season_proj=300.0,
+                      drop_season_proj=0.0)
+    assert min([now, later], key=lambda c: c.rank()).name == "Now"
+
+
+def test_the_band_is_the_measured_floor_not_a_round_number():
+    """MIN_EDGE is the point below which a projection gap does not predict who
+    scores more. Two candidates inside it are indistinguishable for the week,
+    which is what makes preferring season value free."""
+    import inspect
+
+    from combine.pipeline.lineup import MIN_EDGE
+    from combine.pipeline.waivers import Candidate
+
+    assert MIN_EDGE == inspect.signature(Candidate.rank).parameters["band"].default
+
+
+def test_a_win_now_add_is_not_buried():
+    """Converting season value to points a week and adding would make the
+    season term three times the weekly one with seventeen weeks left, which
+    stops being a tiebreak and becomes the whole ranking."""
+    best_week = candidate(name="Best Week", week_gain=4.63, season_proj=81.8,
+                          drop_season_proj=0.0)
+    others = [candidate(name=f"Season {i}", week_gain=4.0,
+                        season_proj=200.0 + i, drop_season_proj=0.0)
+              for i in range(3)]
+    order = [c.name for c in sorted([best_week, *others], key=lambda c: c.rank())]
+    assert order.index("Best Week") <= 3       # still on the first screen
+
+
+def test_a_candidate_that_costs_the_season_sorts_last_within_its_band():
+    costly = candidate(name="Costly", week_gain=4.2, season_proj=40.0,
+                       drop_season_proj=160.0)      # -120 season
+    free = candidate(name="Free", week_gain=4.0, season_proj=90.0,
+                     drop_season_proj=0.0)
+    assert min([costly, free], key=lambda c: c.rank()).name == "Free"

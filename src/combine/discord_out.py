@@ -396,8 +396,9 @@ def waivers_embeds(candidates, league_name: str, week: int,
 
     free = any(c.is_stash for c in candidates)
     footer = ("WK is what the lineup gains this week, SZN what the drop costs or "
-              "gains for the season. Each row is an alternative, not a sequence: "
-              "every one is measured against the lineup you have now.")
+              "gains for the season. Ordered by WK, with SZN breaking ties the "
+              "week is too close to call. Each row is an alternative, not a "
+              "sequence: every one is measured against the lineup you have now.")
     if free:
         prefix = ("These cost nothing: the roster spot comes from an IR move, "
                   "so SZN is what the add is worth rather than what a drop "

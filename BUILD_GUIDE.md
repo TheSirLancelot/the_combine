@@ -1424,6 +1424,31 @@ Moved 2026-09-15. The wire section had grown past being a footnote on the Week
 page: weekly upgrades, IR stashes, pending claims and roster depth are four
 separate questions and none of them are about this week's lineup.
 
+## Streamlit caches survive a browser refresh
+
+Recorded 2026-09-15, second time this class of bug has cost a round trip.
+
+William cancelled a waiver claim on Malik Willis, refreshed the page several
+times, and kept seeing the old answer. Nothing was broken: `load_depth` had
+`ttl=1800` and `load_waivers` `ttl=300`, both keyed on a nonce that only the
+sidebar's Refresh button increments. A browser reload re-runs the script and the
+cached function hands back the stored value, with nothing on screen to say so.
+
+Two changes. The depth ttl is 120 seconds rather than 1800, because the answer
+changes the moment a claim is made or cancelled, which is exactly when the page
+is being looked at. And both sections now print when they were read, plus where
+the Refresh button is:
+
+```
+read at 16:42 PDT · sidebar → Refresh → Refresh now to re-read immediately
+```
+
+The related earlier case is in Known soft spots: a cached `Distribution` object
+outliving a dataclass change, which produced `'Band' object has no attribute
+'spread'` for a field that did exist. Same root cause, different symptom. The
+pattern to remember is that a Streamlit cache is invisible, so anything cached
+needs either a short ttl or a visible timestamp, and preferably both.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

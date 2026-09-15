@@ -253,17 +253,18 @@ def load_waivers(league: str, week: int, _nonce: int, _version: str) -> dict:
     cfg = leagues[league]
     if cfg.platform != "espn":
         return {"candidates": [], "unavailable":
-                "no free agent pool without the Yahoo API", "stash": ""}
+                "no free agent pool without the Yahoo API", "stash": "", "at": ""}
     try:
         client = client_for(league)
         found = find(client, week or None, cal=load_cal(league),
                      season_value=season_values(client),
                      dist=outcome_distribution(config.SEASON - 1))
         return {"candidates": found, "unavailable": "",
+                "at": datetime.now().astimezone().strftime("%H:%M %Z"),
                 "stash": notes(client, client.matchup(week or None).my_lineup)}
     except Exception as exc:
         return {"candidates": [], "unavailable": f"{type(exc).__name__}: {exc}",
-                "stash": ""}
+                "stash": "", "at": ""}
 
 
 @st.cache_data(ttl=30, show_spinner="pulling live scores...")
@@ -885,6 +886,22 @@ def scorecard_page():
             hide_index=True, use_container_width=True)
 
 
+def freshness(*stamps: str):
+    """Say when this was read, and how to read it again.
+
+    Streamlit caches survive a browser refresh, so a reload silently re-serves
+    the old answer. That cost a round trip the first time it happened: a claim
+    was cancelled, the page was refreshed several times, and nothing changed
+    with no indication why. A visible timestamp makes a stale page obvious
+    instead of mysterious.
+    """
+    seen = [s for s in stamps if s]
+    if not seen:
+        return
+    st.caption(f"read at {min(seen)} · sidebar → Refresh → Refresh now to "
+               f"re-read immediately")
+
+
 def waivers_page():
     """The wire, on its own tab.
 
@@ -949,6 +966,8 @@ def waivers_page():
                     f"systematically over-projected.")
 
 
+    freshness(wire.get("at"))
+
     st.divider()
     st.markdown("**Roster depth**")
     st.caption(
@@ -957,7 +976,7 @@ def waivers_page():
         "change what you score on Sunday, which is exactly why the list above "
         "does not raise them. Points are compared only inside a position, "
         "because a quarterback's are not a receiver's.")
-    gaps = load_depth(league, st.session_state.nonce, _code_version())
+    gaps, depth_at = load_depth(league, st.session_state.nonce, _code_version())
     if not gaps:
         st.success("Nobody on your roster is beaten by the wire at his own "
                    "position.")
@@ -976,17 +995,26 @@ def waivers_page():
                 "Theirs": st.column_config.NumberColumn("Theirs", format="%.0f"),
                 "Gain": st.column_config.NumberColumn(
                     "Gain", format="%.0f",
-                    help="Rest-of-season points the swap is worth"),
+                    help="Season points the swap is worth"),
             })
+    freshness(depth_at)
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def load_depth(league: str, _nonce: int, _version: str):
+    """Two minutes, not thirty.
+
+    The answer changes the moment a claim is put in or cancelled, which is
+    exactly when this page is being looked at. A long ttl meant a browser
+    refresh kept serving a snapshot from before the change, with nothing on
+    screen to say so.
+    """
     from combine.pipeline.depth import for_league
 
+    stamp = datetime.now().astimezone().strftime("%H:%M %Z")
     if config.get_league(league).platform != "espn":
-        return []
-    return for_league(league)
+        return [], stamp
+    return for_league(league), stamp
 
 
 def scores_page():

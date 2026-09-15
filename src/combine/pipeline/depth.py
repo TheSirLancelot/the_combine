@@ -113,8 +113,8 @@ def best_available(client, pool_size: int = 350,
         if season <= 0:
             continue
         out.setdefault(pos, []).append((getattr(raw, "name", "?"), season))
-    for pos in out:
-        out[pos].sort(key=lambda row: -row[1])
+    for options in out.values():
+        options.sort(key=lambda row: -row[1])
     return out
 
 

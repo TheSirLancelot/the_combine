@@ -657,9 +657,7 @@ def test_a_full_roster_with_no_ir_room_still_requires_a_drop():
 def test_the_pending_note_says_instead_not_as_well():
     """The rows below a pending claim are the fallback if it fails, not a
     second move to make alongside it."""
-    from combine.pipeline.waivers import pending_note
-
-    from combine.pipeline.waivers import Claim
+    from combine.pipeline.waivers import Claim, pending_note
 
     said = pending_note({"1": Claim("1", "Christian Elliss", "")})
     assert "Christian Elliss" in said

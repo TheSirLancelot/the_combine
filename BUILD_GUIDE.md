@@ -629,12 +629,24 @@ nothing to do with the new season -- all six identical, which is what rules out
 both a bad token and a season that is not open yet. `scripts/yahoo_probe.py`
 exists to produce exactly that table.
 
-The fix is on the app page: API Permissions, tick Fantasy Sports, then pick Read
-from the radio buttons that appear under it. The checkbox alone saves as no
-access. Then authorise AGAIN -- a token issued before the permission existed
-never gains it, so re-running the login is required rather than optional. The
-consent screen should name Fantasy Sports; if it does not, the permission did
-not save and there is no point going further.
+**And the fix is NOT a checkbox on the app, which is where this first went
+wrong.** The app's API Permissions list offers only OpenID Connect and TW
+Auction, on an existing app and on a freshly created one. There is nothing to
+tick. Fantasy Sports is not an app permission at all on this account: it is a
+SCOPE, asked for in the authorize request.
+
+`scripts/yahoo_login.py` now sends `scope=fspt-r`. Without a scope parameter
+Yahoo issues a profile-only token, which is exactly the token that completes
+OAuth and then gets refused by every fantasy endpoint.
+
+`fspt-r` is read, `fspt-w` is read and write. This asks for `fspt-r` and should
+keep asking for exactly that. Read-only is the hard rule for this project, and a
+token that physically cannot write is a stronger guarantee of it than any amount
+of care in the code: no future bug can make a roster move with a read scope.
+
+The consent screen is the check. It should name Fantasy Sports. If it only asks
+about profile access, the scope did not take and pasting the code just repeats
+the failure.
 
 **The first authorised call fails, and not because of the token.** yahoofantasy
 carries a HARDCODED season -> game id table that ends at 2025, so any 2026 call

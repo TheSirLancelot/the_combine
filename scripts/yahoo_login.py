@@ -40,6 +40,24 @@ from combine.config import env
 OAUTH = "https://api.login.yahoo.com/oauth2"
 REDIRECT = "https://localhost:8000"
 
+# Yahoo's Fantasy Sports read scope. This has to be asked for in the AUTHORIZE
+# request; it is not a checkbox on the app.
+#
+# Worth spelling out, because the first attempt sent no scope at all and the
+# symptom was misleading. OAuth completed, a token saved, and then every single
+# fantasy endpoint answered 401 with
+# oauth_problem="additional_authorization_required" -- which reads like a
+# missing app permission, and the app's API Permissions list offers only
+# OpenID Connect and TW Auction. There is nothing to tick there. Without a
+# scope parameter Yahoo issues a profile-only token, and that is the token that
+# gets refused.
+#
+# `fspt-w` is read AND write. This tool is read-only against Yahoo, so it asks
+# for `fspt-r` and should keep asking for exactly that: a token that cannot
+# write is a guarantee no future bug can make a roster move, which is worth
+# more than the convenience.
+SCOPE = "fspt-r"
+
 
 def code_from(pasted: str) -> str:
     """Accept the whole redirected URL or just the code.
@@ -90,11 +108,16 @@ def main() -> int:
                          "https://developer.yahoo.com/apps/)")
 
     url = f"{OAUTH}/request_auth?" + urlencode(
-        {"client_id": key, "redirect_uri": REDIRECT, "response_type": "code"})
+        {"client_id": key, "redirect_uri": REDIRECT, "response_type": "code",
+         "scope": SCOPE})
     print("Opening Yahoo for authorisation. If the browser does not open, use:")
     print(f"\n  {url}\n")
     webbrowser.open_new_tab(url)
 
+    print(f"Asking for scope {SCOPE} (Fantasy Sports, read only).")
+    print("The consent screen should mention Fantasy Sports. If it only asks")
+    print("about your profile, stop: the token will not work and pasting the")
+    print("code just repeats the last failure.\n")
     print("Approve the app. The browser will then fail to load a page at")
     print(f"{REDIRECT} -- that is expected, there is nothing listening there.")
     print("Copy the whole address from the bar and paste it here.\n")

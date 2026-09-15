@@ -443,16 +443,37 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
     # A player whose game has kicked off cannot be dropped until the weekly
     # reset, so recommending him is advice you cannot take. This is what made the
     # tool say "drop Rashid Shaheed" on a Monday after he had already played.
+    def locked_out(p) -> bool:
+        """His game has kicked off, so the platform will not let him be dropped
+        until the weekly reset."""
+        return p.locked or p.played
+
     def free(p) -> bool:
-        # A player in the IR slot is off the table. He can technically be
-        # dropped, and ESPN depresses the season projection of an injured
-        # player, which together made him look like the CHEAPEST drop on the
-        # roster. Stashing someone is what you do when you want to keep him.
-        return not (p.locked or p.played) and p.slot != "IR"
+        """Droppable at all.
+
+        Two different reasons a player is not, and they must stay distinct. A
+        locked player is TEMPORARILY undroppable and that is worth explaining,
+        because it changes what you can do today. A player in the IR slot is
+        deliberately being kept: he can technically be dropped, and ESPN
+        depresses an injured player's season projection so he often looks like
+        the cheapest drop on the roster, but stashing someone is what you do
+        when you want to keep him.
+
+        Collapsing the two made the tool say "his game has started" about a
+        player whose game had not started, which is a confident wrong answer
+        rather than a missing one.
+        """
+        return not locked_out(p) and p.slot != "IR"
 
     def blocked_by_lock(ideal, drop) -> bool:
+        """Only a LOCK is worth explaining as a blocker.
+
+        Not being chosen because he is stashed on IR is a deliberate choice, not
+        an obstacle, so it gets no note for the same reason a streamed add does
+        not get one.
+        """
         return (ideal is not None and drop is not None
-                and ideal.player_id != drop.player_id and not free(ideal))
+                and ideal.player_id != drop.player_id and locked_out(ideal))
 
     # An empty IR slot plus an injured player is a free roster spot: he stays on
     # the roster, so the add costs nothing at all. That outranks every drop,

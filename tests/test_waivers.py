@@ -705,3 +705,35 @@ def test_a_player_stashed_on_ir_is_not_offered_as_a_drop():
     found = find(client, 1, season_value={"Stashed Star": 20.0,   # looks cheap
                                           "Fringe": 50.0, "Starter": 200.0})
     assert found[0].drop_name == "Fringe"
+
+
+def test_a_stashed_player_is_not_explained_as_locked():
+    """He was reported as 'his game has started' when his game had not started.
+    Being kept on IR and being locked are different reasons not to drop
+    somebody, and only one of them is a blocker worth explaining."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              hurt("Stashed Star", "DT", "IR"),
+              rostered("Fringe", "WR", "BE", 1.0)]
+    client = TxClient(lineup, [FakePool("Big Add", "DT", 14.0)], ir_slots=1)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Stashed Star": 20.0,
+                                          "Fringe": 50.0, "Starter": 200.0})
+    assert found[0].drop_name == "Fringe"
+    assert found[0].blocked_name is None
+    assert found[0].blocked_note() == ""
+
+
+def test_a_genuinely_locked_cheaper_drop_is_still_explained():
+    """The other half. A lock is temporary and changes what he can do today, so
+    it keeps its note."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Cheap But Played", "WR", "BE", 1.0, started=True),
+              rostered("Droppable", "WR", "BE", 2.0)]
+    client = TxClient(lineup, [FakePool("Big Add", "DT", 14.0)], ir_slots=0)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Cheap But Played": 10.0,
+                                          "Droppable": 60.0, "Starter": 200.0})
+    assert found[0].drop_name == "Droppable"
+    assert "his game has started" in found[0].blocked_note()

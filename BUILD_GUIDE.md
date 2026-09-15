@@ -1346,6 +1346,19 @@ rest-of-season projection, so the man he had just been told to keep looked like
 the cheapest drop on the roster. Players in an IR slot are now excluded from drop
 candidates. Stashing someone is what you do when you want to keep him.
 
+**And that fix immediately caused a worse bug.** Excluding IR players was done by
+widening `free()`, the same predicate `blocked_by_lock()` used to decide whether
+to explain a skipped drop. So the tool started saying "Myles Garrett is the
+cheaper drop, but his game has started" about a player whose game had not
+started. The number was right and the reason was invented, which is worse than
+saying nothing.
+
+`locked_out()` is now separate from `free()`. A lock is TEMPORARY and worth
+explaining, because it changes what can be done today. Being stashed on IR is a
+deliberate choice, not an obstacle, so it gets no note at all, the same as a
+streamed add. Both directions are tested, because the failure mode here is a
+confident wrong explanation rather than a crash.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

@@ -147,3 +147,61 @@ def test_recording_never_takes_the_check_down(monkeypatch):
 
     monkeypatch.setattr(scorecard, "record", boom)
     bot._log_recommendations("rcl", 2, [a_row()])      # must not raise
+
+
+def test_one_missing_side_leaves_the_row_open(conn):
+    """The bug that made the scorecard read "nothing scored yet" while claiming
+    rows were recorded. Marking a row done with one side missing is worse than
+    leaving it open: it can never produce a result, it is excluded from every
+    summary, and nothing retries it."""
+    scorecard.record("rcl", 2026, 2, [a_row()], conn=conn)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0)   # only the starter
+    assert scorecard.score(conn, 2026, 2) == (0, 1)
+    assert scorecard.unscored(conn, 2026, 2)
+
+
+def test_it_scores_once_the_other_side_arrives(conn):
+    """The reason leaving it open matters: a free agent gets rostered later, or
+    the week's data lands late, and the row is still there to grade."""
+    scorecard.record("rcl", 2026, 2, [a_row()], conn=conn)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0)
+    scorecard.score(conn, 2026, 2)
+    player_week(conn, "rcl", 2, "11", "Bench Guy", actual=18.0)
+    assert scorecard.score(conn, 2026, 2) == (1, 0)
+    assert scorecard.frame(conn, 2026).loc[0, "gain"] == 12.0
+
+
+def test_an_unrostered_player_is_resolved_from_espn(conn, monkeypatch):
+    """espn_player_week only holds players somebody rostered, so a waiver
+    recommendation for a player nobody picked up had no row and could never be
+    graded. That is the common case: the point of the recommendation is that he
+    was available."""
+    scorecard.record("rcl", 2026, 2, [a_row(kind="waiver", subject_id="4426686")],
+                     conn=conn)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0)
+    monkeypatch.setattr(scorecard, "_from_espn",
+                        lambda league, season, week, ids: {"4426686": 21.0})
+    assert scorecard.score(conn, 2026, 2) == (1, 0)
+    assert scorecard.frame(conn, 2026).loc[0, "gain"] == 15.0
+
+
+def test_a_waiver_row_carries_the_espn_id_not_the_name():
+    """Recording the name as the id is why fourteen rows had to be thrown away:
+    a name cannot be looked up in ESPN's player endpoint."""
+    from combine.pipeline.waivers import Candidate
+
+    c = Candidate(league="rcl", week=2, name="Dane Belton", pos="S", team="NYG",
+                  week_proj=12.2, season_proj=115.2, drop_name="X", drop_pos="WR",
+                  drop_season_proj=100.0, week_gain=3.1, displaces="Y",
+                  player_id="4426686")
+    assert scorecard.from_waivers([c])[0].subject_id == "4426686"
+
+
+def test_a_candidate_with_no_id_still_records_under_his_name():
+    """Better a row that may not grade than no row at all."""
+    from combine.pipeline.waivers import Candidate
+
+    c = Candidate(league="rcl", week=2, name="Nameless", pos="S", team="NYG",
+                  week_proj=1.0, season_proj=1.0, drop_name="X", drop_pos="WR",
+                  drop_season_proj=1.0, week_gain=1.0, displaces=None)
+    assert scorecard.from_waivers([c])[0].subject_id == "Nameless"

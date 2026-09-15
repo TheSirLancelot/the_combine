@@ -1487,6 +1487,43 @@ as a warning in the app, and only a blocked roster is an error. Flagging correct
 strategy as a mistake is worse than saying nothing, because it costs the
 credibility of every other thing in the banner.
 
+## Why the scorecard said "nothing scored yet"
+
+Three bugs, found 2026-09-15 when the first real week finished and nothing
+appeared.
+
+**A row was marked scored with one side missing.** `score()` wrote `scored_at`
+when EITHER player resolved. Eight week 1 rows sat with `subject_actual: None`
+and `against_actual: 2.5`: permanently excluded from every summary, because
+`frame()` needs both to compute a gain, and never retried, because they were no
+longer open. Now both sides are required and anything unresolved stays open, so
+a late arrival can still be graded.
+
+**A waiver recommendation could never be resolved anyway.**
+`espn_player_week` only holds players somebody rostered, and the entire point of
+a waiver recommendation is that the player was available. `_from_espn()` now
+asks ESPN's `player_info` for the ones the local table cannot answer, one call
+per league per scoring pass. Verified against the live pool: five unrostered
+players, five actuals back.
+
+**And the id being stored was the player's NAME.** `from_waivers` used
+`c.name`, because `Candidate` carried no id, so even the ESPN fallback had
+nothing to look up. `Candidate.player_id` now carries it. Fourteen rows recorded
+before the fix were unrecoverable and were deleted; the "against" side was
+always fine, since a displaced starter is rostered and resolves by name.
+
+## Tests were writing to the real database
+
+Found in the same investigation, and worse than the bug that revealed it.
+`bot.build_waivers` records every recommendation it makes, so a test that
+exercised it wrote fixture players into the production scorecard. "D. Buckner"
+and "A. Starter" in week 3 were sitting in the table the app reads.
+
+`tests/conftest.py` now points `config.DB_PATH`, `db.DB_PATH` and
+`db.connect`'s default at a per-session temp file, so no test can reach the real
+database whether or not it thinks about the database at all. Verified by
+counting rows before and after a full run.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

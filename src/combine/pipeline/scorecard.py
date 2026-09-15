@@ -97,7 +97,9 @@ def from_waivers(candidates) -> list[Row]:
     player dropped: displacing is what changes the score this week."""
     rows = []
     for c in candidates:
-        rows.append(Row(kind="waiver", subject_id=c.name, subject_name=c.name,
+        rows.append(Row(kind="waiver",
+                        subject_id=getattr(c, "player_id", "") or c.name,
+                        subject_name=c.name,
                         against_id=c.displaces or c.drop_name,
                         against_name=c.displaces or c.drop_name,
                         subject_proj=c.week_proj, against_proj=None,
@@ -126,29 +128,79 @@ def _by_name(conn, league: str, season: int, week: int) -> dict[str, float]:
         " WHERE league=? AND season=? AND week=?", (league, season, week))}
 
 
+def _from_espn(league: str, season: int, week: int, ids: set[str]
+               ) -> dict[str, float]:
+    """Actuals for players NOT on anyone's roster, straight from ESPN.
+
+    `espn_player_week` only holds players somebody rostered, so a waiver
+    recommendation for a player nobody picked up has no row there and could
+    never be graded. That is the common case, not the rare one: the whole point
+    of the recommendation is that he was available.
+    """
+    numeric = [int(i) for i in ids if str(i).isdigit()]
+    if not numeric:
+        return {}
+    try:
+        from ..platforms import client_for
+
+        client = client_for(league, season=season)
+        found = client.league.player_info(playerId=numeric)
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for player in (found if isinstance(found, list) else [found]):
+        if player is None:
+            continue
+        stats = (getattr(player, "stats", {}) or {}).get(week, {}) or {}
+        points = stats.get("points")
+        if points is not None:
+            out[str(getattr(player, "playerId", ""))] = float(points)
+    return out
+
+
 def score(conn, season: int, week: int) -> tuple[int, int]:
     """Fill in what happened. Returns (scored, still unresolved).
 
-    A recommendation whose players cannot be resolved is left unscored rather
-    than scored as zero: a zero is a real football outcome and inventing one
-    would quietly bias the record toward the tool looking worse.
+    A row is scored only when BOTH sides resolve. Marking it done with one side
+    missing was worse than leaving it open: it could never produce a result, it
+    was excluded from every summary, and nothing would ever retry it. Four week
+    1 rows sat in exactly that state, which is why the scorecard read "nothing
+    scored yet" while claiming four rows were recorded.
+
+    A recommendation that still cannot be resolved stays open rather than
+    scoring as zero. A zero is a real football outcome and inventing one would
+    bias the record toward the tool looking worse than it was.
     """
     open_rows = unscored(conn, season, week)
     if not open_rows:
         return 0, 0
     scored = missing = 0
+
+    # One ESPN call per league for everyone the local table cannot answer.
+    wanted: dict[str, set[str]] = {}
+    for row in open_rows:
+        known = _actuals(conn, row["league"], season, week)
+        for ident in (row["subject_id"], row["against_id"]):
+            if ident and str(ident) not in known:
+                wanted.setdefault(row["league"], set()).add(str(ident))
+    from_espn = {lg: _from_espn(lg, season, week, ids)
+                 for lg, ids in wanted.items()}
+
     for row in open_rows:
         by_id = _actuals(conn, row["league"], season, week)
         by_name = _by_name(conn, row["league"], season, week)
+        remote = from_espn.get(row["league"], {})
 
-        def look(ident, name, by_id=by_id, by_name=by_name):
+        def look(ident, name, by_id=by_id, by_name=by_name, remote=remote):
             if ident and str(ident) in by_id:
                 return by_id[str(ident)]
+            if ident and str(ident) in remote:
+                return remote[str(ident)]
             return by_name.get(name)
 
         subject = look(row["subject_id"], row["subject_name"])
         against = look(row["against_id"], row["against_name"])
-        if subject is None and against is None:
+        if subject is None or against is None:
             missing += 1
             continue
         conn.execute(

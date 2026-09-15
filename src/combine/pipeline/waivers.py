@@ -259,6 +259,7 @@ class Candidate:
     drop_season_proj: float
     week_gain: float          # what the lineup gains, calibrated
     displaces: str | None     # who he pushes out of the lineup this week
+    player_id: str = ""       # ESPN's id, so the scorecard can grade him later
     correction: float = 0.0   # calibration applied to his projection
     correction_n: int = 0     # how many observations that correction rests on
     # The drop you would actually want, when his game has already kicked off and
@@ -637,6 +638,7 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
             continue      # he does not actually make the lineup
         out.append(Candidate(
             league=client.slug, week=wk, name=candidate.name, pos=candidate.pos,
+            player_id=candidate.player_id,
             team=candidate.team, week_proj=candidate.projected,
             season_proj=float(getattr(raw, "projected_total_points", 0.0) or 0.0),
             free_via=free_via,

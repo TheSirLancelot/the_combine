@@ -56,10 +56,15 @@ REDIRECT = "https://localhost:8000"
 # for `fspt-r` and should keep asking for exactly that: a token that cannot
 # write is a guarantee no future bug can make a roster move, which is worth
 # more than the convenience.
-# Overridable because the right value is currently an open question: Yahoo
-# answered `error=invalid_scope` to fspt-r on this app (2026-09-15). Set
-# YAHOO_SCOPE in .env to try another, or to an empty string to send none.
-SCOPE = "fspt-r"
+# Empty by default, which is what working Yahoo fantasy clients have always
+# sent. `fspt-r` is the real read scope and is the right value the moment this
+# client id is entitled to it, but until then Yahoo answers the authorize
+# request with `error=invalid_scope` and no token is issued at all. Sending no
+# scope at least yields a token, which is the difference between "blocked at
+# Yahoo" and "cannot even get to the API to see the error".
+#
+# Set YAHOO_SCOPE=fspt-r in .env once entitlement lands.
+SCOPE = ""
 
 
 def error_from(pasted: str) -> str:

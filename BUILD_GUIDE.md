@@ -661,8 +661,28 @@ app named in the access application, and that the Yahoo account approving the
 consent screen is the account that applied. A second app created later is not
 covered by the approval.
 
-`YAHOO_SCOPE` in `.env` overrides the requested scope so a different value can
-be tried without editing code; empty sends none.
+**Confirmed externally 2026-09-15, and it is not our OAuth.** Yahoo stopped
+self-serve provisioning of the Fantasy Sports API around 2026-07-22. The
+"API Permissions -> Fantasy Sports (Read)" checkbox was removed from the
+developer portal, existing apps were de-provisioned, and new apps get exactly
+the error seen here: 401 with `oauth_problem="additional_authorization_required"`
+rather than `token_rejected`, because the token authenticates fine and it is the
+app that lacks entitlement. Others report `scope=fspt-r` making no difference,
+which matches: the scope string is right and irrelevant without the entitlement.
+
+  * https://github.com/derekrbreese/fantasy-football-mcp-public/issues/18
+  * https://github.com/uberfastman/yfpy/issues/84
+
+Access now goes through a manual application at
+https://sports.yahoo.com/developer/access/ quoting the existing Client ID, with
+human review and no reliable turnaround. William applied 2026-09-02 and has an
+approval mail, so the open question is why the entitlement is not bound to this
+client id rather than whether to apply.
+
+So the flow in `yahoo_login.py` is correct and should be left alone. `SCOPE`
+defaults to empty, which is what working clients have always sent; `fspt-r`
+becomes correct the moment the entitlement lands. `YAHOO_SCOPE` in `.env`
+overrides it without editing code.
 
 `fspt-r` is read, `fspt-w` is read and write. This asks for `fspt-r` and should
 keep asking for exactly that. Read-only is the hard rule for this project, and a

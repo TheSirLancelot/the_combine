@@ -611,6 +611,31 @@ It finishes by listing the NFL leagues on the account, which both proves the
 token end to end rather than trusting a 200, and hands over the league id that
 still has to go in `.env`.
 
+**Approval and permission are different things, and the email only covers the
+first.** Yahoo's "your access is live" mail means the APPLICATION is unblocked.
+It says nothing about the scopes attached to it, and an app with only the
+default profile scopes will complete OAuth perfectly, save a token, and then
+401 every single fantasy endpoint.
+
+The tell is exact, and it is worth matching on: every call returns
+
+```
+oauth_problem="additional_authorization_required"
+```
+
+That string means the token does not carry the scope. Verified 2026-09-15
+against six endpoints from `users;use_login=1` up, including 2025 ones with
+nothing to do with the new season -- all six identical, which is what rules out
+both a bad token and a season that is not open yet. `scripts/yahoo_probe.py`
+exists to produce exactly that table.
+
+The fix is on the app page: API Permissions, tick Fantasy Sports, then pick Read
+from the radio buttons that appear under it. The checkbox alone saves as no
+access. Then authorise AGAIN -- a token issued before the permission existed
+never gains it, so re-running the login is required rather than optional. The
+consent screen should name Fantasy Sports; if it does not, the permission did
+not save and there is no point going further.
+
 **The first authorised call fails, and not because of the token.** yahoofantasy
 carries a HARDCODED season -> game id table that ends at 2025, so any 2026 call
 dies with `ValueError: 2026 is not a valid season for nfl` before it reaches

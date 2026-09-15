@@ -321,3 +321,134 @@ def test_a_streamed_add_still_respects_the_lock():
     found = find(client, 1, season_value={"My D/ST": 100.0, "Fringe WR": 5.0,
                                           "Starter": 200.0}, limit=5)
     assert found[0].drop_name != "My D/ST"
+
+
+# --- the IR stash -----------------------------------------------------------
+
+class IRClient(FakeClient):
+    """FakeClient that also reports IR slot counts, the way ESPN does."""
+
+    def __init__(self, lineup, pool, ir_slots=1):
+        super().__init__(lineup, pool)
+        settings = type("S", (), {"position_slot_counts":
+                                  {"WR": 1, "DT": 1, "BE": 5, "IR": ir_slots}})()
+        self.league.settings = settings
+
+
+def hurt(name, pos, slot, proj=5.0, status="O"):
+    from combine.platforms import ProGame, WeeklyPlayer
+
+    return WeeklyPlayer(
+        player_id=name, name=name, team="KC", pos=pos, slot=slot,
+        eligible_slots=frozenset({pos, "BE", "IR"}), projected=proj,
+        status=status,
+        game=ProGame(opponent="SF", home=True, kickoff_ms=4_000_000_000_000))
+
+
+def test_an_out_player_can_be_stashed():
+    from combine.pipeline.waivers import stashable
+
+    lineup = [hurt("Hurt Guy", "WR", "BE"), rostered("Fine Guy", "WR", "WR")]
+    assert [p.name for p in stashable(lineup)] == ["Hurt Guy"]
+
+
+def test_questionable_and_doubtful_are_not_ir_eligible():
+    """ESPN does not accept them, and a stash it refuses is worse than one we
+    never suggested."""
+    from combine.pipeline.waivers import stashable
+
+    lineup = [hurt("Q Guy", "WR", "BE", status="Q"),
+              hurt("D Guy", "WR", "BE", status="D")]
+    assert stashable(lineup) == []
+
+
+def test_someone_already_on_ir_is_not_stashed_again():
+    from combine.pipeline.waivers import stashable
+
+    assert stashable([hurt("Already", "WR", "IR")]) == []
+
+
+def test_ir_room_counts_what_is_free_not_what_exists():
+    from combine.pipeline.waivers import ir_room
+
+    lineup = [hurt("On IR", "WR", "IR"), rostered("Fine", "WR", "WR")]
+    client = IRClient(lineup, [], ir_slots=2)
+    assert ir_room(client, lineup) == 1
+
+
+def test_a_league_with_no_ir_slots_has_no_room():
+    from combine.pipeline.waivers import ir_room
+
+    client = IRClient([], [], ir_slots=0)
+    assert ir_room(client, []) == 0
+
+
+def test_a_stash_makes_the_add_free():
+    """The whole point. Nothing leaves the roster, so there is no season value
+    given up and the season column is the add's own worth."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              hurt("Hurt Guy", "DT", "BE"),
+              rostered("Cheap", "WR", "BE", 2.0)]
+    client = IRClient(lineup, [FakePool("Big Add", "DT", 14.0, season=120.0)])
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Cheap": 10.0, "Starter": 200.0,
+                                          "Hurt Guy": 150.0}, limit=5)
+    assert found, "the add should be found"
+    c = found[0]
+    assert c.is_stash
+    assert c.stash_name == "Hurt Guy"
+    assert c.season_cost == 120.0          # his own value, nothing given up
+    assert c.trades_down is False
+
+
+def test_no_ir_room_means_a_normal_drop():
+    """An injured player with nowhere to put him is just an injured player."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              hurt("Hurt Guy", "DT", "BE"),
+              rostered("Cheap", "WR", "BE", 2.0)]
+    client = IRClient(lineup, [FakePool("Big Add", "DT", 14.0, season=120.0)],
+                      ir_slots=0)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Cheap": 10.0, "Starter": 200.0,
+                                          "Hurt Guy": 150.0}, limit=5)
+    assert found[0].is_stash is False
+    assert found[0].stash_name is None
+
+
+def test_a_bench_player_is_stashable_too():
+    """He asked for this specifically: the injured player does not have to be
+    in the lineup for the slot to be worth using."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              hurt("Benched And Out", "DT", "BE")]
+    client = IRClient(lineup, [FakePool("Big Add", "DT", 14.0)])
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Starter": 200.0,
+                                          "Benched And Out": 150.0}, limit=5)
+    assert found[0].stash_name == "Benched And Out"
+
+
+def test_the_stash_note_stands_on_its_own():
+    """An unused IR slot is a roster spot he already owns, worth saying even
+    when nothing on the wire clears the bar."""
+    from combine.pipeline.waivers import stash_note
+
+    lineup = [hurt("Hurt Guy", "WR", "BE"), rostered("Fine", "WR", "WR")]
+    said = stash_note(IRClient(lineup, []), lineup)
+    assert "Hurt Guy" in said and "without dropping anybody" in said
+
+
+def test_no_note_when_there_is_nothing_to_stash():
+    from combine.pipeline.waivers import stash_note
+
+    lineup = [rostered("Fine", "WR", "WR")]
+    assert stash_note(IRClient(lineup, []), lineup) == ""
+
+
+def test_no_note_when_the_ir_slots_are_full():
+    from combine.pipeline.waivers import stash_note
+
+    lineup = [hurt("On IR", "WR", "IR"), hurt("Also Hurt", "WR", "BE")]
+    assert stash_note(IRClient(lineup, [], ir_slots=1), lineup) == ""

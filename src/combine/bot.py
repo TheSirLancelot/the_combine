@@ -306,14 +306,22 @@ def build_waivers(league: str, week: int | None = None) -> Report:
 
     client = client_for(league)
     wk = int(week or client.week)
+    from .pipeline.waivers import stash_note
+
     found = find(client, wk, cal=_calibration(league),
                  season_value=season_values(client), dist=_distribution())
+    stash = stash_note(client, client.matchup(wk).my_lineup)
     # Only an add that does not trade away season value is worth a notification.
     # The rest belong in `/waivers` when you go looking, not in a Sunday ping.
     _log_recommendations(league, wk, scorecard.from_waivers(found))
-    worth_telling = any(not c.trades_down for c in found)
-    return Report(discord_out.waivers_embeds(found, cfg.name, wk), worth_telling,
-                  tuple(f"add:{c.name}>{c.drop_name}" for c in found))
+    # A free add is always worth telling. An IR stash gives up nothing, so the
+    # "is a week worth a season" question that gates everything else does not
+    # arise, and an unused IR slot counts on its own.
+    worth_telling = bool(stash) or any(not c.trades_down for c in found)
+    return Report(discord_out.waivers_embeds(found, cfg.name, wk, stash=stash),
+                  worth_telling,
+                  tuple([f"add:{c.name}>{c.drop_name}" for c in found]
+                        + ([f"stash:{stash}"] if stash else [])))
 
 
 def build_waivers_all(week: int | None = None) -> list[discord.Embed]:

@@ -398,6 +398,21 @@ Adding a defense drops the defense you already have, not your cheapest bench
 player, so the comparison reads defense against defense: what this week and the
 rest of the season look like with his versus with yours.
 
+An empty IR slot next to an injured player changes the whole calculation. He
+stays on the roster, so the add costs nothing at all: no drop, no season value
+given up. Those rows say `IR: <player>` instead of a drop, the Season column
+becomes what the add is worth rather than what a drop costs, and they always
+trigger the notification, because the question that gates everything else,
+whether a week is worth a season, does not arise when nothing is given up.
+
+The unused slot is reported on its own too, even when nothing on the wire clears
+the bar, because it is a roster spot you already own and are not using.
+
+ESPN does not publish its IR eligibility rule anywhere in the league settings,
+so the tool assumes OUT, IR and SUSPENDED qualify and Questionable and Doubtful
+do not. That is a stated assumption rather than a measured one. It is read only
+either way, so the cost of being wrong is one rejected click.
+
 The Yahoo league cannot answer this. Free agents need the API, so it reports the
 reason rather than an empty list.
 

@@ -327,7 +327,7 @@ def scoreboard_embeds(games, missing) -> list[discord.Embed]:
 # --- waivers ----------------------------------------------------------------
 
 def waivers_embeds(candidates, league_name: str, week: int,
-                   unavailable: str = "") -> list[discord.Embed]:
+                   unavailable: str = "", stash: str = "") -> list[discord.Embed]:
     """A table for the numbers, a field per row for the caveats.
 
     The caveats do not fit in a column and truncating one would leave a
@@ -338,10 +338,16 @@ def waivers_embeds(candidates, league_name: str, week: int,
     if unavailable:
         return [discord.Embed(title=title, colour=DEAD, description=unavailable)]
     if not candidates:
-        return [discord.Embed(
+        e = discord.Embed(
             title=title, colour=GOOD,
             description="Nobody on the wire improves the lineup. That is the "
-                        "normal answer: the pool is unrostered for a reason.")]
+                        "normal answer: the pool is unrostered for a reason.")
+        if stash:
+            # Worth saying with nothing else to report: an unused IR slot is a
+            # roster spot he already owns.
+            e.colour = WARN
+            field(e, "🆓 Unused IR slot", stash)
+        return [e]
 
     table = [f"{'':<3}{'ADD':<17}{'POS':<5}{'WK':>6}{'SZN':>7}"]
     for i, c in enumerate(candidates, start=1):
@@ -353,9 +359,16 @@ def waivers_embeds(candidates, league_name: str, week: int,
     # claims its room first and the notes fill what is left.
     e = discord.Embed(title=title, colour=INFO,
                       description=code("\n".join(table))[:DESC])
+    if stash:
+        field(e, "🆓 Unused IR slot", stash)
     shown = 0
     for i, c in enumerate(candidates, start=1):
         lines = [f"Drop **{c.drop_name}** ({c.drop_pos})"]
+        if c.is_stash:
+            # Not a drop at all. Nothing leaves the roster, which is a different
+            # decision from every other row in this table.
+            lines = [f"🆓 Move **{c.stash_name}** ({c.stash_pos}, "
+                     f"{c.stash_status}) to IR. Nothing is dropped."]
         if c.displaces:
             lines.append(f"Starts over {c.displaces}")
         note = c.blocked_note()
@@ -373,9 +386,15 @@ def waivers_embeds(candidates, league_name: str, week: int,
         shown += field(e, f"{i}. {c.name} · {c.week_gain:+.1f} week · "
                           f"{c.season_cost:+.1f} season", "\n".join(lines))
 
+    free = any(c.is_stash for c in candidates)
     footer = ("WK is what the lineup gains this week, SZN what the drop costs or "
               "gains for the season. Each row is an alternative, not a sequence: "
               "every one is measured against the lineup you have now.")
+    if free:
+        prefix = ("These cost nothing: the roster spot comes from an IR move, "
+                  "so SZN is what the add is worth rather than what a drop "
+                  "costs. ")
+        footer = prefix + footer
     if shown < len(candidates):
         footer = (f"Notes shown for {shown} of {len(candidates)}; the rest are in "
                   f"`combine waivers`. ") + footer

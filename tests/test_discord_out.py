@@ -274,8 +274,13 @@ def test_waivers_only_interrupt_for_an_add_that_does_not_cost_the_season(monkeyp
     import combine.pipeline.waivers as w
     monkeypatch.setattr(w, "find", lambda *a, **k: found)
     monkeypatch.setattr(w, "season_values", lambda c: {})
-    monkeypatch.setattr("combine.platforms.client_for",
-                        lambda lg: type("C", (), {"week": 3})())
+    monkeypatch.setattr(
+        "combine.platforms.client_for",
+        lambda lg: type("C", (), {
+            "week": 3,
+            "matchup": lambda self, wk=None: type("M", (), {"my_lineup": []})(),
+        })())
+    monkeypatch.setattr(w, "stash_note", lambda *a, **k: "")
 
     report = bot.build_waivers("rcl", 3)
     assert report.news is False

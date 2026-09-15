@@ -248,20 +248,22 @@ def load_waivers(league: str, week: int, _nonce: int, _version: str) -> dict:
     """Free agent upgrades. Its own loader with a long ttl, because it pulls a
     350 player pool and the wire does not move minute to minute."""
     from combine.pipeline.calibration import load as load_cal
-    from combine.pipeline.waivers import find, season_values
+    from combine.pipeline.waivers import find, season_values, stash_note
 
     cfg = leagues[league]
     if cfg.platform != "espn":
         return {"candidates": [], "unavailable":
-                "no free agent pool without the Yahoo API"}
+                "no free agent pool without the Yahoo API", "stash": ""}
     try:
         client = client_for(league)
         found = find(client, week or None, cal=load_cal(league),
                      season_value=season_values(client),
                      dist=outcome_distribution(config.SEASON - 1))
-        return {"candidates": found, "unavailable": ""}
+        return {"candidates": found, "unavailable": "",
+                "stash": stash_note(client, client.matchup(week or None).my_lineup)}
     except Exception as exc:
-        return {"candidates": [], "unavailable": f"{type(exc).__name__}: {exc}"}
+        return {"candidates": [], "unavailable": f"{type(exc).__name__}: {exc}",
+                "stash": ""}
 
 
 @st.cache_data(ttl=30, show_spinner="pulling live scores...")
@@ -784,6 +786,10 @@ def week_page():
         "DMWD over 216 team-weeks each.")
     wire = load_waivers(league, int(week_no), st.session_state.nonce,
                         _code_version())
+    if wire.get("stash"):
+        # An unused IR slot is a roster spot he already owns, so it is worth
+        # saying whether or not anything on the wire clears the bar.
+        st.warning(f"**Free roster spot:** {wire['stash']}")
     if wire["unavailable"]:
         st.info(wire["unavailable"])
     elif not wire["candidates"]:

@@ -1226,6 +1226,50 @@ which is the class of idea that has failed twice here, and because it involves a
 negotiation the tool cannot see. Revisit once the scorecard has enough live data
 to say whether this system's season projections are worth trusting at all.
 
+## The IR stash
+
+Added 2026-09-15. An empty IR slot beside an injured player is a roster spot you
+already own and are not using, and filling it changes the economics of every
+waiver row: the injured player stays on the roster, so the add costs nothing.
+No drop, no season value surrendered.
+
+Three things the probe settled before any of it was written, and two of them
+would have been wrong as guesses:
+
+`roster_slots()` does not report IR. It deliberately returns startable slots
+only, dropping BE and IR, so the count has to come from the raw
+`position_slot_counts`. RCL has 3 IR slots, DMWD has 1.
+
+`eligible_slots` containing "IR" means nothing. ESPN lists IR as an eligible
+slot for every player on the roster, healthy ones included: 18 of 18 in RCL. The
+obvious signal is useless and eligibility has to come from injury status.
+
+ESPN does not publish the IR eligibility RULE at all. `rosterSettings` carries
+`lineupSlotCounts`, `positionLimits` and `lineupSlotStatLimits`, and nothing
+about which statuses the IR slot accepts. So `IR_STATUS` is a stated assumption,
+conservative on purpose: OUT, IR and SUSPENDED, never Questionable or Doubtful.
+A stash ESPN refuses is worse than one never suggested, and the tool is read
+only, so being wrong costs one rejected click rather than a bad move.
+
+The week's arithmetic needed no special case, which is worth knowing. `as_candidate`
+already values a player through `effective()`, so an OUT player counts zero in
+the lineup and moving him to IR cannot change the week's value. The stash only
+ever adds.
+
+`season_cost` had to change though. For a stash it returns the add's own season
+projection rather than a difference, because there is no trade to weigh, and
+reporting the stashed player's projection as a cost would invent a decision that
+does not exist. `trades_down` is then false by construction, which is why these
+always clear the notification gate.
+
+**Live on first run:** RCL had Myles Garrett OUT and still starting at DL with
+three empty IR slots, so stashing him buys Jack Gibbens at +4.6 for the week and
++81.8 for the season, for nothing.
+
+**Limitation.** Only the worst-injured stashable player is used, so one free add
+per run even when several slots are open. The standalone note lists everyone who
+qualifies, so nothing is hidden, but the candidate list does not compound them.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

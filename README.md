@@ -260,6 +260,27 @@ The Yahoo league cannot appear. A scoreboard needs the opponent's lineup and the
 hand-entered league has none, so it shows as unavailable with the reason rather
 than silently going missing. It joins when the API is approved.
 
+## Yahoo
+
+```bash
+uv run python scripts/yahoo_login.py      # from the repo root
+```
+
+Credentials come from your app at https://developer.yahoo.com/apps/, not from
+the approval email. Put `YAHOO_CONSUMER_KEY` and `YAHOO_CONSUMER_SECRET` in
+`.env` first. The app needs Fantasy Sports READ permission and the redirect URI
+must be exactly `https://localhost:8000`.
+
+The browser will fail to load a page at that address after you approve. That is
+expected, nothing is listening there; copy the whole address and paste it back.
+The script exchanges it, saves the token, and then lists your NFL leagues to
+prove the token actually works and to hand you the league id for `.env`.
+
+The token lands in `.yahoofantasy` in the repo root. It is a pickle holding your
+client secret and refresh token, it is gitignored, and it should stay that way.
+The refresh token is long lived, so this is roughly an annual chore rather than
+the recurring one ESPN cookies are.
+
 ## Look ahead
 
 ```bash

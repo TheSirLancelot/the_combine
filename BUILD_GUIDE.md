@@ -580,9 +580,36 @@ enforces its own token independently of Cloudflare. Do not put a Cloudflare
 Access policy on the hostname, it bounces Anthropic with a login redirect and
 fails with a useless error.
 
-**10. Yahoo, when approved.** Key and secret into `.env`, run
-`scripts/yahoo_login.py`, write the adapter from probe output. Redirect URI must
-be `https://localhost:8000`.
+**10. Yahoo. APPROVED 2026-09-15**, adapter still to write. Key and secret into
+`.env`, run `scripts/yahoo_login.py` from the repo root, then probe before
+writing anything. Redirect URI must be exactly `https://localhost:8000` and the
+app needs Fantasy Sports READ, not just the default profile scopes.
+
+The login script no longer calls `yahoofantasy login`, and reading it before
+running it was worth doing. Three things were wrong with that path:
+
+  * Its redirect server builds TLS with `ssl.wrap_socket`, removed from Python
+    in 3.12. On this 3.14 venv it dies before you can authorise anything.
+  * It reads `YAHOO_CLIENT_ID` / `YAHOO_CLIENT_SECRET`; our wrapper exported
+    `YAHOO_CONSUMER_KEY` / `YAHOO_CONSUMER_SECRET`, so it would have ignored
+    `.env` and prompted for both anyway.
+  * It persists to `.yahoofantasy` RELATIVE TO THE CWD, a pickle holding the
+    client secret and refresh token in the clear, and `.gitignore` did not cover
+    it. Now ignored, and the script says so on the way out.
+
+No server is needed at all: the redirect lands on a page that fails to load and
+the code is in the address bar. The script takes the pasted URL or a bare code,
+does the exchange itself, and writes the token through the library's own
+`save()` so the format cannot drift from what `Context()` reads back.
+
+It tries the registered redirect URI in the token exchange first and falls back
+to the literal `"oob"`, which is what yahoofantasy sends. The spec says it must
+match the authorize call; the library evidently works sending `"oob"`. Rather
+than pick one and hope, it tries both and prints which one Yahoo accepted.
+
+It finishes by listing the NFL leagues on the account, which both proves the
+token end to end rather than trusting a 200, and hands over the league id that
+still has to go in `.env`.
 
 **11. Rescore properly. DONE 2026-09-10**, in item 8. `scoring.py` reads each
 league's scoring as ESPN stat ids and validates against ESPN's own scored

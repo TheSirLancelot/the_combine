@@ -1314,6 +1314,38 @@ Computing the marginal version needs to know who he displaces in every future
 week, which is a projection and not available. Within one list it is consistent,
 which is all a sort needs.
 
+## Pending claims
+
+Added 2026-09-15, after a pending claim on Christian Elliss made the roster look
+like it had a spare spot.
+
+`league.transactions()` does expose them, which was worth probing rather than
+assuming: status PENDING, the team, the type, the bid amount and an items list
+carrying ADD with a player id. Two things it settles. ESPN shows a team only its
+OWN pending claims, so estimating competition is permanently off the table and
+nothing should pretend otherwise. And the bid amount is there for leagues that
+use one, which RCL does not.
+
+Three consequences, and the second is the one that was actually wrong:
+
+The claimed player is filtered out of candidates. Recommending a player you have
+already claimed is noise.
+
+`roster_room()` subtracts pending adds. A claim that has not processed has
+ALREADY spoken for its spot, so counting it as open recommends a second add that
+will not fit. This is also where "an open roster spot is a free add" arrived,
+which had been missing entirely: it is the same economics as an IR stash and
+needs no move at all, so it is preferred over stashing when both are available.
+
+The banner says INSTEAD rather than as well. The rows under a pending claim are
+the fallback if it fails, not a second move.
+
+**Found while looking at the live output.** With Myles Garrett freshly stashed on
+IR, the tool recommended dropping him. ESPN depresses an injured player's
+rest-of-season projection, so the man he had just been told to keep looked like
+the cheapest drop on the roster. Players in an IR slot are now excluded from drop
+candidates. Stashing someone is what you do when you want to keep him.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

@@ -306,11 +306,11 @@ def build_waivers(league: str, week: int | None = None) -> Report:
 
     client = client_for(league)
     wk = int(week or client.week)
-    from .pipeline.waivers import stash_note
+    from .pipeline.waivers import notes
 
     found = find(client, wk, cal=_calibration(league),
                  season_value=season_values(client), dist=_distribution())
-    stash = stash_note(client, client.matchup(wk).my_lineup)
+    stash = notes(client, client.matchup(wk).my_lineup)
     # Only an add that does not trade away season value is worth a notification.
     # The rest belong in `/waivers` when you go looking, not in a Sunday ping.
     _log_recommendations(league, wk, scorecard.from_waivers(found))

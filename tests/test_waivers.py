@@ -326,12 +326,21 @@ def test_a_streamed_add_still_respects_the_lock():
 # --- the IR stash -----------------------------------------------------------
 
 class IRClient(FakeClient):
-    """FakeClient that also reports IR slot counts, the way ESPN does."""
+    """FakeClient that also reports slot counts, the way ESPN does.
 
-    def __init__(self, lineup, pool, ir_slots=1):
+    The bench defaults to exactly full, because an open roster spot is itself a
+    free add and would otherwise mask whatever the test is actually about.
+    Tests that want an open spot pass `bench`.
+    """
+
+    def __init__(self, lineup, pool, ir_slots=1, bench=None):
         super().__init__(lineup, pool)
+        active = [p for p in lineup if p.slot != "IR"]
+        if bench is None:
+            bench = max(0, len(active) - 2)      # 2 starting slots below
         settings = type("S", (), {"position_slot_counts":
-                                  {"WR": 1, "DT": 1, "BE": 5, "IR": ir_slots}})()
+                                  {"WR": 1, "DT": 1, "BE": bench,
+                                   "IR": ir_slots}})()
         self.league.settings = settings
 
 
@@ -557,3 +566,142 @@ def test_a_candidate_that_costs_the_season_sorts_last_within_its_band():
     free = candidate(name="Free", week_gain=4.0, season_proj=90.0,
                      drop_season_proj=0.0)
     assert min([costly, free], key=lambda c: c.rank()).name == "Free"
+
+
+# --- pending claims and open spots ------------------------------------------
+
+class TxClient(IRClient):
+    """IRClient that also answers transactions(), the way ESPN does."""
+
+    def __init__(self, lineup, pool, pending=(), **kw):
+        super().__init__(lineup, pool, **kw)
+        self.cfg = type("C", (), {"team_id": 6})()
+        team = type("T", (), {"team_id": 6})()
+        self.league.transactions = lambda types=None: [
+            type("Tx", (), {
+                "status": "PENDING", "team": team, "type": "WAIVER",
+                "items": [type("I", (), {"type": "ADD", "playerId": pid,
+                                         "player": name})()],
+            })() for pid, name in pending]
+
+
+def test_a_player_already_claimed_is_not_recommended_again():
+    """He has a claim in on Elliss. Offering Elliss is noise."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Cheap", "WR", "BE", 2.0)]
+    pool = [FakePool("Claimed Guy", "DT", 14.0), FakePool("Other Guy", "DT", 13.0)]
+    client = TxClient(lineup, pool, pending=[("Claimed Guy", "Claimed Guy")])
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Cheap": 10.0, "Starter": 200.0})
+    assert "Claimed Guy" not in [c.name for c in found]
+    assert "Other Guy" in [c.name for c in found]
+
+
+def test_a_pending_claim_does_not_count_its_spot_as_open_twice():
+    """The spot is already spoken for. Counting it as open recommends a second
+    add that will not fit."""
+    from combine.pipeline.waivers import roster_room
+
+    lineup = [rostered("Starter", "WR", "WR", 8.0)]
+    # capacity is WR 1 + DT 1 + BE 2 = 4, against one rostered player
+    client = TxClient(lineup, [], bench=2)
+    assert roster_room(client, lineup, {}) == 3
+    assert roster_room(client, lineup, {"1": "Someone"}) == 2
+
+
+def test_an_open_roster_spot_makes_the_add_free():
+    """Same economics as an IR stash, and it needs no move at all."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0)]
+    client = TxClient(lineup, [FakePool("Big Add", "DT", 14.0, season=120.0)],
+                      bench=2)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Starter": 200.0})
+    assert found[0].is_free
+    assert found[0].free_via == "you have an open roster spot"
+    assert found[0].season_cost == 120.0
+    assert found[0].drop_name == ""
+
+
+def test_an_open_spot_is_preferred_over_stashing():
+    """Both are free, but one requires no move."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              hurt("Hurt Guy", "DT", "BE")]
+    client = TxClient(lineup, [FakePool("Big Add", "DT", 14.0)], bench=3)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Starter": 200.0, "Hurt Guy": 150.0})
+    assert found[0].is_free and not found[0].is_stash
+
+
+def test_a_full_roster_with_no_ir_room_still_requires_a_drop():
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              rostered("Cheap", "WR", "BE", 2.0)]
+    client = TxClient(lineup, [FakePool("Big Add", "DT", 14.0, season=120.0)],
+                      ir_slots=0)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Cheap": 10.0, "Starter": 200.0})
+    assert not found[0].is_free
+    assert found[0].drop_name == "Cheap"
+
+
+def test_the_pending_note_says_instead_not_as_well():
+    """The rows below a pending claim are the fallback if it fails, not a
+    second move to make alongside it."""
+    from combine.pipeline.waivers import pending_note
+
+    said = pending_note({"1": "Christian Elliss"})
+    assert "Christian Elliss" in said
+    assert "INSTEAD" in said
+    assert "who else bid" in said
+
+
+def test_no_pending_claims_means_no_note():
+    from combine.pipeline.waivers import pending_note
+
+    assert pending_note({}) == ""
+
+
+def test_a_transactions_call_that_fails_does_not_break_the_view():
+    """Bookkeeping must never take the waiver view down."""
+    from combine.pipeline.waivers import pending_adds
+
+    class Broken:
+        cfg = type("C", (), {"team_id": 6})()
+        league = type("L", (), {"transactions": staticmethod(
+            lambda types=None: (_ for _ in ()).throw(RuntimeError("500")))})()
+
+    assert pending_adds(Broken()) == {}
+
+
+def test_another_team_s_pending_claim_is_ignored():
+    """ESPN only shows our own, but the filter should not depend on that."""
+    from combine.pipeline.waivers import pending_adds
+
+    client = TxClient([], [], pending=[("9", "Someone Else")])
+    client.league.transactions = lambda types=None: [
+        type("Tx", (), {
+            "status": "PENDING",
+            "team": type("T", (), {"team_id": 99})(),
+            "items": [type("I", (), {"type": "ADD", "playerId": "9",
+                                     "player": "Someone Else"})()],
+        })()]
+    assert pending_adds(client) == {}
+
+
+def test_a_player_stashed_on_ir_is_not_offered_as_a_drop():
+    """He can technically be dropped, and ESPN depresses an injured player's
+    season projection, which together made Myles Garrett look like the cheapest
+    drop on the roster the day after he was stashed. Stashing someone is what
+    you do when you want to keep him."""
+    lineup = [rostered("Starter", "WR", "WR", 8.0),
+              hurt("Stashed Star", "DT", "IR"),
+              rostered("Fringe", "WR", "BE", 1.0)]
+    client = TxClient(lineup, [FakePool("Big Add", "DT", 14.0)], ir_slots=1)
+    from combine.pipeline.waivers import find
+
+    found = find(client, 1, season_value={"Stashed Star": 20.0,   # looks cheap
+                                          "Fringe": 50.0, "Starter": 200.0})
+    assert found[0].drop_name == "Fringe"

@@ -408,6 +408,18 @@ whether a week is worth a season, does not arise when nothing is given up.
 The unused slot is reported on its own too, even when nothing on the wire clears
 the bar, because it is a roster spot you already own and are not using.
 
+A claim you have already put in is accounted for. The claimed player stops
+appearing as a recommendation, his roster spot stops counting as open, and the
+list is labelled as what to do INSTEAD if the claim fails rather than as a
+second move to make alongside it.
+
+ESPN shows a team only its own pending claims, so there is no way to know who
+else is bidding on the same player and the tool does not pretend otherwise. What
+it can do is have the next move ready.
+
+An add is free whenever nothing has to be dropped: an open roster spot, or an
+injured player who can go to IR. Both are net of pending claims.
+
 Only OUT and IR statuses can be stashed. Suspended players cannot, which is
 ESPN's rule rather than a guess, and Questionable and Doubtful were never
 eligible in the first place.

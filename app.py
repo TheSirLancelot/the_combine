@@ -248,7 +248,7 @@ def load_waivers(league: str, week: int, _nonce: int, _version: str) -> dict:
     """Free agent upgrades. Its own loader with a long ttl, because it pulls a
     350 player pool and the wire does not move minute to minute."""
     from combine.pipeline.calibration import load as load_cal
-    from combine.pipeline.waivers import find, season_values, stash_note
+    from combine.pipeline.waivers import find, notes, season_values
 
     cfg = leagues[league]
     if cfg.platform != "espn":
@@ -260,7 +260,7 @@ def load_waivers(league: str, week: int, _nonce: int, _version: str) -> dict:
                      season_value=season_values(client),
                      dist=outcome_distribution(config.SEASON - 1))
         return {"candidates": found, "unavailable": "",
-                "stash": stash_note(client, client.matchup(week or None).my_lineup)}
+                "stash": notes(client, client.matchup(week or None).my_lineup)}
     except Exception as exc:
         return {"candidates": [], "unavailable": f"{type(exc).__name__}: {exc}",
                 "stash": ""}
@@ -787,9 +787,10 @@ def week_page():
     wire = load_waivers(league, int(week_no), st.session_state.nonce,
                         _code_version())
     if wire.get("stash"):
-        # An unused IR slot is a roster spot he already owns, so it is worth
-        # saying whether or not anything on the wire clears the bar.
-        st.warning(f"**Free roster spot:** {wire['stash']}")
+        # Three different messages can land here -- a blocked roster, a pending
+        # claim, an unused IR slot -- so this must not label them as one thing.
+        note = wire["stash"]
+        (st.error if "INVALID" in note else st.warning)(note)
     if wire["unavailable"]:
         st.info(wire["unavailable"])
     elif not wire["candidates"]:

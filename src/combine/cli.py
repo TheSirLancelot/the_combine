@@ -566,7 +566,7 @@ def waivers() -> int:
     not worth a season.
     """
     from .pipeline.calibration import load as load_cal
-    from .pipeline.waivers import find, render, season_values, stash_note
+    from .pipeline.waivers import find, notes, render, season_values
     from .platforms import client_for
 
     args = sys.argv[2:]
@@ -602,7 +602,7 @@ def waivers() -> int:
             found = find(client, week, cal=load_cal(slug),
                          season_value=season_values(client), dist=dist)
             print(render(found, cfg.name, wk,
-                         stash=stash_note(client, client.matchup(wk).my_lineup)))
+                         stash=notes(client, client.matchup(wk).my_lineup)))
         except Exception as exc:
             print(f"{slug}: {type(exc).__name__}: {exc}", file=sys.stderr)
     return 0

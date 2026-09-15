@@ -326,6 +326,20 @@ def scoreboard_embeds(games, missing) -> list[discord.Embed]:
 
 # --- waivers ----------------------------------------------------------------
 
+def _notes_label(note: str) -> tuple[str, int]:
+    """(field title, colour) for the banner above the table.
+
+    The banner now carries three different kinds of message -- a blocked
+    roster, a pending claim, an unused IR slot -- and they are not the same
+    severity. Labelling all three "Free roster spot" was actively wrong.
+    """
+    if "INVALID" in note:
+        return "🚫 Roster is invalid", BAD
+    if "Claim pending" in note:
+        return "⏳ Claim pending", INFO
+    return "🆓 Unused IR slot", WARN
+
+
 def waivers_embeds(candidates, league_name: str, week: int,
                    unavailable: str = "", stash: str = "") -> list[discord.Embed]:
     """A table for the numbers, a field per row for the caveats.
@@ -343,13 +357,9 @@ def waivers_embeds(candidates, league_name: str, week: int,
             description="Nobody on the wire improves the lineup. That is the "
                         "normal answer: the pool is unrostered for a reason.")
         if stash:
-            # Worth saying with nothing else to report: an unused IR slot is a
-            # roster spot he already owns. A blocked roster is a different
-            # severity, and the colour is what he reads first.
-            blocked = stash.startswith("⚠️")
-            e.colour = BAD if blocked else WARN
-            field(e, "🚫 Roster is invalid" if blocked else "🆓 Unused IR slot",
-                  stash)
+            title, colour = _notes_label(stash)
+            e.colour = colour
+            field(e, title, stash)
         return [e]
 
     table = [f"{'':<3}{'ADD':<17}{'POS':<5}{'WK':>6}{'SZN':>7}"]
@@ -363,10 +373,10 @@ def waivers_embeds(candidates, league_name: str, week: int,
     e = discord.Embed(title=title, colour=INFO,
                       description=code("\n".join(table))[:DESC])
     if stash:
-        blocked = stash.startswith("⚠️")
-        if blocked:
+        title, colour = _notes_label(stash)
+        if colour == BAD:
             e.colour = BAD
-        field(e, "🚫 Roster is invalid" if blocked else "🆓 Unused IR slot", stash)
+        field(e, title, stash)
     shown = 0
     for i, c in enumerate(candidates, start=1):
         lines = [f"Drop **{c.drop_name}** ({c.drop_pos})"]

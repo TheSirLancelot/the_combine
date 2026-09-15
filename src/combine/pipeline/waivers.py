@@ -99,6 +99,24 @@ IR_STATUS = frozenset({"O", "OUT", "IR"})
 NO_DESIGNATION = frozenset({"OK", "ACTIVE", "", "NORMAL"})
 
 
+def roster_room(client, lineup, claimed: dict[str, str] | None = None) -> int:
+    """Open active roster spots, minus the ones already claimed.
+
+    An empty bench spot makes an add free in exactly the way an IR stash does:
+    nothing is dropped. Subtracting pending claims is the part that is easy to
+    get wrong, and it is why this exists rather than being a subtraction inline.
+    A claim that has not processed has ALREADY spoken for its spot, so counting
+    it as open recommends a second add that will not fit.
+    """
+    try:
+        counts = client.league.settings.position_slot_counts
+    except AttributeError:
+        return 0
+    capacity = sum(int(v or 0) for k, v in counts.items() if k != "IR")
+    active = sum(1 for p in lineup if p.slot != "IR")
+    return max(0, capacity - active - len(claimed or {}))
+
+
 def ir_room(client, lineup) -> int:
     """Empty IR slots. Zero when the league has none.
 
@@ -112,6 +130,43 @@ def ir_room(client, lineup) -> int:
     total = int(counts.get("IR") or 0)
     used = sum(1 for p in lineup if p.slot == "IR")
     return max(0, total - used)
+
+
+def pending_adds(client) -> dict[str, str]:
+    """{espn player id: player name} for claims of mine that have not processed.
+
+    ESPN shows a team only its OWN pending claims, which is the right privacy
+    model and also the ceiling on what this can ever know: there is no way to
+    see who else is bidding, so nothing here tries to estimate competition.
+
+    What it can do is stop recommending a player already claimed, and stop
+    counting a roster spot twice when a pending add has already spoken for it.
+    """
+    try:
+        rows = client.league.transactions(types={"WAIVER", "FREEAGENT"})
+    except Exception:
+        return {}          # never let bookkeeping take the waiver view down
+    mine = str(getattr(client.cfg, "team_id", ""))
+    out: dict[str, str] = {}
+    for tx in rows or []:
+        if str(getattr(tx, "status", "")).upper() != "PENDING":
+            continue
+        if str(getattr(getattr(tx, "team", None), "team_id", "")) != mine:
+            continue
+        for item in getattr(tx, "items", []) or []:
+            if str(getattr(item, "type", "")).upper() == "ADD":
+                out[str(getattr(item, "playerId", ""))] = getattr(
+                    item, "player", "?")
+    return out
+
+
+def pending_note(claims: dict[str, str]) -> str:
+    if not claims:
+        return ""
+    who = ", ".join(sorted(claims.values()))
+    return (f"Claim pending on {who}. That roster spot is already spoken for, "
+            f"so everything below is what to do INSTEAD if the claim fails, "
+            f"not as well. No way to see who else bid.")
 
 
 def ir_invalid(lineup) -> list[WeeklyPlayer]:
@@ -165,6 +220,7 @@ class Candidate:
     # Set when the roster spot comes from moving an injured player to IR rather
     # than from dropping anybody. Then nothing leaves the roster and the add is
     # free, which is a different decision from every other row here.
+    free_via: str = ""        # why no drop is needed, empty when one is
     stash_name: str | None = None
     stash_pos: str | None = None
     stash_status: str | None = None
@@ -210,6 +266,11 @@ class Candidate:
         return self.stash_name is not None
 
     @property
+    def is_free(self) -> bool:
+        """Nothing leaves the roster, so there is no trade to weigh."""
+        return bool(self.free_via)
+
+    @property
     def season_cost(self) -> float:
         """Season value given up. Positive means the add is also an upgrade for
         the rest of the year; negative means you are trading the season for a
@@ -219,7 +280,7 @@ class Candidate:
         roster, so this is the add's own season value and there is no trade to
         weigh. Reporting his projection as a cost would invent a decision.
         """
-        if self.is_stash:
+        if self.is_free:
             return self.season_proj
         return self.season_proj - self.drop_season_proj
 
@@ -263,8 +324,8 @@ class Candidate:
         number and whether the move still gains season value overall, which is
         the pair of facts the decision actually turns on.
         """
-        if self.is_stash:
-            return ""      # a stash has no blocker; describe() says what it is
+        if self.is_free:
+            return ""      # nothing is dropped, so nothing can be blocking it
         if self.drop_locked:
             return ("Nothing on this roster can be dropped right now: everyone "
                     "who could go has already played. This has to wait for the "
@@ -299,10 +360,9 @@ class Candidate:
         note = self.blocked_note()
         if note:
             line += f"\n    LOCKED: {note}"
-        if self.is_stash:
-            return (line + f"\n    FREE: move {self.stash_name} "
-                           f"({self.stash_pos}, {self.stash_status}) to IR and "
-                           f"nothing is dropped.\n    {self.name} is worth "
+        if self.is_free:
+            return (line + f"\n    FREE: {self.free_via}, so nothing is "
+                           f"dropped.\n    {self.name} is worth "
                            f"{self.season_proj:.0f} for the rest of the season "
                            f"on top.")
         line += f"\n    drop {self.drop_name} ({self.drop_pos})"
@@ -384,21 +444,39 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
     # reset, so recommending him is advice you cannot take. This is what made the
     # tool say "drop Rashid Shaheed" on a Monday after he had already played.
     def free(p) -> bool:
-        return not (p.locked or p.played)
+        # A player in the IR slot is off the table. He can technically be
+        # dropped, and ESPN depresses the season projection of an injured
+        # player, which together made him look like the CHEAPEST drop on the
+        # roster. Stashing someone is what you do when you want to keep him.
+        return not (p.locked or p.played) and p.slot != "IR"
 
     def blocked_by_lock(ideal, drop) -> bool:
-        return (ideal is not None and ideal.player_id != drop.player_id
-                and not free(ideal))
+        return (ideal is not None and drop is not None
+                and ideal.player_id != drop.player_id and not free(ideal))
 
     # An empty IR slot plus an injured player is a free roster spot: he stays on
     # the roster, so the add costs nothing at all. That outranks every drop,
     # because every drop costs something.
-    room = ir_room(client, lineup)
-    # Both halves are required. An empty IR slot with nobody hurt enough to fill
-    # it is not a free roster spot, and an injured player with no slot to put
-    # him in is just an injured player.
-    candidates_to_stash = stashable(lineup) if room else []
+    claimed = pending_adds(client)
+
+    # Two ways to add without dropping anybody, and an open spot is checked
+    # first because it needs no move at all. Both are net of pending claims: a
+    # claim that has not processed has already spoken for its spot.
+    open_spots = roster_room(client, lineup, claimed)
+
+    # An empty IR slot with nobody hurt enough to fill it is not a free spot,
+    # and an injured player with no slot to put him in is just an injured
+    # player. Both halves are required.
+    candidates_to_stash = stashable(lineup) if ir_room(client, lineup) else []
     stash = candidates_to_stash[0] if candidates_to_stash else None
+
+    if open_spots:
+        free_via = "you have an open roster spot"
+        stash = None            # no need to move anybody
+    elif stash is not None:
+        free_via = (f"moving {stash.name} ({stash.pos}, {stash.status}) to IR")
+    else:
+        free_via = "" 
 
     out_of_lineup = [p for p in lineup if p.player_id not in base_ids]
     # What you WOULD drop if the roster were unlocked, kept so the message can
@@ -438,6 +516,8 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
         candidate = _synthetic(raw, wk)
         if candidate is None:
             continue
+        if candidate.player_id in claimed:
+            continue       # already claimed; recommending him again is noise
         adjusted = cal.adjust(candidate.pos, candidate.projected)
         if not any(adjusted > weakest.get(slot, 1e9)
                    for slot in candidate.eligible_slots):
@@ -447,7 +527,11 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
         # reads defense against defense: what this week and the rest of the
         # season look like with his, versus with the one you have.
         drops = ranked_drops
-        if stash is not None:
+        if open_spots:
+            # Nothing is dropped and nothing is moved, so the lineup the
+            # candidate joins is simply the one that exists.
+            drops = [None]
+        elif stash is not None:
             # Nothing leaves the roster. The week's value is unchanged by the
             # move itself, because an OUT player already counts zero in the
             # lineup, so this only ever adds.
@@ -460,7 +544,8 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
 
         best: tuple[float, WeeklyPlayer, str | None] | None = None
         for drop in drops:
-            trial = [p for p in lineup if p.player_id != drop.player_id]
+            trial = [p for p in lineup
+                     if drop is None or p.player_id != drop.player_id]
             trial.append(candidate)
             value, ids = _value(trial, slot_list, cal)
             gain = value - base_value
@@ -478,15 +563,19 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
         if gain < needed:
             continue
         if candidate.player_id not in _value(
-                [p for p in lineup if p.player_id != drop.player_id] + [candidate],
+                [p for p in lineup
+                 if drop is None or p.player_id != drop.player_id] + [candidate],
                 slot_list, cal)[1]:
             continue      # he does not actually make the lineup
         out.append(Candidate(
             league=client.slug, week=wk, name=candidate.name, pos=candidate.pos,
             team=candidate.team, week_proj=candidate.projected,
             season_proj=float(getattr(raw, "projected_total_points", 0.0) or 0.0),
-            drop_name=drop.name, drop_pos=drop.pos,
-            drop_season_proj=values.get(drop.player_id, 0.0),
+            free_via=free_via,
+            drop_name=(drop.name if drop is not None else ""),
+            drop_pos=(drop.pos if drop is not None else ""),
+            drop_season_proj=(values.get(drop.player_id, 0.0)
+                              if drop is not None else 0.0),
             # Only when the cheaper drop is LOCKED. A streamed add deliberately
             # drops the incumbent rather than the cheapest player, and saying
             # "his game has started" about a player who is simply not the right
@@ -494,9 +583,9 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
             stash_name=(stash.name if stash is not None else None),
             stash_pos=(stash.pos if stash is not None else None),
             stash_status=(stash.status if stash is not None else None),
-            blocked_name=(None if stash is not None
+            blocked_name=(None if free_via
                           else ideal.name if blocked_by_lock(ideal, drop) else None),
-            blocked_pos=(None if stash is not None
+            blocked_pos=(None if free_via
                          else ideal.pos if blocked_by_lock(ideal, drop) else None),
             blocked_season_proj=(values.get(ideal.player_id, 0.0)
                                  if blocked_by_lock(ideal, drop) else 0.0),
@@ -525,6 +614,19 @@ def season_values(client) -> dict[str, float]:
     return {str(getattr(p, "playerId", "")):
             float(getattr(p, "projected_total_points", 0.0) or 0.0)
             for p in team.roster}
+
+
+def notes(client, lineup) -> str:
+    """Everything that changes how the list below should be read, worst first.
+
+    One string rather than several, because these are mutually exclusive in
+    practice and the order is the point: a blocked roster outranks a pending
+    claim, which outranks an unused IR slot. Leading with the wrong one hands
+    him a move he cannot make yet.
+    """
+    parts = [n for n in (stash_note(client, lineup),
+                         pending_note(pending_adds(client))) if n]
+    return "\n\n".join(parts)
 
 
 def stash_note(client, lineup) -> str:
@@ -557,7 +659,7 @@ def render(candidates: list[Candidate], league_name: str, week: int,
            stash: str = "") -> str:
     if stash and not candidates:
         return (f"{league_name} — week {week}\n"
-                f"IR: {stash}\n\n"
+                f"{stash}\n\n"
                 f"Nobody on the wire improves the lineup, but that roster spot "
                 f"is free either way.")
     if not candidates:
@@ -566,7 +668,7 @@ def render(candidates: list[Candidate], league_name: str, week: int,
                 f"answer:\nthe pool is unrostered for a reason.")
     out = [f"{league_name} — week {week}", "WAIVER UPGRADES", ""]
     if stash:
-        out.append(f"  IR: {stash}\n")
+        out.append("".join(f"  {line}\n" for line in stash.splitlines()))
     out.append(f"  {'':<3}{'ADD':<22}{'POS':<5}{'PROJ':>6}{'WEEK':>7}"
                f"{'SEASON':>8}  {'DROP / IR MOVE':<22}{'STARTS OVER'}")
     for i, c in enumerate(candidates, start=1):

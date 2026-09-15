@@ -1449,6 +1449,36 @@ outliving a dataclass change, which produced `'Band' object has no attribute
 pattern to remember is that a Streamlit cache is invisible, so anything cached
 needs either a short ttl or a visible timestamp, and preferably both.
 
+## Cancelling a claim does not remove it
+
+Found 2026-09-15, from William cancelling a claim on Malik Willis and watching
+the app keep reporting it through several refreshes.
+
+Not the cache, which was the obvious suspect and had just been fixed. ESPN
+appends a SECOND transaction row for the same players with status CANCELED and a
+later timestamp, leaving the original PENDING row in place:
+
+```
+23:19:52  PENDING   ADD Malik Willis, DROP Sam Darnold
+23:23:49  CANCELED  ADD Malik Willis, DROP Sam Darnold
+23:19:04  PENDING   ADD Tre Tucker,   DROP De'Zhaun Stribling
+```
+
+Filtering on `status == PENDING` therefore reports a claim called off minutes
+ago, forever. `pending_adds()` now resolves each player by his LATEST row and
+takes that status, which also handles a claim reinstated after a cancel.
+
+**A second bug the same probe exposed.** A waiver claim carries its own DROP
+item, so it is roster-neutral: one in, one out. `roster_room()` was subtracting
+every pending claim as if each consumed a spot, which understated what was
+available. Only a bare add costs a spot now, and `Claim.costs_a_spot` says
+which is which.
+
+**And something worth surfacing that the drop item made visible.** Two claims
+that drop the same player cannot both land: once the first processes he is gone
+and the second needs a drop that no longer exists. RCL had exactly that, with
+Gibbens and Thomas both dropping Josh Downs, so the note says so.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

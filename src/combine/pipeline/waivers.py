@@ -114,7 +114,10 @@ def roster_room(client, lineup, claimed: dict[str, str] | None = None) -> int:
         return 0
     capacity = sum(int(v or 0) for k, v in counts.items() if k != "IR")
     active = sum(1 for p in lineup if p.slot != "IR")
-    return max(0, capacity - active - len(claimed or {}))
+    # A claim that names its own drop is one in and one out, so it does not
+    # consume a spot. Only a bare add does.
+    waiting = sum(1 for c in (claimed or {}).values() if c.costs_a_spot)
+    return max(0, capacity - active - waiting)
 
 
 def ir_room(client, lineup) -> int:
@@ -132,41 +135,83 @@ def ir_room(client, lineup) -> int:
     return max(0, total - used)
 
 
-def pending_adds(client) -> dict[str, str]:
-    """{espn player id: player name} for claims of mine that have not processed.
+@dataclass(frozen=True)
+class Claim:
+    """A waiver claim of mine that has not processed."""
+
+    player_id: str
+    name: str
+    drop_name: str = ""       # empty when the claim drops nobody
+
+    @property
+    def costs_a_spot(self) -> bool:
+        """A claim that names a drop is roster-neutral: one in, one out."""
+        return not self.drop_name
+
+
+def pending_adds(client) -> dict[str, Claim]:
+    """{espn player id: Claim} for claims of mine that have not processed.
 
     ESPN shows a team only its OWN pending claims, which is the right privacy
     model and also the ceiling on what this can ever know: there is no way to
     see who else is bidding, so nothing here tries to estimate competition.
 
-    What it can do is stop recommending a player already claimed, and stop
-    counting a roster spot twice when a pending add has already spoken for it.
+    Cancelling a claim does NOT remove its row. ESPN appends a second row for
+    the same players with status CANCELED and a later timestamp, so filtering on
+    `status == PENDING` alone keeps reporting a claim that was called off
+    minutes ago. Resolve each player by his LATEST row and take that status.
     """
     try:
         rows = client.league.transactions(types={"WAIVER", "FREEAGENT"})
     except Exception:
         return {}          # never let bookkeeping take the waiver view down
     mine = str(getattr(client.cfg, "team_id", ""))
-    out: dict[str, str] = {}
+
+    latest: dict[str, tuple[int, str, str, str]] = {}
     for tx in rows or []:
-        if str(getattr(tx, "status", "")).upper() != "PENDING":
-            continue
         if str(getattr(getattr(tx, "team", None), "team_id", "")) != mine:
             continue
-        for item in getattr(tx, "items", []) or []:
-            if str(getattr(item, "type", "")).upper() == "ADD":
-                out[str(getattr(item, "playerId", ""))] = getattr(
-                    item, "player", "?")
-    return out
+        when = int(getattr(tx, "date", 0) or 0)
+        status = str(getattr(tx, "status", "")).upper()
+        items = getattr(tx, "items", []) or []
+        added = [i for i in items
+                 if str(getattr(i, "type", "")).upper() == "ADD"]
+        dropped = next((getattr(i, "player", "") for i in items
+                        if str(getattr(i, "type", "")).upper() == "DROP"), "")
+        for item in added:
+            pid = str(getattr(item, "playerId", ""))
+            seen = latest.get(pid)
+            if seen is None or when >= seen[0]:
+                latest[pid] = (when, status, getattr(item, "player", "?"),
+                               dropped)
+
+    return {pid: Claim(player_id=pid, name=name, drop_name=drop)
+            for pid, (_when, status, name, drop) in latest.items()
+            if status == "PENDING"}
 
 
-def pending_note(claims: dict[str, str]) -> str:
+def pending_note(claims: dict[str, Claim]) -> str:
     if not claims:
         return ""
-    who = ", ".join(sorted(claims.values()))
-    return (f"Claim pending on {who}. That roster spot is already spoken for, "
-            f"so everything below is what to do INSTEAD if the claim fails, "
-            f"not as well. No way to see who else bid.")
+    lines = []
+    for c in sorted(claims.values(), key=lambda c: c.name):
+        lines.append(f"{c.name}"
+                     + (f" (dropping {c.drop_name})" if c.drop_name else ""))
+    spots = sum(1 for c in claims.values() if c.costs_a_spot)
+    tail = (f"{spots} roster spot(s) already spoken for. " if spots
+            else "Each names its own drop, so no roster spot is waiting. ")
+
+    # Two claims that drop the same man cannot both land: once the first
+    # processes he is gone, and the second needs a drop that no longer exists.
+    shared = sorted({c.drop_name for c in claims.values() if c.drop_name
+                     and sum(1 for o in claims.values()
+                             if o.drop_name == c.drop_name) > 1})
+    if shared:
+        tail += (f"More than one claim drops {', '.join(shared)}, so they "
+                 f"cannot all land. ")
+    return (f"Claim pending on {', '.join(lines)}. {tail}Everything below is "
+            f"what to do INSTEAD if a claim fails, not as well. No way to see "
+            f"who else bid.")
 
 
 def ir_invalid(lineup) -> list[WeeklyPlayer]:
@@ -679,10 +724,12 @@ def stash_note(client, lineup) -> str:
 def render(candidates: list[Candidate], league_name: str, week: int,
            stash: str = "") -> str:
     if stash and not candidates:
+        # Deliberately says nothing about the note's content: it can be a
+        # blocked roster, a pending claim or an unused IR slot, and asserting
+        # "that roster spot is free" was wrong for two of the three.
         return (f"{league_name} — week {week}\n"
                 f"{stash}\n\n"
-                f"Nobody on the wire improves the lineup, but that roster spot "
-                f"is free either way.")
+                f"Nobody on the wire improves the lineup this week.")
     if not candidates:
         return (f"{league_name} — week {week}\n"
                 f"Nobody on the wire improves the lineup. That is the normal "

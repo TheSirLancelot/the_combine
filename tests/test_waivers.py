@@ -579,10 +579,15 @@ class TxClient(IRClient):
         team = type("T", (), {"team_id": 6})()
         self.league.transactions = lambda types=None: [
             type("Tx", (), {
-                "status": "PENDING", "team": team, "type": "WAIVER",
-                "items": [type("I", (), {"type": "ADD", "playerId": pid,
-                                         "player": name})()],
-            })() for pid, name in pending]
+                "status": row[2] if len(row) > 2 else "PENDING",
+                "team": team, "type": "WAIVER",
+                "date": row[3] if len(row) > 3 else 1,
+                "items": [type("I", (), {"type": "ADD", "playerId": row[0],
+                                         "player": row[1]})()]
+                         + ([type("I", (), {"type": "DROP", "playerId": "d",
+                                            "player": row[4]})()]
+                            if len(row) > 4 and row[4] else []),
+            })() for row in pending]
 
 
 def test_a_player_already_claimed_is_not_recommended_again():
@@ -606,8 +611,10 @@ def test_a_pending_claim_does_not_count_its_spot_as_open_twice():
     lineup = [rostered("Starter", "WR", "WR", 8.0)]
     # capacity is WR 1 + DT 1 + BE 2 = 4, against one rostered player
     client = TxClient(lineup, [], bench=2)
+    from combine.pipeline.waivers import Claim
+
     assert roster_room(client, lineup, {}) == 3
-    assert roster_room(client, lineup, {"1": "Someone"}) == 2
+    assert roster_room(client, lineup, {"1": Claim("1", "Someone", "")}) == 2
 
 
 def test_an_open_roster_spot_makes_the_add_free():
@@ -652,7 +659,9 @@ def test_the_pending_note_says_instead_not_as_well():
     second move to make alongside it."""
     from combine.pipeline.waivers import pending_note
 
-    said = pending_note({"1": "Christian Elliss"})
+    from combine.pipeline.waivers import Claim
+
+    said = pending_note({"1": Claim("1", "Christian Elliss", "")})
     assert "Christian Elliss" in said
     assert "INSTEAD" in said
     assert "who else bid" in said
@@ -737,3 +746,66 @@ def test_a_genuinely_locked_cheaper_drop_is_still_explained():
                                           "Droppable": 60.0, "Starter": 200.0})
     assert found[0].drop_name == "Droppable"
     assert "his game has started" in found[0].blocked_note()
+
+
+def test_a_cancelled_claim_stops_counting():
+    """ESPN does not remove a cancelled claim. It appends a second row for the
+    same players with status CANCELED and a later timestamp, so filtering on
+    PENDING alone keeps reporting a claim called off minutes ago. This cost a
+    round trip: the claim was cancelled, the page refreshed, and the name would
+    not go away."""
+    from combine.pipeline.waivers import pending_adds
+
+    client = TxClient([], [], pending=[
+        ("1", "Malik Willis", "PENDING", 1000, "Sam Darnold"),
+        ("1", "Malik Willis", "CANCELED", 2000, "Sam Darnold"),
+        ("2", "Tre Tucker", "PENDING", 1500, "Stribling"),
+    ])
+    claims = pending_adds(client)
+    assert sorted(c.name for c in claims.values()) == ["Tre Tucker"]
+
+
+def test_a_claim_reinstated_after_a_cancel_counts_again():
+    """Latest row wins, in both directions."""
+    from combine.pipeline.waivers import pending_adds
+
+    client = TxClient([], [], pending=[
+        ("1", "Guy", "PENDING", 1000, ""),
+        ("1", "Guy", "CANCELED", 2000, ""),
+        ("1", "Guy", "PENDING", 3000, ""),
+    ])
+    assert [c.name for c in pending_adds(client).values()] == ["Guy"]
+
+
+def test_a_claim_that_names_its_own_drop_costs_no_roster_spot():
+    """One in, one out. Counting it as consuming a spot understates what is
+    available."""
+    from combine.pipeline.waivers import roster_room
+
+    lineup = [rostered("Starter", "WR", "WR", 8.0)]
+    client = TxClient(lineup, [], bench=2)
+    from combine.pipeline.waivers import Claim
+
+    with_drop = {"1": Claim("1", "Add", "Drop")}
+    bare = {"1": Claim("1", "Add", "")}
+    assert roster_room(client, lineup, with_drop) == 3      # unchanged
+    assert roster_room(client, lineup, bare) == 2
+
+
+def test_claims_sharing_a_drop_cannot_all_land():
+    """Once the first processes he is gone, and the second needs a drop that no
+    longer exists."""
+    from combine.pipeline.waivers import Claim, pending_note
+
+    said = pending_note({
+        "1": Claim("1", "Gibbens", "Josh Downs"),
+        "2": Claim("2", "Thomas", "Josh Downs"),
+    })
+    assert "cannot all land" in said and "Josh Downs" in said
+
+
+def test_distinct_drops_are_not_flagged():
+    from combine.pipeline.waivers import Claim, pending_note
+
+    said = pending_note({"1": Claim("1", "A", "X"), "2": Claim("2", "B", "Y")})
+    assert "cannot all land" not in said

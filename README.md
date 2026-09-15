@@ -281,6 +281,37 @@ client secret and refresh token, it is gitignored, and it should stay that way.
 The refresh token is long lived, so this is roughly an annual chore rather than
 the recurring one ESPN cookies are.
 
+## Roster depth
+
+```bash
+uv run combine depth              # every league
+uv run combine depth dmwd
+```
+
+Rostered players the waiver wire beats at their own position, for the rest of
+the season. Also `/depth` in Discord and a section on the app's Waivers tab.
+
+A different question from the waiver list, which is why it is a different view.
+That one asks whether a free agent improves your lineup this week, and answers
+correctly and uselessly when the problem is a bench player who will not play for
+a month: replacing him gains nothing on Sunday, so he never appears. DMWD was
+carrying De'Zhaun Stribling at 108 rest-of-season points while Tre Tucker sat
+unrostered at 139, and the weekly view had nothing to say about it.
+
+Points are compared only inside a position, never across. Ranking the pool on
+raw rest-of-season projection puts six backup quarterbacks on top, because
+quarterbacks score more than receivers, and a 284 point quarterback is not an
+upgrade on a 108 point receiver when you already start one at 367.
+
+Replacement level is the best free agent at that position. In season that is
+observed rather than estimated, unlike the draft board, which has to model it
+because in August the wire does not exist yet.
+
+Players on IR are left alone, since they are being kept deliberately, and a
+player already claimed is not offered as the upgrade. Anyone who is currently
+starting, injured, or the only player you have at his position is marked, since
+those are different decisions and the tool does not know which you want.
+
 ## Look ahead
 
 ```bash

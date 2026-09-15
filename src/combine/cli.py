@@ -608,6 +608,25 @@ def waivers() -> int:
     return 0
 
 
+def depth() -> int:
+    """combine depth [league...]
+
+    Rostered players the waiver wire beats at their own position, for the rest
+    of the season. A roster question rather than a lineup one: none of these
+    change Sunday, which is why `combine waivers` does not raise them.
+    """
+    from .pipeline.depth import for_league, render
+
+    slugs = sys.argv[2:] or list(config.leagues())
+    for slug in slugs:
+        cfg = config.get_league(slug)
+        if cfg.platform != "espn":
+            print(f"{cfg.name}: needs the API for a free agent pool\n")
+            continue
+        print(render(for_league(slug), cfg.name), "\n")
+    return 0
+
+
 def lookahead() -> int:
     """combine lookahead [league...]
 
@@ -758,6 +777,8 @@ def main() -> int:
         return check_scoring()
     if cmd == "waivers":
         return waivers()
+    if cmd == "depth":
+        return depth()
     if cmd == "lookahead":
         return lookahead()
     if cmd == "scorecard":

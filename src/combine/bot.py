@@ -335,6 +335,48 @@ def build_waivers_all(week: int | None = None) -> list[discord.Embed]:
     return messages
 
 
+def build_depth(league: str) -> list[discord.Embed]:
+    from . import discord_out
+    from .pipeline.depth import for_league
+
+    cfg = config.get_league(league)
+    if cfg.platform != "espn":
+        return [discord_out.message_embed(
+            "Needs the API for a free agent pool.", cfg.name)]
+    gaps = for_league(league)
+    if not gaps:
+        return [discord_out.message_embed(
+            "Nobody on your roster is beaten by the wire at his own position.",
+            f"Roster depth · {cfg.name}", colour=discord_out.GOOD)]
+
+    e = discord.Embed(title=f"Roster depth · {cfg.name}", colour=discord_out.WARN)
+    table = [f"{'YOURS':<15}{'POS':<5}{'GAIN':>6}"]
+    for g in gaps:
+        table.append(f"{discord_out.short_name(g.name, 14):<15}{g.pos[:4]:<5}"
+                     f"{g.gain:>6.0f}")
+    e.description = discord_out.code("\n".join(table))[:discord_out.DESC]
+    for g in gaps:
+        discord_out.field(e, f"{g.name} → {g.best_name}",
+                          g.describe().split(": ", 1)[-1])
+    e.set_footer(text="Rest-of-season points, compared only inside a position. "
+                      "A roster question, not a lineup one: none of these "
+                      "change Sunday, which is why /waivers does not raise them.")
+    return [e]
+
+
+def build_depth_all() -> list[discord.Embed]:
+    out: list[discord.Embed] = []
+    for slug, cfg in config.leagues().items():
+        if cfg.platform != "espn":
+            continue
+        try:
+            out += build_depth(slug)
+        except Exception as exc:
+            log.exception("depth failed for %s", slug)
+            out.append(failure_embed(slug, exc))
+    return out
+
+
 def build_lookahead(league: str) -> list[discord.Embed]:
     from . import discord_out
     from .pipeline.lookahead import look
@@ -633,6 +675,16 @@ async def waivers(interaction: discord.Interaction, league: str | None = None,
                   else (lambda lg, wk: build_waivers(lg, wk).embeds),
                   *( (week,) if league is None else (league, week) ),
                   nav=("waivers", league, week))
+
+
+@client.tree.command(description="Rostered players the wire beats for the season")
+@app_commands.describe(league="Which league, blank for all of them")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def depth(interaction: discord.Interaction, league: str | None = None):
+    await respond(interaction,
+                  build_depth_all if league is None else build_depth,
+                  *((), (league,))[league is not None])
 
 
 @client.tree.command(description="Weeks ahead where the roster cannot fill a slot")

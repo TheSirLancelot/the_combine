@@ -1359,6 +1359,47 @@ deliberate choice, not an obstacle, so it gets no note at all, the same as a
 streamed add. Both directions are tested, because the failure mode here is a
 confident wrong explanation rather than a crash.
 
+## Roster depth, and why it is a separate view
+
+`pipeline/depth.py`, added 2026-09-15, from William noticing the weekly waiver
+view had nothing to say about two doubtful players on his DMWD bench.
+
+He was right and the tool was right, which is the interesting part. `waivers.py`
+asks one question: does this free agent improve the lineup THIS WEEK. Both of
+his doubtful players were on the bench, so they cost nothing on Sunday and
+replacing them gained nothing on Sunday. Every starter was healthy, so a free
+agent had to beat Saquon Barkley to appear at all. Correct, and useless: the
+roster was carrying Stribling at 108 rest-of-season points with Tre Tucker free
+at 139.
+
+**Replacement level is observed, not modelled.** `vorp.py` estimates it from
+league-wide demand because in August the waiver wire does not exist yet. In
+season it does, and the best free agent at a position IS the replacement by
+definition. The number is sitting there, so nothing is invented.
+
+**The naive version is worse than the gap.** Ranking the pool on raw
+rest-of-season projection returns six backup quarterbacks, because quarterbacks
+score more than receivers: Malik Willis at 284 outranks Kenyon Sadiq at 147 for
+a team already starting Jayden Daniels at 367. That is the same mistake as
+ranking a draft board on raw points, which this project already made once and
+fixed with VORP. Comparisons are inside a position only.
+
+Deliberate exclusions: IR players (being kept on purpose), kickers (ESPN cannot
+tell them apart, measured at 50.0% in the waiver work), and anyone already
+claimed. Starters, injured players and the only man at a position are flagged
+rather than filtered, because those are different decisions and the tool cannot
+know which one William wants.
+
+**Live on first run.** DMWD: Stribling 108 against Tre Tucker 139 free. RCL:
+Tyrique Stevenson 139 against Christian Gonzalez 172, flagged as currently
+starting and the only CB on the roster.
+
+## The app has a Waivers tab
+
+Moved 2026-09-15. The wire section had grown past being a footnote on the Week
+page: weekly upgrades, IR stashes, pending claims and roster depth are four
+separate questions and none of them are about this week's lineup.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

@@ -435,7 +435,7 @@ with st.sidebar:
     st.title("The Combine")
 
     # Draft is dormant outside August, so the in-season views lead.
-    mode = st.radio("Mode", ["Week", "Scores", "Scorecard", "Draft"],
+    mode = st.radio("Mode", ["Week", "Waivers", "Scores", "Scorecard", "Draft"],
                     horizontal=True)
 
     league = st.radio("League", list(leagues),
@@ -774,63 +774,6 @@ def week_page():
     role_legend(data["in_season"], config.SEASON - 1 if data["dist"] else None)
 
     st.divider()
-    st.markdown("**Waiver wire**")
-    st.caption(
-        "Free agents who would improve this lineup. Week +/- is what the whole "
-        "lineup is worth afterwards, not a head to head, so it already accounts "
-        "for who shifts where. Season +/- is what the drop costs or gains for "
-        "the rest of the year, kept separate because a week is not worth a "
-        "season. Each row is an alternative, not a sequence: every one is "
-        "measured against the lineup you have now, which is why they can name "
-        "the same drop. Backtested at +2.50 points a week in RCL and +0.79 in "
-        "DMWD over 216 team-weeks each.")
-    wire = load_waivers(league, int(week_no), st.session_state.nonce,
-                        _code_version())
-    if wire.get("stash"):
-        # Three different messages can land here -- a blocked roster, a pending
-        # claim, an unused IR slot -- so this must not label them as one thing.
-        note = wire["stash"]
-        (st.error if "INVALID" in note else st.warning)(note)
-    if wire["unavailable"]:
-        st.info(wire["unavailable"])
-    elif not wire["candidates"]:
-        st.success("Nobody on the wire improves the lineup. That is the normal "
-                   "answer: the pool is unrostered for a reason.")
-    else:
-        rows = []
-        for c in wire["candidates"]:
-            rows.append({
-                "!": "⚠️" if c.correction_carries_it else "",
-                "Add": c.name,
-                "POS": c.pos,
-                "Team": c.team or "--",
-                "PROJ": c.week_proj,
-                "WEEK": c.week_gain,
-                "SEASON": c.season_cost,
-                "Starts over": c.displaces or "--",
-                "Drop": f"{c.drop_name} ({c.drop_pos})"
-                        + (" 🔒" if c.blocked_name or c.drop_locked else ""),
-            })
-        st.dataframe(pd.DataFrame(rows), hide_index=True,
-                     use_container_width=True, column_config=WAIVER_COLS)
-
-        for c in wire["candidates"]:
-            note = c.blocked_note()
-            if note:
-                st.info(f"**{c.name}**: {note}")
-            if c.correction_carries_it:
-                st.warning(
-                    f"**{c.name}** ranks here only because {c.pos} projections "
-                    f"are corrected UP by {c.correction:.1f}, measured on "
-                    f"{c.correction_n} player-weeks. On ESPN's raw number he does "
-                    f"not clear the bar.")
-            elif c.clears_despite_correction:
-                st.caption(
-                    f"{c.name} clears the bar even after {c.pos} projections are "
-                    f"marked DOWN {abs(c.correction):.1f} for being "
-                    f"systematically over-projected.")
-
-    st.divider()
     st.markdown("**The next few weeks**")
     st.caption(
         "Whether the roster can legally fill every starting slot, usually a "
@@ -942,6 +885,110 @@ def scorecard_page():
             hide_index=True, use_container_width=True)
 
 
+def waivers_page():
+    """The wire, on its own tab.
+
+    Lifted out of the Week page because it grew past being a footnote to it:
+    upgrades, IR stashes, pending claims and roster depth are four separate
+    questions and none of them are about this week's lineup.
+    """
+    st.subheader("Waiver wire")
+    st.caption(
+        "Free agents who would improve this lineup. Week +/- is what the whole "
+        "lineup is worth afterwards, not a head to head, so it already accounts "
+        "for who shifts where. Season +/- is what the drop costs or gains for "
+        "the rest of the year, kept separate because a week is not worth a "
+        "season. Each row is an alternative, not a sequence: every one is "
+        "measured against the lineup you have now, which is why they can name "
+        "the same drop. Backtested at +2.50 points a week in RCL and +0.79 in "
+        "DMWD over 216 team-weeks each.")
+    wire = load_waivers(league, int(week_no), st.session_state.nonce,
+                        _code_version())
+    if wire.get("stash"):
+        # Three different messages can land here -- a blocked roster, a pending
+        # claim, an unused IR slot -- so this must not label them as one thing.
+        note = wire["stash"]
+        (st.error if "INVALID" in note else st.warning)(note)
+    if wire["unavailable"]:
+        st.info(wire["unavailable"])
+    elif not wire["candidates"]:
+        st.success("Nobody on the wire improves the lineup. That is the normal "
+                   "answer: the pool is unrostered for a reason.")
+    else:
+        rows = []
+        for c in wire["candidates"]:
+            rows.append({
+                "!": "⚠️" if c.correction_carries_it else "",
+                "Add": c.name,
+                "POS": c.pos,
+                "Team": c.team or "--",
+                "PROJ": c.week_proj,
+                "WEEK": c.week_gain,
+                "SEASON": c.season_cost,
+                "Starts over": c.displaces or "--",
+                "Drop": f"{c.drop_name} ({c.drop_pos})"
+                        + (" 🔒" if c.blocked_name or c.drop_locked else ""),
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True,
+                     use_container_width=True, column_config=WAIVER_COLS)
+
+        for c in wire["candidates"]:
+            note = c.blocked_note()
+            if note:
+                st.info(f"**{c.name}**: {note}")
+            if c.correction_carries_it:
+                st.warning(
+                    f"**{c.name}** ranks here only because {c.pos} projections "
+                    f"are corrected UP by {c.correction:.1f}, measured on "
+                    f"{c.correction_n} player-weeks. On ESPN's raw number he does "
+                    f"not clear the bar.")
+            elif c.clears_despite_correction:
+                st.caption(
+                    f"{c.name} clears the bar even after {c.pos} projections are "
+                    f"marked DOWN {abs(c.correction):.1f} for being "
+                    f"systematically over-projected.")
+
+
+    st.divider()
+    st.markdown("**Roster depth**")
+    st.caption(
+        "Rostered players the wire beats at their own position, for the rest of "
+        "the season. A roster question rather than a lineup one: none of these "
+        "change what you score on Sunday, which is exactly why the list above "
+        "does not raise them. Points are compared only inside a position, "
+        "because a quarterback's are not a receiver's.")
+    gaps = load_depth(league, st.session_state.nonce, _code_version())
+    if not gaps:
+        st.success("Nobody on your roster is beaten by the wire at his own "
+                   "position.")
+    else:
+        st.dataframe(pd.DataFrame([{
+            "Yours": g.name, "POS": g.pos, "Season": g.season,
+            "Best free": g.best_name, "Theirs": g.best_season,
+            "Gain": g.gain,
+            "Note": ", ".join(n for n in (
+                g.status if g.status.upper() not in ("OK", "ACTIVE") else "",
+                "starting" if g.in_lineup else "",
+                f"your only {g.pos}" if g.only_one else "") if n) or "--",
+        } for g in gaps]), hide_index=True, use_container_width=True,
+            column_config={
+                "Season": st.column_config.NumberColumn("Season", format="%.0f"),
+                "Theirs": st.column_config.NumberColumn("Theirs", format="%.0f"),
+                "Gain": st.column_config.NumberColumn(
+                    "Gain", format="%.0f",
+                    help="Rest-of-season points the swap is worth"),
+            })
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_depth(league: str, _nonce: int, _version: str):
+    from combine.pipeline.depth import for_league
+
+    if config.get_league(league).platform != "espn":
+        return []
+    return for_league(league)
+
+
 def scores_page():
     try:
         data = load_scores(int(week_no), st.session_state.nonce, _code_version())
@@ -988,6 +1035,8 @@ def scores_page():
 
 if mode == "Draft":
     page()
+elif mode == "Waivers":
+    waivers_page()
 elif mode == "Scores":
     scores_page()
 elif mode == "Scorecard":

@@ -23,3 +23,22 @@
 {% macro signed(v, dp=1) %}
 <span class="num {{ 'pos' if v > 0 else ('neg' if v < 0 else '') }}">{{ "%+.*f"|format(dp, v) }}</span>
 {% endmacro %}
+
+{# ESPN's chance to win, drawn the way ESPN draws it: one bar, two shares, the
+   percentages at the ends under the team they belong to. Absent whenever ESPN
+   publishes nothing — every week but the one in play — because an empty bar
+   reads as a dead heat rather than as no answer. It is labelled as theirs
+   because it is theirs: we have odds of our own and this is not them. #}
+{% macro odds(mine, theirs) %}
+{% if mine is defined and mine is not none
+      and theirs is defined and theirs is not none %}
+<div class="odds" title="ESPN's chance to win">
+  <span class="pct left">{{ (mine * 100) | round | int }}%</span>
+  <div class="track">
+    <div class="mine" style="width: {{ (mine * 100) | round(1) }}%"></div>
+  </div>
+  <span class="pct right">{{ (theirs * 100) | round | int }}%</span>
+  <small>ESPN's chance to win</small>
+</div>
+{% endif %}
+{% endmacro %}

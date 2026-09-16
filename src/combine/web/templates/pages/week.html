@@ -24,6 +24,7 @@
     <div class="proj num">proj {{ "%.1f"|format(d.their_proj) }}</div>
   </div>
 </div>
+{{ m.odds(d.my_odds, d.their_odds) }}
 
 {% if d.problems %}
 <h2>Cannot play</h2>

@@ -1,3 +1,4 @@
+{% import "_macros.html" as m %}
 {# A man and his score. The order matters: on the right of the slot the score
    comes first in the DOM, because the grid columns run left to right and the
    right-hand side is a mirror of the left, not a repeat of it. #}
@@ -7,8 +8,11 @@
     <div class="nm"><span class="full">{{ c.name }}</span><span
       class="abbr">{{ c.short }}</span>{% if c.status %}<em>{{ c.status }}</em>{% endif %}</div>
     <div class="sub"><span class="nb">{{ c.pos }}{% if c.opponent %} {{ c.opponent }}{% endif %}</span>
-      {%- if c.played %} <span class="nb">· proj {{ "%.1f"|format(c.projected) }}</span>
-      {%- elif c.kickoff %} <span class="nb">· {{ c.kickoff }}</span>{% endif %}</div>
+      {%- if not c.played and c.kickoff %} <span class="nb">· {{ c.kickoff }}</span>{% endif %}</div>
+    {# Once he is playing, what he was projected for sits directly in front of
+       what he has done, because the only reading of one is against the other. #}
+    {% if c.played %}<div class="did"><span class="nb">proj {{ "%.1f"|format(c.projected) }}</span>{%
+      if c.line %} · {{ c.line }}{% endif %}</div>{% endif %}
   </div>
   {% else %}
   <div class="who"><div class="nm dim">Empty</div></div>
@@ -50,15 +54,21 @@
       <div class="side">
         <div class="team">{{ g.me }}</div>
         <div class="big num">{{ "%.1f"|format(g.my_score) }}</div>
-        <div class="proj num">proj {{ "%.1f"|format(g.my_proj) }} · {{ g.yet_to_play }} to play</div>
+        <div class="proj num"><span class="nb">proj {{ "%.1f"|format(g.my_proj) }}</span>
+          <span class="nb">· {{ g.yet_to_play }} to play</span></div>
       </div>
-      <div class="vs">{{ g.league }}<br>wk {{ g.week }}</div>
+      {# The slug, not the league name. 'Dont Mess With Dexas' in an auto-sized
+         middle column squeezes both scores into an ellipsis, and he knows which
+         league is which from three letters. #}
+      <div class="vs" title="{{ g.league }}">{{ g.slug|upper }}<br>wk {{ g.week }}</div>
       <div class="side right">
         <div class="team">{{ g.them }}</div>
         <div class="big num" style="color:var(--text)">{{ "%.1f"|format(g.their_score) }}</div>
-        <div class="proj num">proj {{ "%.1f"|format(g.their_proj) }} · {{ g.their_yet_to_play }} to play</div>
+        <div class="proj num"><span class="nb">proj {{ "%.1f"|format(g.their_proj) }}</span>
+          <span class="nb">· {{ g.their_yet_to_play }} to play</span></div>
       </div>
     </div>
+    {{ m.odds(g.my_odds, g.their_odds) }}
   </summary>
 
   <div class="cast">

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 
+from .. import statline
 from ..config import SEASON, LeagueConfig
 from . import Matchup, PlayerState, ProGame, WeeklyPlayer
 
@@ -41,6 +42,7 @@ class EspnClient:
         self.season = int(season)
         self._league = None
         self._schedule_cache: dict[int, dict[str, ProGame]] = {}
+        self._probs: dict[int, dict[str, float]] = {}
 
     @property
     def league(self):
@@ -204,7 +206,7 @@ class EspnClient:
         self._schedule_cache[wk] = out
         return out
 
-    def _weekly(self, p, schedule: dict[str, ProGame]) -> WeeklyPlayer:
+    def _weekly(self, p, schedule: dict[str, ProGame], wk: int = 0) -> WeeklyPlayer:
         """One box-score player. Field notes from the live probe on 2026-09-09:
           * projected_points and points exist HERE and are None on the
             season-level roster object, which is why the weekly path reads box
@@ -212,6 +214,11 @@ class EspnClient:
           * pro_opponent is the string "None" because ESPN sends opponent id 0
             here. Opponent comes from pro_schedule() instead.
           * game_played is 0 before kickoff and 100 when final.
+          * stats[wk]["breakdown"] is what he actually did: real counts under
+            readable names, alongside numeric stat ids we have no vocabulary
+            for. Before kickoff it is the projection's breakdown, all
+            fractional, which is why the stat line is only built once his game
+            has started.
         A player whose NFL team has no game this week is on bye, which is a
         stronger signal than ESPN's own on_bye flag because it is derived from
         the schedule rather than reported.
@@ -230,7 +237,45 @@ class EspnClient:
             actual=float(getattr(p, "points", 0.0) or 0.0),
             played=bool(getattr(p, "game_played", 0)),
             on_bye=game is None or bool(getattr(p, "on_bye", False)),
+            stat_line=statline.line(self._breakdown(p, wk))
+                      if getattr(p, "game_played", 0) else "",
         )
+
+    @staticmethod
+    def _breakdown(p, wk: int) -> dict:
+        """The raw counts for one week, or {} when ESPN sent none."""
+        try:
+            return (getattr(p, "stats", {}) or {}).get(wk, {}).get("breakdown") or {}
+        except (AttributeError, TypeError):
+            return {}
+
+    def win_probabilities(self, week: int) -> dict[str, float]:
+        """ESPN's own chance-to-win by team id, 0..1, for one week.
+
+        Read from the raw mMatchupScore view because espn-api's BoxScore does
+        not carry it. It appears only on the week in play — past weeks have a
+        winner instead, which is a better number — so entries are matched on the
+        matchup period as well as on the field being present, or a request for
+        week 1 in week 3 would come back wearing week 3's odds.
+        """
+        if week in self._probs:
+            return self._probs[week]
+        found: dict[str, float] = {}
+        try:
+            raw = self.league.espn_request.league_get(
+                params={"view": ["mMatchupScore"], "scoringPeriodId": week})
+            for game in raw.get("schedule", []) or []:
+                if int(game.get("matchupPeriodId", -1)) != int(week):
+                    continue
+                for side in ("home", "away"):
+                    box = game.get(side) or {}
+                    if box.get("winProbability") is None:
+                        continue
+                    found[str(box.get("teamId"))] = float(box["winProbability"])
+        except Exception:
+            found = {}   # an absent chance-to-win is a missing row, not an error
+        self._probs[week] = found
+        return found
 
     def matchup(self, week: int | None = None) -> Matchup:
         """My box score for one week, both lineups.
@@ -241,6 +286,7 @@ class EspnClient:
         """
         wk = int(week or self.week)
         schedule = self.pro_schedule(wk)
+        probs = self.win_probabilities(wk)
         for b in self.league.box_scores(wk):
             for side in ("home", "away"):
                 team = getattr(b, f"{side}_team", None)
@@ -255,11 +301,13 @@ class EspnClient:
                     if side == "home" else getattr(b.away_team, "team_name", "?"),
                     home_proj=float(getattr(b, "home_projected", 0.0) or 0.0),
                     away_proj=float(getattr(b, "away_projected", 0.0) or 0.0),
-                    home_lineup=[self._weekly(p, schedule) for p in (b.home_lineup or [])],
-                    away_lineup=[self._weekly(p, schedule) for p in (b.away_lineup or [])],
+                    home_lineup=[self._weekly(p, schedule, wk) for p in (b.home_lineup or [])],
+                    away_lineup=[self._weekly(p, schedule, wk) for p in (b.away_lineup or [])],
                     home_score=float(getattr(b, "home_score", 0.0) or 0.0),
                     away_score=float(getattr(b, "away_score", 0.0) or 0.0),
                     mine=side,
+                    home_win_prob=probs.get(str(getattr(b.home_team, "team_id", ""))),
+                    away_win_prob=probs.get(str(getattr(b.away_team, "team_id", ""))),
                 )
         raise LookupError(f"team_id {self.cfg.team_id} has no box score in week {wk}")
 
@@ -276,6 +324,7 @@ class EspnClient:
         """
         wk = int(week or self.week)
         schedule = self.pro_schedule(wk)
+        probs = self.win_probabilities(wk)
         out: list[Matchup] = []
         for b in self.league.box_scores(wk):
             home, away = getattr(b, "home_team", None), getattr(b, "away_team", None)
@@ -290,11 +339,13 @@ class EspnClient:
                 week=wk, home_team=home_name, away_team=away_name,
                 home_proj=float(getattr(b, "home_projected", 0.0) or 0.0),
                 away_proj=float(getattr(b, "away_projected", 0.0) or 0.0),
-                home_lineup=[self._weekly(p, schedule) for p in (b.home_lineup or [])],
-                away_lineup=[self._weekly(p, schedule) for p in (b.away_lineup or [])],
+                home_lineup=[self._weekly(p, schedule, wk) for p in (b.home_lineup or [])],
+                away_lineup=[self._weekly(p, schedule, wk) for p in (b.away_lineup or [])],
                 home_score=float(getattr(b, "home_score", 0.0) or 0.0),
                 away_score=float(getattr(b, "away_score", 0.0) or 0.0),
                 mine=mine,
+                home_win_prob=probs.get(str(getattr(home, "team_id", ""))),
+                away_win_prob=probs.get(str(getattr(away, "team_id", ""))),
             ))
         return out
 
@@ -323,5 +374,5 @@ class EspnClient:
                 other = getattr(b, "away_team" if side == "home" else "home_team", None)
                 versus = getattr(other, "team_name", "") or ""
                 for p in getattr(b, f"{side}_lineup", None) or []:
-                    out.append((name, versus, self._weekly(p, schedule)))
+                    out.append((name, versus, self._weekly(p, schedule, week)))
         return out

@@ -301,9 +301,12 @@ def scoreboard_embeds(games, missing) -> list[discord.Embed]:
                                   f"{mine.them.yet_to_play}*"), inline=True)
             if not mine.final:
                 # ESPN's projection, labelled as theirs. It moves during games.
-                head.set_footer(text=f"ESPN projects {mine.me.projected:.1f} to "
-                                     f"{mine.them.projected:.1f} "
-                                     f"({mine.projected_margin:+.1f})")
+                foot = (f"ESPN projects {mine.me.projected:.1f} to "
+                        f"{mine.them.projected:.1f} "
+                        f"({mine.projected_margin:+.1f})")
+                if mine.me.win_prob is not None:
+                    foot += f" · ESPN gives you {mine.me.win_prob * 100:.0f}%"
+                head.set_footer(text=foot)
             out.append(head)
             title = "Every matchup"
 

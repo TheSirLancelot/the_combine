@@ -69,6 +69,10 @@ class WeeklyPlayer:
     actual: float = 0.0
     played: bool = False            # game finished or in progress
     on_bye: bool = False
+    # What he did, already worded: '15/25, 155 yd, 1 INT · 2 car, -1 yd'. A
+    # string rather than the raw breakdown because this object is frozen and
+    # hashable, and a dict field would quietly take the second of those away.
+    stat_line: str = ""
 
     @property
     def starting(self) -> bool:
@@ -99,6 +103,10 @@ class Matchup:
     home_score: float = 0.0
     away_score: float = 0.0
     mine: str = "home"              # which side is the configured team
+    # ESPN's own chance-to-win, 0..1, or None where the platform does not say.
+    # Ours would be a second opinion presented in the same place as theirs.
+    home_win_prob: float | None = None
+    away_win_prob: float | None = None
 
     @property
     def my_lineup(self) -> list[WeeklyPlayer]:
@@ -123,6 +131,14 @@ class Matchup:
     @property
     def their_proj(self) -> float:
         return self.away_proj if self.mine == "home" else self.home_proj
+
+    @property
+    def my_win_prob(self) -> float | None:
+        return self.home_win_prob if self.mine == "home" else self.away_win_prob
+
+    @property
+    def their_win_prob(self) -> float | None:
+        return self.away_win_prob if self.mine == "home" else self.home_win_prob
 
     @property
     def my_score(self) -> float:

@@ -42,6 +42,7 @@ class Cell:
     opponent: str           # '@ DEN', 'vs KC', 'BYE', or '' when unknown
     kickoff: str            # 'Sun 1:25 PM', '' on a bye or an unknown schedule
     status: str             # 'Q', 'O', 'D'... only when it is not plain OK
+    line: str               # '15/25, 155 yd, 1 INT', or '' before he plays
     points: float
     projected: float
     played: bool            # his game has finished or is under way
@@ -69,6 +70,9 @@ class Side:
     projected: float        # ESPN's projected final, which moves during games
     yet_to_play: int        # starters whose game has not finished
     mine: bool
+    # ESPN's own chance-to-win, 0..1. None on any week it does not publish one,
+    # which is every week but the one in play.
+    win_prob: float | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +136,7 @@ def _side(m: Matchup, side: str, my_team: str) -> Side:
         projected=m.home_proj if side == "home" else m.away_proj,
         yet_to_play=sum(1 for p in lineup if p.starting and not p.played),
         mine=bool(my_team) and team == my_team,
+        win_prob=m.home_win_prob if side == "home" else m.away_win_prob,
     )
 
 
@@ -170,6 +175,7 @@ def _cell(p: WeeklyPlayer) -> Cell:
         opponent=p.opponent,
         kickoff="" if p.on_bye or not p.game else _clock(p.game.kickoff_ms),
         status="" if p.status in ("OK", "ACTIVE", "") else p.status,
+        line=p.stat_line,
         points=p.actual,
         projected=p.projected,
         played=p.played,
@@ -308,6 +314,9 @@ def render(games: list[Game], missing: list[Unavailable], width: int = 22) -> st
                          f"{them.projected:.1f} ({g.projected_margin:+.1f}), "
                          f"{me.yet_to_play} of yours left against "
                          f"{them.yet_to_play} of theirs")
+                if me.win_prob is not None:
+                    line += (f"\n    ESPN gives you {me.win_prob * 100:.0f}% "
+                             f"against their {them.win_prob * 100:.0f}%")
             out.append(line)
 
     for item in missing:

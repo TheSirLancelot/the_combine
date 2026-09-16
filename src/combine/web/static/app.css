@@ -147,6 +147,8 @@ p.lede { color: var(--muted); margin: 0 0 18px; font-size: 14.5px; }
                   line-height: 1.1; }
 .scoreline .vs { color: var(--faint); font-size: 12px; font-weight: 600; }
 .scoreline .proj { color: var(--faint); font-size: 12px; }
+.scoreline .proj .nb { white-space: nowrap; }
+.scoreline .vs { max-width: 86px; }
 .lead-good .big { color: var(--good); }
 .lead-bad .big { color: var(--bad); }
 
@@ -193,7 +195,7 @@ details.game > summary:focus-visible { outline: 2px solid var(--accent); }
 
 .castrow {
   display: grid; align-items: center;
-  grid-template-columns: minmax(0, 1fr) 38px 46px 38px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 38px 54px 38px minmax(0, 1fr);
   gap: 5px; padding: 7px 8px;
 }
 .castrow + .castrow { border-top: 1px solid var(--line-soft); }
@@ -217,6 +219,13 @@ details.game > summary:focus-visible { outline: 2px solid var(--accent); }
    the next is a time nobody can read at a glance. */
 .castrow .sub .nb { white-space: nowrap; }
 
+/* What he actually did. Brighter than the kickoff line above it because it is
+   the line you came to read once the ball is in the air, and it only exists
+   for a man whose game has started. */
+.castrow .did {
+  font-size: 11px; color: var(--muted); line-height: 1.35; margin-top: 1px;
+}
+
 /* One name or the other, never both. The full name is in the markup so a wide
    screen and a copy-paste both get it, and `title` covers the phone. */
 .castrow .nm .full { display: none; }
@@ -229,10 +238,14 @@ details.game > summary:focus-visible { outline: 2px solid var(--accent); }
 .castrow .pts.right { text-align: left; }
 .castrow .pts.waiting { color: var(--faint); font-weight: 500; }
 
+/* 'RB/WR/TE' is a real slot in one of these leagues and it has to fit beside
+   two scores on a phone, so the pill shrinks its own text rather than pushing
+   the numbers into each other. */
 .castrow .slot {
-  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-align: center;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0; text-align: center;
+  overflow: hidden; white-space: nowrap;
   color: var(--muted); background: var(--surface-2);
-  border: 1px solid var(--line); border-radius: 999px; padding: 3px 0;
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 2px;
 }
 
 @media (min-width: 560px) {
@@ -243,6 +256,36 @@ details.game > summary:focus-visible { outline: 2px solid var(--accent); }
   .castrow .nm .abbr { display: none; }
   .castrow .pts { font-size: 15px; }
   .castrow .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* --- ESPN's chance to win ------------------------------------------------ */
+
+.odds {
+  display: grid; align-items: center; gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0 16px 14px;
+}
+.odds .track {
+  height: 6px; border-radius: 999px; background: var(--line);
+  overflow: hidden;
+}
+/* One bar, two shares: what is not mine is his, so his half needs no element
+   of its own and the two can never disagree about the total. */
+.odds .mine { height: 100%; background: var(--good); border-radius: 999px; }
+.odds .pct {
+  font-size: 12px; font-weight: 650; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.odds .pct.left { color: var(--good); }
+.odds small {
+  grid-column: 1 / -1; text-align: center; color: var(--faint);
+  font-size: 10.5px; letter-spacing: .02em; margin-top: -2px;
+}
+/* On the week page the bar is not inside a card, so it carries its own. */
+.scoreline + .odds {
+  background: var(--surface); border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 var(--r-lg) var(--r-lg); margin-top: -14px;
+  padding-top: 4px;
 }
 
 /* --- the auto-refresh switch --------------------------------------------- */

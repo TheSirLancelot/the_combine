@@ -52,6 +52,7 @@ PLAYER = {"id": "1", "name": "Jahmyr Gibbs", "pos": "RB", "slot": "RB",
           "boom": 41, "bust": 19, "status": "", "locked": False, "bye": False}
 WEEK = {"week": 2, "me": "Mine", "them": "Theirs", "my_proj": 149.8,
         "their_proj": 142.7, "my_score": 0.0, "their_score": 0.0,
+        "my_odds": 0.54, "their_odds": 0.46,
         "starters": [PLAYER], "bench": [{**PLAYER, "slot": "BE"}],
         "problems": [], "calls": [], "near": [],
         "optimal": {"in": [], "out": [], "gain": 0.0},
@@ -65,15 +66,17 @@ WIRE = {"candidates": [{"name": "A Free Agent", "pos": "WR", "team": "KC",
                    "best": "Free Guy", "theirs": 172, "gain": 32,
                    "note": "because"}]}
 CELL = {"name": "Brock Purdy", "pos": "QB", "team": "SF", "opponent": "vs MIA",
-        "kickoff": "Sun 1:25 PM", "status": "", "points": 0.0,
+        "kickoff": "Sun 1:25 PM", "status": "", "line": "", "points": 0.0,
         "projected": 18.2, "played": False, "locked": False}
 THEIRS = {**CELL, "name": "Jalen Hurts", "team": "PHI", "opponent": "@ TEN",
-          "projected": 24.0, "points": 21.4, "played": True}
+          "line": "18/25, 220 yd, 2 TD", "projected": 24.0, "points": 21.4,
+          "played": True}
 SCORES = {"games": [{"league": "RCL", "slug": "rcl", "week": 2, "me": "Mine",
                      "them": "Theirs",
                      "my_score": 88.2, "their_score": 79.4, "my_proj": 120.0,
                      "their_proj": 118.0, "yet_to_play": 3,
                      "their_yet_to_play": 2, "margin": 8.8,
+                     "my_odds": 0.61, "their_odds": 0.39,
                      "projected_margin": 2.0, "final": False, "started": True,
                      "starters": [{"slot": "QB", "mine": CELL,
                                    "theirs": THEIRS, "lead": -21.4}],
@@ -307,3 +310,32 @@ def test_the_scores_page_carries_an_auto_refresh_switch(client):
     this is the whole contract between the two."""
     assert 'id="autorefresh"' in client.get("/scores").text
     assert 'id="autorefresh"' not in client.get("/week?league=rcl").text
+
+
+def test_espn_win_odds_show_on_both_views(client):
+    """Both, because both answer 'how am I doing' and a number that appears on
+    one of them is a number you have to go looking for."""
+    assert "61%" in client.get("/scores").text
+    assert "54%" in client.get("/week?league=rcl").text
+
+
+def test_the_odds_are_labelled_as_espn_s(client):
+    """We have odds of our own and these are not them. An unattributed bar on a
+    page full of our own numbers reads as one of ours."""
+    assert "ESPN's chance to win" in client.get("/scores").text
+
+
+def test_no_odds_means_no_bar_rather_than_an_even_one(client, monkeypatch):
+    """ESPN publishes a chance to win only for the week in play. An empty bar
+    would say 50/50, which is an answer; saying nothing is the truth."""
+    blank = {**SCORES, "games": [{**SCORES["games"][0],
+                                  "my_odds": None, "their_odds": None}]}
+    monkeypatch.setattr(data, "scores", lambda wk=None: blank)
+    body = client.get("/scores").text
+    assert 'class="odds"' not in body
+    assert "88.2" in body          # the rest of the card is untouched
+
+
+def test_a_player_who_has_played_shows_what_he_did(client):
+    body = client.get("/scores").text
+    assert "18/25, 220 yd, 2 TD" in body

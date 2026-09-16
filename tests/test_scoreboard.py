@@ -214,3 +214,35 @@ def test_a_suffix_stays_with_the_surname():
     from combine.pipeline.scoreboard import _short
 
     assert _short("Travis Etienne Jr.") == "T. Etienne Jr."
+
+
+def test_espn_odds_ride_along_on_the_side():
+    """Read from ESPN rather than computed, because we have odds of our own and
+    two answers in the same place is one answer too many."""
+    g = game(side("H", mine=True), side("A"))
+    assert g.me.win_prob is None                 # nothing said, nothing shown
+
+    him = Side(team="H", score=0.0, projected=120.0, yet_to_play=9, mine=True,
+               win_prob=0.53)
+    assert him.win_prob == 0.53
+
+
+def test_the_terminal_view_prints_the_odds_only_when_espn_gave_some():
+    mine = Side(team="H", score=10.0, projected=120.0, yet_to_play=5, mine=True,
+                win_prob=0.53)
+    theirs = Side(team="A", score=8.0, projected=118.0, yet_to_play=6, mine=False,
+                  win_prob=0.47)
+    out = render([game(mine, theirs)], [])
+    assert "ESPN gives you 53% against their 47%" in out
+
+    quiet = render([game(side("H", score=10.0, mine=True), side("A"))], [])
+    assert "ESPN gives you" not in quiet
+
+
+def test_a_stat_line_rides_along_on_the_cell():
+    """The adapter builds the wording; the cast only has to carry it."""
+    p = wp("a", "QB")
+    assert _pair([p], []) [0].mine.line == ""
+    said = WeeklyPlayer(player_id="1", name="a", team="SF", pos="QB", slot="QB",
+                        stat_line="15/25, 155 yd")
+    assert _pair([said], [])[0].mine.line == "15/25, 155 yd"

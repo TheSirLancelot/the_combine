@@ -124,6 +124,7 @@ def week(league: str, wk: int | None = None) -> dict:
             "their_proj": round(match.their_proj, 1),
             "my_score": round(match.my_score, 1),
             "their_score": round(match.their_score, 1),
+            "my_odds": match.my_win_prob, "their_odds": match.their_win_prob,
             "starters": [_row(p, usage, ids, dist)
                          for p in order_starters(starters, slots)],
             "bench": [_row(p, usage, ids, dist) for p in bench],
@@ -187,6 +188,7 @@ def _cell(c) -> dict | None:
     return {"name": c.name, "short": c.short, "pos": c.pos,
             "team": c.team,
             "opponent": c.opponent, "kickoff": c.kickoff, "status": c.status,
+            "line": c.line,
             "points": round(c.points, 1), "projected": round(c.projected, 1),
             "played": c.played, "locked": c.locked}
 
@@ -211,6 +213,7 @@ def scores(wk: int | None = None) -> dict:
                 "their_proj": round(g.them.projected, 1),
                 "yet_to_play": g.me.yet_to_play,
                 "their_yet_to_play": g.them.yet_to_play,
+                "my_odds": g.me.win_prob, "their_odds": g.them.win_prob,
                 "margin": round(g.margin, 1),
                 "projected_margin": round(g.projected_margin, 1),
                 "final": g.final, "started": g.started,

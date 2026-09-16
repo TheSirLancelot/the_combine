@@ -1627,6 +1627,18 @@ that produce them do not.
 label, that means `find()` can skip a pool player whose game has already kicked
 off, which it now does: adding him gains nothing this week.
 
+## The app has a Compare tab
+
+Added 2026-09-16. William thought compare already lived under the Draft tab; it
+did not. What is there is "Player detail", a draft-board lookup showing VORP and
+ADP, which is off-season code. The in-season comparison had only ever been CLI
+and Discord.
+
+The pickers list every rostered player and free agent with who holds him, 572
+entries in RCL. That index reads every box score in the league plus a 400 player
+pool, so it is cached at `ttl=300`: far too slow to rebuild on each selectbox
+change.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

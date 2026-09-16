@@ -436,7 +436,9 @@ with st.sidebar:
     st.title("The Combine")
 
     # Draft is dormant outside August, so the in-season views lead.
-    mode = st.radio("Mode", ["Week", "Waivers", "Scores", "Scorecard", "Draft"],
+    mode = st.radio("Mode",
+                    ["Week", "Waivers", "Compare", "Scores", "Scorecard",
+                     "Draft"],
                     horizontal=True)
 
     league = st.radio("League", list(leagues),
@@ -1028,6 +1030,118 @@ def load_depth(league: str, _nonce: int, _version: str):
     return for_league(league), stamp
 
 
+@st.cache_data(ttl=300, show_spinner="reading every roster and the pool...")
+def load_compare_index(league: str, week: int, _nonce: int, _version: str):
+    """Every player worth comparing, as {label: name}.
+
+    Cached because it reads every box score in the league plus a 400 player
+    pool, which is far too slow to repeat on each selectbox change.
+    """
+    from combine.pipeline.compare import FREE, MINE, _index
+
+    if config.get_league(league).platform != "espn":
+        return {}
+    index = _index(client_for(league), week)
+    labels = {}
+    for side in index.values():
+        where = {MINE: "yours", FREE: "free"}.get(side.owner, side.owner)
+        labels[f"{side.player.name} · {side.player.pos} · {where}"] = \
+            side.player.name
+    return dict(sorted(labels.items()))
+
+
+def compare_page():
+    st.subheader("Compare")
+    st.caption(
+        "Any two players in the league, whatever their positions and wherever "
+        "they are: your roster, somebody else's, or nobody's. Where exactly one "
+        "of them is yours, it prices the swap against your whole lineup rather "
+        "than against the other player, so a man who frees a slot is worth more "
+        "than his projection says and one who only duplicates cover is worth "
+        "less.")
+
+    cfg = leagues[league]
+    if cfg.platform != "espn":
+        st.info("Needs the API to read rosters and the pool.")
+        return
+
+    labels = load_compare_index(league, int(week_no), st.session_state.nonce,
+                                _code_version())
+    if not labels:
+        st.info("Nobody to compare yet.")
+        return
+
+    left, right = st.columns(2)
+    first = left.selectbox("Player A", [""] + list(labels), key="cmp_a")
+    second = right.selectbox("Player B", [""] + list(labels), key="cmp_b")
+    if not first or not second:
+        st.caption("Pick two.")
+        return
+
+    from combine.pipeline.calibration import load as load_cal
+    from combine.pipeline.compare import compare as run
+
+    cal = load_cal(league)
+    result, complaint = run(client_for(league), labels[first], labels[second],
+                            int(week_no) or None, cal=cal)
+    if result is None:
+        st.warning(complaint)
+        return
+
+    for col, side in ((left, result.a), (right, result.b)):
+        p = side.player
+        col.markdown(f"**{p.name}** · {p.pos} {p.team or '--'}")
+        col.metric("Projected", f"{p.projected:.1f}",
+                   help=f"{p.opponent or 'no game'}")
+        if side.season:
+            col.caption(f"season {side.season:.0f}")
+        if p.status not in ("OK", "ACTIVE", ""):
+            col.warning(p.status)
+        band = outcome_band(p)
+        if band:
+            col.caption(band)
+
+    st.divider()
+    if not result.swappable:
+        both = ("Both are yours, which is a lineup question rather than a swap. "
+                "The Week page answers it."
+                if result.a.mine and result.b.mine else
+                "Neither is yours, so there is no swap to price.")
+        st.info(both)
+        return
+
+    delta = result.delta
+    cols = st.columns(3)
+    cols[0].metric("Lineup now", f"{result.now:.1f}")
+    cols[1].metric("After the swap", f"{result.swapped:.1f}")
+    cols[2].metric("Difference", f"{delta:+.1f}",
+                   delta=f"{delta:+.1f}", delta_color="normal")
+    st.caption(f"Swapping {result.outgoing.player.name} for "
+               f"{result.incoming.player.name}. The whole lineup both times, "
+               f"not the two players.")
+    if result.replaced:
+        st.caption(f"{result.incoming.player.name} also pushes "
+                   f"{result.replaced} out of the lineup.")
+    owner = result.incoming.owner
+    if owner not in ("yours", "free agent"):
+        st.info(f"{result.incoming.player.name} is on {owner}, so this is a "
+                f"trade to propose rather than a move to make.")
+
+
+def outcome_band(player) -> str:
+    """Floor and ceiling for a player, when the outcome history covers him."""
+    from combine.pipeline.usage import family
+
+    dist = outcome_distribution(config.SEASON - 1)
+    if dist is None:
+        return ""
+    band = dist.for_player(family(player.pos), player.projected)
+    if band is None:
+        return ""
+    return (f"floor {band.floor:.1f} · ceiling {band.ceiling:.1f} · "
+            f"boom {band.boom * 100:.0f}% · bust {band.bust * 100:.0f}%")
+
+
 def scores_page():
     try:
         data = load_scores(int(week_no), st.session_state.nonce, _code_version())
@@ -1076,6 +1190,8 @@ if mode == "Draft":
     page()
 elif mode == "Waivers":
     waivers_page()
+elif mode == "Compare":
+    compare_page()
 elif mode == "Scores":
     scores_page()
 elif mode == "Scorecard":

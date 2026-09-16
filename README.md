@@ -289,7 +289,9 @@ uv run combine compare dmwd "Barkley" "Tre Tucker" 3
 ```
 
 Any two players in the league, whatever their positions, wherever they are:
-your roster, somebody else's, or nobody's. Also `/compare` in Discord.
+your roster, somebody else's, or nobody's. Also `/compare` in Discord and a
+Compare tab in the app, where the two pickers list every rostered player and
+free agent with who holds him.
 
 Each gets projection, the calibrated number where it differs, floor and ceiling
 and boom and bust odds, rest-of-season projection for a free agent, and his PFF

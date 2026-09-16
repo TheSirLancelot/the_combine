@@ -1030,6 +1030,16 @@ def load_depth(league: str, _nonce: int, _version: str):
     return for_league(league), stamp
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_pff(_version: str):
+    """(usage, crosswalk ids). Optional: an expired key costs the PFF rows,
+    not the comparison."""
+    try:
+        return load_usage(PffApi()), load_ids()
+    except Exception:
+        return {}, {}
+
+
 @st.cache_data(ttl=300, show_spinner="reading every roster and the pool...")
 def load_compare_index(league: str, week: int, _nonce: int, _version: str):
     """Every player worth comparing, as {label: name}.
@@ -1126,6 +1136,60 @@ def compare_page():
     if owner not in ("yours", "free agent"):
         st.info(f"{result.incoming.player.name} is on {owner}, so this is a "
                 f"trade to propose rather than a move to make.")
+
+    _compare_detail(league, result)
+
+
+def _compare_detail(league: str, result):
+    """Form, season, schedule and the PFF side by side."""
+    from combine.pipeline.compare import detail
+
+    usage, ids = load_pff(_code_version())
+    d = detail(client_for(league), result, usage, ids, config.SEASON)
+    a, b = result.a.player, result.b.player
+
+    st.divider()
+    weeks = sorted({w for f in d.form.values() for w in f})
+    if weeks:
+        st.markdown("**Form so far**")
+        st.caption(
+            "Points actually scored. ESPN publishes a projection for the "
+            "current week and a season total and nothing beyond, so a "
+            "week-by-week forecast is not available from any source here and "
+            "is not invented.")
+        st.dataframe(pd.DataFrame([
+            {"Player": p.name,
+             **{f"wk{w}": d.form.get(p.player_id, {}).get(w) for w in weeks},
+             "Total": sum(d.form.get(p.player_id, {}).values())}
+            for p in (a, b)]), hide_index=True, use_container_width=True)
+
+    if d.season_a or d.season_b:
+        st.markdown("**Season**")
+        cols = st.columns(3)
+        cols[0].metric(a.name, f"{d.season_a:.0f}")
+        cols[1].metric(b.name, f"{d.season_b:.0f}")
+        cols[2].metric("Difference", f"{d.season_delta:+.0f}")
+        st.caption("ESPN's full-year projections, which count games already "
+                   "played. Read the difference rather than the totals.")
+
+    if any(d.schedule.values()):
+        st.markdown("**Schedule ahead**")
+        st.dataframe(pd.DataFrame([
+            {"Player": p.name,
+             **{f"wk{w}": label
+                for w, label in d.schedule.get(p.player_id, [])}}
+            for p in (a, b)]), hide_index=True, use_container_width=True)
+
+    st.markdown("**PFF**")
+    if d.stats:
+        st.dataframe(pd.DataFrame(
+            [{"Stat": label, a.name: va, b.name: vb}
+             for label, va, vb, _dp in d.stats]),
+            hide_index=True, use_container_width=True)
+    else:
+        st.caption("Different position groups, so the usage numbers are not "
+                   "comparable: a tight end's targets and a back's touches are "
+                   "different units.")
 
 
 def outcome_band(player) -> str:

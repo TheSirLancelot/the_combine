@@ -247,3 +247,197 @@ def render(result: Result, usage, ids, dist=None, cal=None) -> str:
                    f"{result.incoming.owner}, so this is a trade to propose "
                    f"rather than a move to make.")
     return "\n".join(out)
+
+
+# --- the deeper comparison --------------------------------------------------
+
+AHEAD = 5          # weeks of schedule to show
+
+
+def espn_history(client, player_ids, through: int) -> dict[str, dict]:
+    """{espn id: {"weeks": {week: points}, "season": full-year projection}}.
+
+    The weeks are ACTUALS, not projections, and that is not a compromise. ESPN
+    publishes a projection for the CURRENT week and a season total, and nothing
+    for the weeks after: verified on the roster objects, where `stats` carries
+    keys 0, 1 and 2 in week 2 and no more. So a week-by-week forecast cannot be
+    built from anything we have, and inventing one is the move this project has
+    twice measured and thrown away. What IS real is what each man has actually
+    scored, week by week, which is the better half of that question anyway.
+
+    One call for both, because they come from the same place and a second round
+    trip for the season number would be waste. It also has to be this call
+    rather than the roster: `season_values` only covers MY team, so a player on
+    a rival roster came back as zero, which read as "projected for nothing"
+    rather than "not looked up".
+    """
+    numeric = [int(i) for i in player_ids if str(i).isdigit()]
+    if not numeric:
+        return {}
+    try:
+        found = client.league.player_info(playerId=numeric)
+    except Exception:
+        return {}
+    out: dict[str, dict] = {}
+    for player in (found if isinstance(found, list) else [found]):
+        if player is None:
+            continue
+        weeks = {
+            int(week): float(stats.get("points") or 0.0)
+            for week, stats in (getattr(player, "stats", {}) or {}).items()
+            if isinstance(week, int) and 0 < week < through
+            and stats.get("points") is not None
+        }
+        out[str(getattr(player, "playerId", ""))] = {
+            "weeks": weeks,
+            "season": float(getattr(player, "projected_total_points", 0.0) or 0.0),
+        }
+    return out
+
+
+def schedule_ahead(client, team: str | None, from_week: int,
+                   weeks: int = AHEAD) -> list[tuple[int, str]]:
+    """[(week, 'vs KC' | '@ KC' | 'BYE')] for the next few weeks.
+
+    A bye is a real zero and the look-ahead view already turns on it, so it
+    belongs in a comparison too: two players a point apart are not equivalent
+    when one of them has a bye inside the fantasy playoffs.
+    """
+    if not team:
+        return []
+    out = []
+    for week in range(from_week, from_week + weeks):
+        try:
+            game = client.pro_schedule(week).get(team)
+        except Exception:
+            break
+        out.append((week, game.label if game else "BYE"))
+    return out
+
+
+def stat_rows(a: Side, b: Side, usage, ids) -> list[tuple[str, float | None,
+                                                          float | None, int]]:
+    """PFF numbers side by side, only when the positions make that meaningful.
+
+    Same family or nothing. A tight end's targets against a running back's
+    touches is not a comparison, and lining the two lists up by index would
+    put one man's yards per route run beside the other's yards after contact.
+    """
+    from . import usage as usage_mod
+
+    if usage_mod.family(a.player.pos) != usage_mod.family(b.player.pos):
+        return []
+    ua = usage_mod.for_espn(usage, ids, a.player.player_id)
+    ub = usage_mod.for_espn(usage, ids, b.player.player_id)
+    if not ua or not ub:
+        return []
+    parts_a = {label: (value, dp) for label, value, dp in ua.parts(a.player.pos)}
+    parts_b = {label: (value, dp) for label, value, dp in ub.parts(b.player.pos)}
+    rows = []
+    for label, (value, dp) in parts_a.items():
+        other = parts_b.get(label, (None, dp))[0]
+        if value is None and other is None:
+            continue
+        rows.append((label, value, other, dp))
+    return rows
+
+
+@dataclass(frozen=True)
+class Detail:
+    """Everything the deeper comparison found."""
+
+    result: Result
+    form: dict[str, dict[int, float]]           # espn id -> week -> points
+    schedule: dict[str, list[tuple[int, str]]]  # espn id -> [(week, opponent)]
+    stats: list[tuple[str, float | None, float | None, int]]
+    season_a: float = 0.0
+    season_b: float = 0.0
+
+    @property
+    def season_delta(self) -> float:
+        """ESPN's full-season projections, differenced. Both count the games
+        already played, so the difference is meaningful while the totals are
+        not a rest-of-season number."""
+        return self.season_b - self.season_a
+
+
+def detail(client, result: Result, usage, ids, season: int,
+           season_values: dict[str, float] | None = None) -> Detail:
+    ids_wanted = [result.a.player.player_id, result.b.player.player_id]
+    values = season_values or {}
+    history = espn_history(client, ids_wanted, result.week)
+
+    def season_for(side: Side) -> float:
+        pid = side.player.player_id
+        return (side.season
+                or history.get(pid, {}).get("season", 0.0)
+                or values.get(pid, 0.0))
+
+    return Detail(
+        result=result,
+        form={pid: row["weeks"] for pid, row in history.items()},
+        schedule={p.player_id: schedule_ahead(client, p.team, result.week)
+                  for p in (result.a.player, result.b.player)},
+        stats=stat_rows(result.a, result.b, usage, ids),
+        season_a=season_for(result.a),
+        season_b=season_for(result.b),
+    )
+
+
+def render_detail(d: Detail) -> str:
+    a, b = d.result.a.player, d.result.b.player
+    out = []
+
+    if d.form:
+        weeks = sorted({w for f in d.form.values() for w in f})
+        if weeks:
+            out.append("FORM so far, points actually scored")
+            head = "  " + " ".join(f"{'wk' + str(w):>7}" for w in weeks)
+            out.append(f"  {'':<22}{head.strip()}")
+            for player in (a, b):
+                got = d.form.get(player.player_id, {})
+                cells = " ".join(
+                    f"{got[w]:>7.1f}" if w in got else f"{'--':>7}" for w in weeks)
+                total = sum(got.values())
+                out.append(f"  {player.name[:21]:<22}{cells}   total {total:>6.1f}")
+            out.append("")
+
+    if d.season_a or d.season_b:
+        out.append("SEASON, ESPN's full-year projection")
+        out.append(f"  {a.name[:21]:<22}{d.season_a:>8.0f}")
+        out.append(f"  {b.name[:21]:<22}{d.season_b:>8.0f}")
+        favours = b.name if d.season_delta > 0 else a.name
+        out.append(f"  {'difference':<22}{d.season_delta:>+8.0f}"
+                   f"   favours {favours}")
+        out.append("  These count the whole year including games already "
+                   "played, so read\n  the difference rather than the totals. "
+                   "ESPN publishes no weekly\n  projection past the current "
+                   "week, so a week-by-week forecast is\n  not available from "
+                   "any source here and is not invented.")
+        out.append("")
+
+    if any(d.schedule.values()):
+        out.append("SCHEDULE ahead")
+        for player in (a, b):
+            games = d.schedule.get(player.player_id, [])
+            cells = "  ".join(f"wk{w} {label}" for w, label in games)
+            out.append(f"  {player.name[:21]:<22}{cells}")
+        byes = [player.name for player in (a, b)
+                if any(label == "BYE" for _w, label in d.schedule.get(
+                    player.player_id, []))]
+        if byes:
+            out.append(f"  bye inside this window: {', '.join(byes)}")
+        out.append("")
+
+    if d.stats:
+        out.append(f"PFF, same position so these compare ({a.pos})")
+        out.append(f"  {'':<10}{a.name[:16]:>17}{b.name[:16]:>17}")
+        for label, va, vb, dp in d.stats:
+            left = f"{va:.{dp}f}" if va is not None else "--"
+            right = f"{vb:.{dp}f}" if vb is not None else "--"
+            out.append(f"  {label:<10}{left:>17}{right:>17}")
+    else:
+        out.append("PFF: different position groups, so the usage numbers are "
+                   "not comparable.\nA tight end's targets and a back's touches "
+                   "are different units.")
+    return "\n".join(out)

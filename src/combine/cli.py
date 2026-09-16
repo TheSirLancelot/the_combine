@@ -326,7 +326,12 @@ def compare() -> int:
         dist = None if candidate.empty else candidate
     except Exception:
         dist = None
-    print(render(result, usage, load_ids(), dist, cal))
+    ids = load_ids()
+    print(render(result, usage, ids, dist, cal))
+    print()
+    from .pipeline.compare import detail, render_detail
+
+    print(render_detail(detail(client, result, usage, ids, config.SEASON)))
     return 0
 
 

@@ -1627,6 +1627,45 @@ that produce them do not.
 label, that means `find()` can skip a pool player whose game has already kicked
 off, which it now does: adding him gains nothing this week.
 
+## The deeper comparison, and the projection that does not exist
+
+Added 2026-09-16, after the swap price. William asked for "a comparison of each
+players projections each week, how much the change would impact the overall
+season, and whatever else you think would be beneficial".
+
+**The week-by-week projection he asked for does not exist.** Probed it before
+building anything: ESPN's player objects carry a projection for the CURRENT
+week and a season total, and nothing after -- `stats` keys 0, 1 and 2 in week 2.
+No other source here has one either. So the weekly table is ACTUALS, what each
+man has scored week by week, and `render_detail` says in the output that no
+weekly projection past this week is available and that one is not invented.
+That sentence is in the product, not just here, because the alternative is
+someone assuming the bot has a forecast it does not have. This is the same
+refusal that killed the residual model and the posture idea: arithmetic on real
+numbers works, prediction does not.
+
+**The season number is a difference, never a total.** `projected_total_points`
+is a FULL SEASON projection including games already played, verified earlier
+(Daniels 367.7 over 16.9 games). It is not rest-of-season and must not be read
+as one, so `Detail.season_delta` differences the two and the render leads with
+the difference and labels the totals.
+
+**`espn_history` rather than `season_values`.** `season_values` only covers MY
+team, so a player on a rival roster came back as 0.0, which reads as "projected
+for nothing" rather than "not looked up" -- Barkley showed a season of 0 in the
+first version. One `player_info` call now returns both the played weeks and the
+season number for both men. Non-numeric ids (D/ST are `KC`, not a number) are
+filtered out before the call, because `player_info` raises on them.
+
+**`Usage.parts` split out of `Usage.line`.** Two players compare stat by stat,
+which means the numbers have to be available before formatting. Comparing the
+rendered strings would mean parsing them back out, and a label that differs by
+position would silently line one man's yards per route run up against the
+other's yards after contact.
+
+**`stat_rows` returns nothing across families.** Same `family()` or no table,
+for exactly that reason, and the render says so rather than leaving a blank.
+
 ## The app has a Compare tab
 
 Added 2026-09-16. William thought compare already lived under the Draft tab; it

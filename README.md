@@ -320,6 +320,28 @@ that is a trade to propose, not a move.
 Usage lines are never subtracted across positions. A tight end's targets and a
 running back's touches are different units, so they sit side by side.
 
+### The deeper half
+
+Under the swap price sits a longer read, on the CLI, in the second `/compare`
+embed and below the Compare tab:
+
+- **Form.** What each man has actually scored, week by week, with his total.
+- **Season.** ESPN's full-year projection for each, and the difference. Read
+  the difference, not the totals: both count the games already played, so
+  neither is a rest-of-season number.
+- **Schedule ahead.** The next five weeks of opponents, with byes named. Two
+  players a point apart are not equivalent when one of them is off in week 12.
+- **PFF, when the positions allow it.** Two backs get touches a game, routes a
+  game, yards after contact, breakaway rate and grade, side by side. A back and
+  a receiver get a sentence saying why there is no table instead.
+
+**There is no week-by-week projection, and that is deliberate.** ESPN publishes
+a projection for the current week and a season total, and nothing past that:
+the roster objects carry `stats` keys 0, 1 and 2 in week 2 and no more. So a
+week-by-week forecast cannot be built from anything here, and this project has
+twice measured its own attempts at inventing projections and thrown them away.
+The form table is actuals instead, which is the honest half of that question.
+
 ## Roster depth
 
 ```bash

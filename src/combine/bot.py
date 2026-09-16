@@ -269,10 +269,15 @@ def build_compare(league: str, a: str, b: str,
     if result is None:
         return [discord_out.message_embed(complaint, "No match")]
 
+    from .pipeline.compare import detail, render_detail
+
     usage, _ids, _in_season = _pff()
-    text = render(result, usage, load_ids(), _distribution(), cal)
+    ids = load_ids()
+    text = render(result, usage, ids, _distribution(), cal)
     title = f"{result.a.player.name} vs {result.b.player.name} · week {result.week}"
     embeds = discord_out.compare_embeds(text, title)
+    deeper = render_detail(detail(client, result, usage, ids, config.SEASON))
+    embeds += discord_out.compare_embeds(deeper, "In depth")
     if result.swappable:
         # Colour the verdict: this is the number he opened it for.
         embeds[0].colour = (discord_out.GOOD if result.delta > 0

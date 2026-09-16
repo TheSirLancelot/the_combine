@@ -132,46 +132,55 @@ class Usage:
 
         Tagged with the season it describes, since the table mixes them.
         """
+        return self._fmt(self.parts(pos))
+
+    def parts(self, pos: str) -> list[tuple[str, float | None, int]]:
+        """The same numbers as `line`, before formatting.
+
+        Separate so two players can be compared stat by stat. Comparing the
+        rendered strings would mean parsing them back out, and a label that
+        differs by position would silently line up against the wrong number.
+        """
         g = self.games
         pos = pos.upper()
         if pos == "QB":
             r = self.rows.get("passing")
-            return self._fmt([
+            return [
                 ("db/g", _per_game(_num(r, "dropbacks"), g), 1),
                 ("ypa", _num(r, "ypa"), 1),
                 ("btt%", _num(r, "btt_rate"), 1),
                 ("twp%", _num(r, "twp_rate"), 1),
                 ("grade", _num(r, "grades_pass"), 1),
-            ])
+            ]
         if pos in IDP:
             r = self.rows.get("defense")
             stops = (_num(r, "tackles") or 0) + (_num(r, "assists") or 0)
-            return self._fmt([
+            return [
                 ("snap/g", _per_game(_num(r, "snap_counts_defense"), g), 1),
                 ("tkl/g", _per_game(stops, g) or None, 1),
                 ("sacks", _num(r, "sacks"), 1),
                 ("press", _num(r, "total_pressures"), 0),
                 ("grade", _num(r, "grades_defense"), 1),
-            ])
+            ]
         if pos == "RB":
             run, rec = self.rows.get("rushing"), self.rows.get("receiving")
             touches = (_num(run, "attempts") or 0) + (_num(run, "receptions") or 0)
-            return self._fmt([
+            return [
                 ("touch/g", _per_game(touches, g) or None, 1),
                 ("route/g", _per_game(_num(rec, "routes"), g), 1),
                 ("yco/att", _num(run, "yco_attempt"), 2),
                 ("brk%", _num(run, "breakaway_percent"), 1),
                 ("grade", _num(run, "grades_offense"), 1),
-            ])
+            ]
         r = self.rows.get("receiving")
-        return self._fmt([
+        return [
             ("route/g", _per_game(_num(r, "routes"), g), 1),
             ("rt%", _num(r, "route_rate"), 1),
             ("tgt/g", _per_game(_num(r, "targets"), g), 1),
             ("yprr", _num(r, "yprr"), 2),
             ("adot", _num(r, "avg_depth_of_target"), 1),
             ("grade", _num(r, "grades_pass_route"), 1),
-        ])
+        ]
 
     def _fmt(self, parts) -> str:
         body = "  ".join(f"{label} {value:.{dp}f}"

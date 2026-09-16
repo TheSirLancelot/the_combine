@@ -181,6 +181,21 @@ def waivers(league: str, wk: int | None = None) -> dict:
 
 # --- the scoreboard ---------------------------------------------------------
 
+def _cell(c) -> dict | None:
+    if c is None:
+        return None
+    return {"name": c.name, "short": c.short, "pos": c.pos,
+            "team": c.team,
+            "opponent": c.opponent, "kickoff": c.kickoff, "status": c.status,
+            "points": round(c.points, 1), "projected": round(c.projected, 1),
+            "played": c.played, "locked": c.locked}
+
+
+def _rows(rows) -> list[dict]:
+    return [{"slot": r.slot, "mine": _cell(r.mine), "theirs": _cell(r.theirs),
+             "lead": round(r.lead, 1)} for r in rows]
+
+
 def scores(wk: int | None = None) -> dict:
     def build():
         from ..pipeline.scoreboard import build as board
@@ -199,6 +214,8 @@ def scores(wk: int | None = None) -> dict:
                 "margin": round(g.margin, 1),
                 "projected_margin": round(g.projected_margin, 1),
                 "final": g.final, "started": g.started,
+                "slug": g.league,
+                "starters": _rows(g.starters), "bench": _rows(g.bench),
             } for g in games if g.involves_me],
             "missing": [{"league": m.league_name, "why": m.reason}
                         for m in missing],

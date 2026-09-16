@@ -229,13 +229,107 @@
     drawChips();
   }
 
+  // --- auto refresh ------------------------------------------------------
+  //
+  // Only the scores page asks for this, and only while you are looking at it.
+  // Two things make a silent reload different from the navigation above: there
+  // is no skeleton, because replacing a live score with a grey box every thirty
+  // seconds is worse than a stale one, and the page has to come back the way
+  // you left it — the same cards open, the same scroll position. The server has
+  // no idea which cards you opened, so that has to be carried across the swap
+  // here.
+
+  const TICK = 30000;   // matches the memo behind /scores; faster only re-reads
+  let beat = null;
+  let left = 0;
+
+  function on() {
+    try { return localStorage.getItem("autorefresh") === "1"; }
+    catch (e) { return false; }
+  }
+  function remember(v) {
+    try { localStorage.setItem("autorefresh", v ? "1" : "0"); } catch (e) {}
+  }
+
+  function label() {
+    const note = document.getElementById("autowhen");
+    if (!note) return;
+    const box = document.getElementById("autorefresh");
+    const live = box && box.checked;
+    note.textContent = live ? "in " + Math.max(0, Math.round(left / 1000)) + "s"
+                            : "off";
+    note.className = live ? "on" : "";
+  }
+
+  async function beat_once() {
+    const box = document.getElementById("autorefresh");
+    const el = main();
+    if (!box || !box.checked || !el) return;
+    const open = [...document.querySelectorAll("details.game[open]")]
+      .map((d) => d.dataset.game);
+    const y = window.scrollY;
+    let html;
+    try {
+      const res = await fetch(location.href, { headers: { "X-Partial": "1" } });
+      if (!res.ok) return;
+      html = await res.text();
+    } catch (e) {
+      return;   // a dropped request is a missed tick, not a broken page
+    }
+    if (!document.getElementById("autorefresh")) return;   // navigated mid-flight
+    el.innerHTML = html;
+    open.forEach((k) => {
+      const d = document.querySelector('details.game[data-game="' + k + '"]');
+      if (d) d.open = true;
+    });
+    const again = document.getElementById("autorefresh");
+    if (again) again.checked = true;
+    window.scrollTo({ top: y });
+    arrived();
+  }
+
+  function pump() {
+    if (beat) clearInterval(beat);
+    beat = setInterval(() => {
+      const box = document.getElementById("autorefresh");
+      if (!box) { clearInterval(beat); beat = null; return; }
+      if (!box.checked) { left = TICK; label(); return; }
+      left -= 1000;
+      if (left <= 0) { left = TICK; beat_once(); }
+      label();
+    }, 1000);
+  }
+
+  function autowire() {
+    const box = document.getElementById("autorefresh");
+    if (!box || box.dataset.wired) { if (box) label(); return; }
+    box.dataset.wired = "1";
+    box.checked = on();
+    box.addEventListener("change", () => {
+      remember(box.checked);
+      left = TICK;
+      label();
+      if (box.checked) beat_once();
+    });
+    left = TICK;
+    label();
+    pump();
+  }
+
   function enhanceAll() {
     document.querySelectorAll("form.tool select").forEach(enhance);
   }
 
-  document.addEventListener("DOMContentLoaded", enhanceAll);
-  const swapped = new MutationObserver(enhanceAll);
+  // Everything that has to happen to a freshly arrived page, in one place, so
+  // a first load and a partial swap cannot drift apart.
+  function arrived() {
+    enhanceAll();
+    autowire();
+  }
+
+  const swapped = new MutationObserver(arrived);
   document.addEventListener("DOMContentLoaded", () => {
+    arrived();
     const el = main();
     if (el) swapped.observe(el, { childList: true });
   });

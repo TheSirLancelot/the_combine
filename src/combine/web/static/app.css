@@ -150,6 +150,115 @@ p.lede { color: var(--muted); margin: 0 0 18px; font-size: 14.5px; }
 .lead-good .big { color: var(--good); }
 .lead-bad .big { color: var(--bad); }
 
+
+/* --- the cast ------------------------------------------------------------
+   ESPN's FantasyCast shape: two lineups facing each other with the slot down
+   the middle. The hard part is the phone. Five columns at 390px only works if
+   the two name columns are allowed to shrink, which is what min-width:0 is for
+   — without it a grid track refuses to go below the width of its longest word
+   and the whole row spills sideways. The scores are fixed width so the middle
+   column stays on the centre line whatever the numbers do. */
+
+details.game {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow); overflow: hidden;
+}
+details.game > summary {
+  /* `display: block` on purpose: the waiver rows style their summaries as flex,
+     and a flex item shrink-wraps, which left the whole scoreline huddled in the
+     left third of the card on a wide screen. */
+  display: block; list-style: none; cursor: pointer; position: relative;
+}
+details.game > summary::-webkit-details-marker { display: none; }
+details.game > summary .scoreline {
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}
+/* A chevron under the score, because a card that opens has to look like one. */
+details.game > summary::after {
+  content: ""; position: absolute; left: 50%; bottom: 6px; width: 9px;
+  height: 9px; margin-left: -5px; border-right: 2px solid var(--faint);
+  border-bottom: 2px solid var(--faint); transform: rotate(45deg);
+  transition: transform .18s ease;
+}
+details.game[open] > summary::after { transform: rotate(225deg); }
+details.game > summary:focus-visible { outline: 2px solid var(--accent); }
+
+.cast { border-top: 1px solid var(--line); padding: 4px 0 8px; }
+
+.casthead {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--faint); text-align: center;
+  padding: 10px 0 6px; border-top: 1px solid var(--line-soft); margin-top: 4px;
+}
+
+.castrow {
+  display: grid; align-items: center;
+  grid-template-columns: minmax(0, 1fr) 38px 46px 38px minmax(0, 1fr);
+  gap: 5px; padding: 7px 8px;
+}
+.castrow + .castrow { border-top: 1px solid var(--line-soft); }
+
+.castrow .who { min-width: 0; }
+.castrow .who:last-child { text-align: right; }
+.castrow .nm {
+  font-size: 13px; font-weight: 600; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.castrow .nm.dim { color: var(--faint); font-weight: 500; }
+.castrow .nm em {
+  font-style: normal; color: var(--bad); font-size: 10px; font-weight: 700;
+  margin-left: 4px; vertical-align: 1px;
+}
+/* The meta wraps rather than clipping. A truncated '@ DEN Sun 1:2…' is worse
+   than two short lines: the kickoff is the whole point of the line before the
+   game starts, and it is the part an ellipsis always eats first. */
+.castrow .sub { font-size: 11px; color: var(--faint); line-height: 1.35; }
+/* Wrap between the facts, never inside one: 'Sun 1:25' on one line and 'PM' on
+   the next is a time nobody can read at a glance. */
+.castrow .sub .nb { white-space: nowrap; }
+
+/* One name or the other, never both. The full name is in the markup so a wide
+   screen and a copy-paste both get it, and `title` covers the phone. */
+.castrow .nm .full { display: none; }
+.castrow .nm .abbr { display: inline; }
+
+.castrow .pts {
+  font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 650;
+  text-align: right;
+}
+.castrow .pts.right { text-align: left; }
+.castrow .pts.waiting { color: var(--faint); font-weight: 500; }
+
+.castrow .slot {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-align: center;
+  color: var(--muted); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 0;
+}
+
+@media (min-width: 560px) {
+  .castrow { grid-template-columns: minmax(0, 1fr) 56px 64px 56px minmax(0, 1fr);
+             gap: 8px; padding: 9px 14px; }
+  .castrow .nm { font-size: 14px; }
+  .castrow .nm .full { display: inline; }
+  .castrow .nm .abbr { display: none; }
+  .castrow .pts { font-size: 15px; }
+  .castrow .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* --- the auto-refresh switch --------------------------------------------- */
+
+.switch {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 14px 7px 12px; margin-bottom: var(--gap);
+  font-size: 13px; font-weight: 600; user-select: none;
+  /* the global label rule shouts; a switch is not a field label */
+  text-transform: none; letter-spacing: normal; color: var(--text);
+}
+.switch input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+.switch small { color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
+.switch small.on { color: var(--accent); }
+
 /* --- player rows -------------------------------------------------------- */
 
 .row {

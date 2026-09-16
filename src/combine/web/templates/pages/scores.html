@@ -1,24 +1,72 @@
+{# A man and his score. The order matters: on the right of the slot the score
+   comes first in the DOM, because the grid columns run left to right and the
+   right-hand side is a mirror of the left, not a repeat of it. #}
+{% macro who(c) %}
+  {% if c %}
+  <div class="who" title="{{ c.name }}">
+    <div class="nm"><span class="full">{{ c.name }}</span><span
+      class="abbr">{{ c.short }}</span>{% if c.status %}<em>{{ c.status }}</em>{% endif %}</div>
+    <div class="sub"><span class="nb">{{ c.pos }}{% if c.opponent %} {{ c.opponent }}{% endif %}</span>
+      {%- if c.played %} <span class="nb">· proj {{ "%.1f"|format(c.projected) }}</span>
+      {%- elif c.kickoff %} <span class="nb">· {{ c.kickoff }}</span>{% endif %}</div>
+  </div>
+  {% else %}
+  <div class="who"><div class="nm dim">Empty</div></div>
+  {% endif %}
+{% endmacro %}
+
+{% macro pts(c, side) %}
+  <div class="pts {{ side }} {{ 'live' if c and c.played else 'waiting' }}">
+    {{ "%.1f"|format(c.points) if c and c.played else "–" }}</div>
+{% endmacro %}
+
+{% macro castrow(r) %}
+<div class="castrow">
+  {{ who(r.mine) }}
+  {{ pts(r.mine, "left") }}
+  <div class="slot">{{ r.slot }}</div>
+  {{ pts(r.theirs, "right") }}
+  {{ who(r.theirs) }}
+</div>
+{% endmacro %}
+
 <h1>Scores</h1>
-<p class="lede">Every league at once, which is what a Sunday afternoon wants.</p>
+<p class="lede">Your matchup in every league. Tap one to open the lineups.</p>
+
+<label class="switch">
+  <input type="checkbox" id="autorefresh">
+  <span>Auto-refresh</span>
+  <small id="autowhen">off</small>
+</label>
 
 {% if not data.games %}<p class="empty">No matchups to show.</p>{% endif %}
 
 <div class="stack">
 {% for g in data.games %}
 {% set ahead = g.my_score >= g.their_score %}
-<div class="scoreline {{ 'lead-good' if ahead else 'lead-bad' }}">
-  <div class="side">
-    <div class="team">{{ g.me }}</div>
-    <div class="big num">{{ "%.1f"|format(g.my_score) }}</div>
-    <div class="proj num">proj {{ "%.1f"|format(g.my_proj) }} · {{ g.yet_to_play }} to play</div>
+<details class="game" data-game="{{ g.slug }}">
+  <summary>
+    <div class="scoreline {{ 'lead-good' if ahead else 'lead-bad' }}">
+      <div class="side">
+        <div class="team">{{ g.me }}</div>
+        <div class="big num">{{ "%.1f"|format(g.my_score) }}</div>
+        <div class="proj num">proj {{ "%.1f"|format(g.my_proj) }} · {{ g.yet_to_play }} to play</div>
+      </div>
+      <div class="vs">{{ g.league }}<br>wk {{ g.week }}</div>
+      <div class="side right">
+        <div class="team">{{ g.them }}</div>
+        <div class="big num" style="color:var(--text)">{{ "%.1f"|format(g.their_score) }}</div>
+        <div class="proj num">proj {{ "%.1f"|format(g.their_proj) }} · {{ g.their_yet_to_play }} to play</div>
+      </div>
+    </div>
+  </summary>
+
+  <div class="cast">
+    {% for r in g.starters %}{{ castrow(r) }}{% endfor %}
+    {% if g.bench %}<div class="casthead">Bench</div>{% endif %}
+    {% for r in g.bench %}{{ castrow(r) }}{% endfor %}
   </div>
-  <div class="vs">{{ g.league }}<br>wk {{ g.week }}</div>
-  <div class="side right">
-    <div class="team">{{ g.them }}</div>
-    <div class="big num" style="color:var(--text)">{{ "%.1f"|format(g.their_score) }}</div>
-    <div class="proj num">proj {{ "%.1f"|format(g.their_proj) }} · {{ g.their_yet_to_play }} to play</div>
-  </div>
-</div>
+</details>
 {% endfor %}
 </div>
 

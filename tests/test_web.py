@@ -64,11 +64,21 @@ WIRE = {"candidates": [{"name": "A Free Agent", "pos": "WR", "team": "KC",
         "depth": [{"name": "My Guy", "pos": "CB", "season": 139,
                    "best": "Free Guy", "theirs": 172, "gain": 32,
                    "note": "because"}]}
-SCORES = {"games": [{"league": "RCL", "week": 2, "me": "Mine", "them": "Theirs",
+CELL = {"name": "Brock Purdy", "pos": "QB", "team": "SF", "opponent": "vs MIA",
+        "kickoff": "Sun 1:25 PM", "status": "", "points": 0.0,
+        "projected": 18.2, "played": False, "locked": False}
+THEIRS = {**CELL, "name": "Jalen Hurts", "team": "PHI", "opponent": "@ TEN",
+          "projected": 24.0, "points": 21.4, "played": True}
+SCORES = {"games": [{"league": "RCL", "slug": "rcl", "week": 2, "me": "Mine",
+                     "them": "Theirs",
                      "my_score": 88.2, "their_score": 79.4, "my_proj": 120.0,
                      "their_proj": 118.0, "yet_to_play": 3,
                      "their_yet_to_play": 2, "margin": 8.8,
-                     "projected_margin": 2.0, "final": False, "started": True}],
+                     "projected_margin": 2.0, "final": False, "started": True,
+                     "starters": [{"slot": "QB", "mine": CELL,
+                                   "theirs": THEIRS, "lead": -21.4}],
+                     "bench": [{"slot": "BE", "mine": CELL, "theirs": None,
+                                "lead": 0.0}]}],
           "missing": [{"league": "Work", "why": "hand-entered"}],
           "at": "13:20 PDT"}
 CARD = {"rows": [], "summary": [], "at": "09:00 PDT", "error": ""}
@@ -262,3 +272,38 @@ def test_the_fingerprint_moves_when_a_static_file_does(tmp_path, monkeypatch):
     finally:
         os.utime(js, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
     assert cache.asset_version() == before
+
+
+def test_the_scoreboard_opens_into_a_head_to_head(client):
+    """The summary is the score, and the detail behind it is the two lineups
+    facing each other slot by slot, which is the only layout that answers the
+    question a live scoreboard is actually asked: who is beating me where."""
+    body = client.get("/scores").text
+    assert '<details class="game" data-game="rcl"' in body
+    assert "Brock Purdy" in body and "Jalen Hurts" in body
+    assert '<div class="slot">QB</div>' in body
+    assert "Bench" in body
+
+
+def test_a_player_who_has_not_kicked_off_shows_no_score(client):
+    """A zero and a not-yet are different facts and a scoreboard that prints
+    them the same way is lying. Purdy is 0.0 and unplayed; Hurts has 21.4."""
+    body = client.get("/scores").text
+    assert "Sun 1:25 PM" in body        # the kickoff stands in for the score
+    assert "21.4" in body
+    assert "proj 24.0" in body          # his is behind him, next to the actual
+    assert "proj 18.2" not in body      # Purdy's waits until he plays
+
+
+def test_the_empty_side_of_a_row_is_still_a_row(client):
+    """His bench being shorter than mine is information. Dropping the row would
+    silently re-pair everything below it against the wrong man."""
+    body = client.get("/scores").text
+    assert "Empty" in body
+
+
+def test_the_scores_page_carries_an_auto_refresh_switch(client):
+    """The script finds it by id and does nothing at all when it is absent, so
+    this is the whole contract between the two."""
+    assert 'id="autorefresh"' in client.get("/scores").text
+    assert 'id="autorefresh"' not in client.get("/week?league=rcl").text

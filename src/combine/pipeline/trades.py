@@ -72,6 +72,7 @@ from .optimize import best_lineup
 
 SHORTLIST = 60         # pairs per partner priced exactly, after the bounds cut
 LIMIT = 8
+MINE_TEAM = "yours"    # my own squad's key in the league-wide pool
 
 
 def _season(c: dict) -> float:
@@ -257,23 +258,73 @@ def _floor(chosen: list[dict], slot_list: list[str]) -> float | None:
     return min((_season(c) for c in chosen), default=None)
 
 
-def _shape(cands: list[dict], slot_list: list[str],
-           drop_costs: dict[str, float]) -> tuple[str, str]:
-    """(thinnest position, deepest position) for one roster.
+def _profile(cands: list[dict], slot_list: list[str],
+             chosen: list[dict]) -> tuple[dict[str, float], dict[str, float]]:
+    """({position: their weakest starter}, {position: their best non-starter}).
 
-    Observed, not inferred, and this is the whole of the opponent model. Thin is
-    the weakest man who still makes their best-eligible season lineup; deep is
-    where they carry somebody whose absence would cost them nothing. What a
-    manager would want is visible in what he is forced to start.
+    Both keyed on the best-eligible season assignment, so "starter" means the
+    man the roster would actually field over a year rather than whoever is in
+    the slot this Tuesday.
     """
-    chosen = _assignment(cands, slot_list)
-    thin = min(chosen, key=_season)["pos"] if chosen else ""
-    spare: dict[str, int] = {}
+    picked = {c["espn_id"] for c in chosen}
+    worst: dict[str, float] = {}
+    best: dict[str, float] = {}
+    for c in chosen:
+        pos = c["pos"]
+        worst[pos] = min(worst.get(pos, _season(c)), _season(c))
     for c in cands:
-        if drop_costs.get(c["espn_id"], 1.0) <= 0.01:
-            spare[c["pos"]] = spare.get(c["pos"], 0) + 1
-    deep = max(spare, key=lambda pos: spare[pos]) if spare else ""
-    return thin, deep
+        if c["espn_id"] in picked:
+            continue
+        pos = c["pos"]
+        best[pos] = max(best.get(pos, _season(c)), _season(c))
+    return worst, best
+
+
+def league_shape(profiles: dict[str, tuple[dict, dict]], band: float
+                 ) -> dict[str, tuple[str, str]]:
+    """{team: (thinnest position, deepest position)}, measured AGAINST THE
+    LEAGUE rather than against the rest of their own roster.
+
+    The first version compared a roster only with itself, and it produced a
+    contradiction William spotted on screen: "thinnest at WR, carrying spare
+    WRs". Both halves were really measuring how many receivers a roster holds.
+    Thin was the lowest-scoring man in the lineup, which lands on WR because
+    receivers fill the most starting slots and score less than quarterbacks and
+    backs. Deep was a count of players who could be dropped for free, which
+    lands on WR because everybody benches receivers. Two different questions,
+    one answer, and that answer was "rosters have a lot of receivers".
+
+    Thin now means their weakest starter at a position is worse than the
+    league's typical weakest starter at that position. Deep means their best
+    BENCHED player at a position is better than the league's typical benched
+    player there. A position can no longer be both: a benched man who is better
+    than the league's starters would be starting.
+
+    Nothing is named unless the gap clears the noise band, because a position
+    two points off the median is not a hole.
+    """
+    from statistics import median
+
+    def gaps(side: int, sign: float) -> dict[str, dict[str, float]]:
+        pool: dict[str, list[float]] = {}
+        for prof in profiles.values():
+            for pos, value in prof[side].items():
+                pool.setdefault(pos, []).append(value)
+        mids = {pos: median(values) for pos, values in pool.items()}
+        return {team: {pos: sign * (value - mids[pos])
+                       for pos, value in prof[side].items()}
+                for team, prof in profiles.items()}
+
+    short = gaps(0, -1.0)      # how far BELOW the league their starters are
+    spare = gaps(1, +1.0)      # how far ABOVE the league their bench is
+    out = {}
+    for team in profiles:
+        thin = max(short[team], key=short[team].get, default=None)
+        deep = max(spare[team], key=spare[team].get, default=None)
+        out[team] = (
+            thin if thin and short[team][thin] > band else "",
+            deep if deep and spare[team][deep] > band else "")
+    return out
 
 
 def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
@@ -296,6 +347,19 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
     mine = [p for p in mine if season.get(p.player_id, 0.0) > 0]
     my_cands = [_cand(p, cal, season) for p in mine]
     my_chosen = _assignment(my_cands, slot_list)
+
+    # Every roster, solved once, so the shape of one can be judged against the
+    # league instead of against itself. My own team is in the pool: it is part
+    # of the league and leaving it out would shift every median.
+    squads = {MINE_TEAM: (my_cands, my_chosen)}
+    for team, roster in others.items():
+        cands = [_cand(p, cal, season) for p in roster
+                 if season.get(p.player_id, 0.0) > 0]
+        if cands:
+            squads[team] = (cands, _assignment(cands, slot_list))
+    shapes = league_shape(
+        {team: _profile(cands, slot_list, chosen)
+         for team, (cands, chosen) in squads.items()}, bar)
     my_base = sum(_season(c) for c in my_chosen)
     my_floor = _floor(my_chosen, slot_list)
     my_drop = _drop_costs(my_cands, slot_list, my_base, _season,
@@ -307,12 +371,11 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
         players = [p for p in roster if season.get(p.player_id, 0.0) > 0]
         if not players:
             continue
-        their_cands = [_cand(p, cal, season) for p in players]
-        their_chosen = _assignment(their_cands, slot_list)
+        their_cands, their_chosen = squads[team]
         their_base = sum(_season(c) for c in their_chosen)
         their_drop = _drop_costs(their_cands, slot_list, their_base, _season,
                                  {c["espn_id"] for c in their_chosen})
-        thin, deep = _shape(their_cands, slot_list, their_drop)
+        thin, deep = shapes[team]
         theirs_by_id = {p.player_id: p for p in players}
 
         my_add = _add_gains(my_cands, slot_list, my_base,

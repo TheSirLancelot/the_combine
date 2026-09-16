@@ -460,7 +460,13 @@ costs him four, while the linebacker coming back replaces a 117 point starter
 and gains him 59. Same cascade your own side is priced on, read from their end.
 
 Each partner comes with where they are thin and where they carry somebody who
-never starts. That is the whole of the opponent model, and it is deliberate:
+never starts, both measured against the rest of the league at the same position
+rather than against their own roster. Thin means their weakest starter is worse
+than the league's typical weakest starter there; deep means their best benched
+player is better than the league's. Neither is named unless the gap clears the
+noise band, so a partner can come back with one, both or neither.
+
+That is the whole of the opponent model, and it is deliberate:
 league-wide activity this season is 24 events in RCL and 7 in DMWD, none of
 them trades, which is not a sample to learn preferences from. What a manager
 would want is visible in what he is forced to start.

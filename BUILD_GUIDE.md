@@ -1814,8 +1814,33 @@ dictionary order was what let the worse Daniels row win in the first place.
 League-wide activity is 24 events in RCL and 7 in DMWD, none of them trades, so
 there is nothing to learn preferences from; modelling them would be the
 prediction trap in a trade coat. What IS arithmetic is the shape of a roster, so
-`_shape` reports where a partner is thinnest and where he carries somebody who
-never starts. What a manager wants is visible in what he is forced to field.
+each partner is reported with where he is thinnest and where he is carrying
+somebody who never starts. What a manager wants is visible in what he is forced
+to field.
+
+**That shape has to be measured against the LEAGUE, and the first version
+measured it against the roster itself.** William read the result off the screen:
+"thinnest at WR, carrying spare WRs". Both halves were really counting
+receivers. Thin was the lowest-scoring man in the lineup, which lands on WR
+because receivers fill the most starting slots and score less than quarterbacks
+and backs, so it said WR about nearly everybody. Deep was a count of players who
+could be dropped for nothing, which lands on WR because everybody benches
+receivers. Two different questions, one answer, and the answer was "rosters
+contain a lot of receivers".
+
+`league_shape` now compares each roster with every other at the same position:
+thin is their weakest starter against the league's median weakest starter there,
+deep is their best BENCHED player against the league's median benched player
+there, and neither is named unless the gap clears the noise band. The same
+position can no longer be both, by construction: a benched man good enough to
+beat the league's starters would be starting. My own roster is in the pool,
+because it is part of the league and leaving it out shifts every median.
+
+What it reports now actually explains the deals. Super Lamario 64 is "thinnest
+at LB, carrying spare QBs", which is the whole story of the roster the finder
+keeps raiding. Colorado Hooligans gets "carrying spare WRs" and no thin position
+at all, because nothing on their side clears the band, which is the right answer
+rather than a filled-in one.
 
 **In the daily check, in its own try.** Added the same day. A trade finder
 answers a question you would not know to ask, so it posts with the lineup and

@@ -418,3 +418,72 @@ def test_why_they_might_reads_as_a_sentence_or_says_nothing():
     text = with_moves.why_they_might()
     assert "they start Backup QB 339" in text
     assert "out comes Star QB 343" in text
+
+
+# --- reading the shape of somebody else's roster ----------------------------
+
+
+def profiles(**teams):
+    """{team: ({pos: worst starter}, {pos: best benched})}."""
+    return {name: (rows[0], rows[1]) for name, rows in teams.items()}
+
+
+def test_thin_means_worse_than_the_league_not_worse_than_your_own_quarterback():
+    """Every roster's lowest-scoring starter is a receiver, because receivers
+    fill the most slots and score less than quarterbacks. Comparing a roster
+    with itself therefore says 'thin at WR' about everybody, which is what
+    produced 'thinnest at WR, carrying spare WRs' on screen."""
+    shape = T.league_shape(profiles(
+        A=({"QB": 300.0, "WR": 100.0}, {}),
+        B=({"QB": 300.0, "WR": 190.0}, {}),
+        C=({"QB": 300.0, "WR": 200.0}, {})), band=17.0)
+    assert shape["A"][0] == "WR"          # genuinely below the league at WR
+    assert shape["B"][0] == ""            # ordinary, so nothing is named
+    assert shape["C"][0] == ""
+
+
+def test_a_position_within_the_noise_band_is_not_called_a_hole():
+    shape = T.league_shape(profiles(
+        A=({"RB": 195.0}, {}), B=({"RB": 200.0}, {}),
+        C=({"RB": 205.0}, {})), band=17.0)
+    assert all(thin == "" for thin, _deep in shape.values())
+
+
+def test_deep_means_a_better_bench_than_the_league_has():
+    """The two-quarterback roster: Daniels at 339 on the bench is not depth in
+    the sense of 'lots of quarterbacks', it is a startable one nobody else is
+    sitting on."""
+    shape = T.league_shape(profiles(
+        A=({}, {"QB": 339.0, "WR": 120.0}),
+        B=({}, {"QB": 90.0, "WR": 125.0}),
+        C=({}, {"QB": 95.0, "WR": 130.0})), band=17.0)
+    assert shape["A"][1] == "QB"
+    assert shape["B"][1] == "" and shape["C"][1] == ""
+
+
+def test_a_roster_is_never_called_thin_and_deep_at_the_same_position():
+    """The contradiction itself. It cannot recur by construction now: a benched
+    man good enough to beat the league's starters would be starting."""
+    mine = [player("A RB", "RB", slot="RB", proj=15.0),
+            player("A WR", "WR", slot="WR", proj=4.0),
+            player("Bench WR", "WR", proj=3.0)]
+    theirs = [player("B RB", "RB", slot="RB", proj=14.0),
+              player("B WR", "WR", slot="WR", proj=13.0),
+              player("B Bench", "WR", proj=12.0)]
+    season = {"A RB": 300.0, "A WR": 80.0, "Bench WR": 70.0,
+              "B RB": 290.0, "B WR": 260.0, "B Bench": 240.0}
+    client = Client({"Mine": mine, "Rival": theirs}, season)
+    for d in T.find(client, band=10.0, limit=99):
+        assert not (d.partner_thin and d.partner_thin == d.partner_deep)
+
+
+def test_the_profile_splits_starters_from_the_bench_by_the_assignment():
+    """Not by this week's slot. A man ESPN has on the bench may be the best
+    player a roster owns over a season, and vice versa."""
+    cands = [T._cand(p, None, {"Starter": 300.0, "Backup": 250.0})
+             for p in (player("Starter", "RB", slot="BE", proj=1.0),
+                       player("Backup", "RB", slot="RB", proj=20.0))]
+    chosen = T._assignment(cands, ["RB"])
+    worst, best = T._profile(cands, ["RB"], chosen)
+    assert worst == {"RB": 300.0}      # the assignment starts the better man
+    assert best == {"RB": 250.0}

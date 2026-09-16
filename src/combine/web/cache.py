@@ -31,6 +31,23 @@ def code_version() -> str:
                         usedforsecurity=False).hexdigest()[:12]
 
 
+def asset_version() -> str:
+    """Changes whenever anything under `web/static` changes on disk.
+
+    `code_version` walks the Python only, so an edit to app.js moved nothing it
+    could see. That is fine for the memo and wrong for the browser: a phone that
+    has already cached app.js will happily keep running last week's copy against
+    this week's markup, and the symptom of that is a feature that works
+    everywhere except on the one device you are holding. Stamping the URL with
+    this makes the stale copy unreachable rather than unlikely.
+    """
+    here = Path(__file__).resolve().parent / "static"
+    stamps = sorted(f"{p}:{p.stat().st_mtime_ns}"
+                    for p in here.rglob("*") if p.is_file())
+    return hashlib.sha1("|".join(stamps).encode(),
+                        usedforsecurity=False).hexdigest()[:12]
+
+
 def memo(key: tuple, ttl: float, build):
     """`build()` at most once per `ttl` seconds for this key.
 

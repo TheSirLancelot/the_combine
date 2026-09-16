@@ -11,6 +11,7 @@ document, a gate that lets a request through because the middleware order moved.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -232,3 +233,32 @@ def test_the_grade_endpoint_takes_what_the_form_posts(client, monkeypatch):
     assert r.status_code == 200
     assert seen == {"league": "rcl", "give": ["A", "B"], "get": ["C"],
                     "fill": ["D"]}
+
+
+def test_the_static_urls_carry_a_fingerprint(client):
+    """A phone that cached app.js will keep running it against markup it no
+    longer matches, and the symptom is a feature that works everywhere except
+    on the device in your hand. Stamping the URL makes the stale copy
+    unreachable rather than unlikely."""
+    from combine.web.cache import asset_version
+
+    body = client.get("/week?league=rcl").text
+    stamp = asset_version()
+    assert f"/static/app.js?v={stamp}" in body
+    assert f"/static/app.css?v={stamp}" in body
+
+
+def test_the_fingerprint_moves_when_a_static_file_does(tmp_path, monkeypatch):
+    """Otherwise it is decoration. `code_version` walks the Python only, which
+    is why it could not do this job."""
+    from combine.web import cache
+
+    before = cache.asset_version()
+    js = Path(cache.__file__).resolve().parent / "static" / "app.js"
+    stamp = js.stat()
+    try:
+        os.utime(js, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000_000))
+        assert cache.asset_version() != before
+    finally:
+        os.utime(js, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert cache.asset_version() == before

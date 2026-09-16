@@ -28,7 +28,7 @@ from starlette.templating import Jinja2Templates
 
 from .. import access, config
 from . import data
-from .cache import forget
+from .cache import asset_version, forget
 
 HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -37,7 +37,8 @@ templates = Jinja2Templates(directory=str(HERE / "templates"))
 # app and Discord cannot drift into saying different things about one deal.
 from ..pipeline.trades import claim_note, headline
 
-templates.env.globals.update(claim_note=claim_note, headline=headline)
+templates.env.globals.update(claim_note=claim_note, headline=headline,
+                             assets=asset_version)
 
 # slug, tab label, icon path, and the heading its page will show. The last one
 # is what lets the loading outline carry a real title instead of a grey block.

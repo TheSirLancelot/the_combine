@@ -281,6 +281,43 @@ client secret and refresh token, it is gitignored, and it should stay that way.
 The refresh token is long lived, so this is roughly an annual chore rather than
 the recurring one ESPN cookies are.
 
+## Compare two players
+
+```bash
+uv run combine compare rcl "Gibbs" "Saquon"
+uv run combine compare dmwd "Barkley" "Tre Tucker" 3
+```
+
+Any two players in the league, whatever their positions, wherever they are:
+your roster, somebody else's, or nobody's. Also `/compare` in Discord.
+
+Each gets projection, the calibrated number where it differs, floor and ceiling
+and boom and bust odds, rest-of-season projection for a free agent, and his PFF
+usage line.
+
+Then, when exactly one of them is yours, it prices the swap:
+
+```
+SWAPPING Jahmyr Gibbs for Saquon Barkley
+  lineup now      144.1
+  lineup after    138.3
+  difference      -5.8
+```
+
+That is the whole lineup both times, not the two players. A player who frees a
+slot is worth more than his own projection says, and one who only duplicates
+cover you already have is worth less, and neither shows up in a head-to-head
+subtraction. Where the incoming player pushes somebody else out of the lineup,
+it says who.
+
+Two of your own players gets no swap price, because that is a lineup question
+the optimizer already answers. Two of somebody else's gets none either, since
+it is not a move you can make. If the other man is on a rival roster it says so:
+that is a trade to propose, not a move.
+
+Usage lines are never subtracted across positions. A tight end's targets and a
+running back's touches are different units, so they sit side by side.
+
 ## Roster depth
 
 ```bash

@@ -252,37 +252,33 @@ def build_startsit(league: str, week: int | None = None) -> Report:
 
 def build_compare(league: str, a: str, b: str,
                   week: int | None = None) -> list[discord.Embed]:
-    from .pipeline.startsit import head_to_head
+    """Any two players in the league, and what swapping them costs.
+
+    Deliberately not restricted to this week's matchup, which is what it used
+    to be: the interesting comparison is often against somebody else's player
+    or one nobody has.
+    """
+    from . import discord_out
+    from .pipeline.compare import compare, render
+    from .pipeline.crosswalk import load_ids
     from .platforms import client_for
 
     client = client_for(league)
-    matchup = client.matchup(week)
-    pool = matchup.my_lineup + matchup.their_lineup
+    cal = _calibration(league)
+    result, complaint = compare(client, a, b, week, cal=cal)
+    if result is None:
+        return [discord_out.message_embed(complaint, "No match")]
 
-    def find(want: str):
-        needle = want.strip().lower()
-        hits = [p for p in pool if needle in p.name.lower()]
-        if len(hits) == 1:
-            return hits[0], ""
-        if hits:
-            return None, (f"`{want}` matches {len(hits)}: "
-                          + ", ".join(p.name for p in hits))
-        return None, (f"`{want}` is not in this week's matchup. compare works on "
-                      f"rostered players.")
-
-    first, err_a = find(a)
-    second, err_b = find(b)
-    if first is None or second is None:
-        from . import discord_out
-
-        return [discord_out.message_embed(
-            " ".join(x for x in (err_a, err_b) if x), "No match")]
-    usage, ids, in_season = _pff()
-    from . import discord_out
-
-    text = head_to_head(first, second, usage, ids, in_season, matchup.week)
-    return discord_out.compare_embeds(
-        text, f"{first.name} vs {second.name} · week {matchup.week}")
+    usage, _ids, _in_season = _pff()
+    text = render(result, usage, load_ids(), _distribution(), cal)
+    title = f"{result.a.player.name} vs {result.b.player.name} · week {result.week}"
+    embeds = discord_out.compare_embeds(text, title)
+    if result.swappable:
+        # Colour the verdict: this is the number he opened it for.
+        embeds[0].colour = (discord_out.GOOD if result.delta > 0
+                            else discord_out.BAD if result.delta < 0
+                            else discord_out.INFO)
+    return embeds
 
 
 @lru_cache(maxsize=8)

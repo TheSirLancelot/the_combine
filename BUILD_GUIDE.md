@@ -1594,6 +1594,39 @@ already carries, which is worth remembering before getting excited: the measured
 lesson in this project is that usage context helps as CONTEXT beside a
 projection, and every attempt to turn it into a better projection has failed.
 
+## Compare, widened
+
+`pipeline/compare.py`, added 2026-09-16, replacing the `head_to_head` path
+behind `combine compare` and `/compare`.
+
+The old one could only see players in THIS WEEK'S matchup, mine and my
+opponent's, which excludes the comparison that usually matters: my player
+against somebody else's, or against one nobody has. The index is now every
+rostered player in the league, from `player_weeks`, plus the free agent pool
+shaped through `_synthetic`, so the caller never has to know which is which.
+
+**The swap is priced on the whole lineup.** Two calls to `best_lineup`, before
+and after, exactly as the waiver view does it. A head-to-head difference of
+projections is the wrong number: it ignores the cascade, so it flatters a swap
+that frees nothing and undersells one that opens a flex. The test that pins this
+swaps an 18 point back for a 12 point receiver and expects -16, not -6, because
+the receiver cannot fill the back's slot.
+
+**A swap is only priced when exactly one of them is yours.** Two of your own is
+a lineup question the optimizer already answers; two of somebody else's is not a
+move you can make. Where the other man is on a rival roster it says the move is
+a trade to propose.
+
+**Opportunities still do not cross positions**, which is the one thing carried
+over unchanged from `head_to_head`. Points compare across positions; the things
+that produce them do not.
+
+**A fix that fell out of it.** `_synthetic` built pool players with
+`opponent="?"` and a kickoff far in the future, so a free agent rendered as "vs
+?" and `locked` was always False. It now takes the pro schedule. Beyond the
+label, that means `find()` can skip a pool player whose game has already kicked
+off, which it now does: adding him gains nothing this week.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

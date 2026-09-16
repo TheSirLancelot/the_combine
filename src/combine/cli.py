@@ -280,51 +280,53 @@ def start_sit() -> int:
 
 
 def compare() -> int:
-    """combine compare <league> "Player A" "Player B" [week]
+    """combine compare <league> <player A> <player B> [week]
 
-    Head to head for two players in one league, whether or not they are a legal
-    swap for each other. Looks in your lineup first, then the free agent pool.
+    Any two players in the league, whichever positions, wherever they are
+    rostered, plus what the lineup is worth if you swap one for the other.
     """
+    from . import db
+    from .pipeline.calibration import load as load_cal
+    from .pipeline.compare import compare as run
+    from .pipeline.compare import render
     from .pipeline.crosswalk import load_ids
+    from .pipeline.distribution import load as load_dist
     from .pipeline.providers.pff_api import PffApi
-    from .pipeline.startsit import head_to_head
     from .pipeline.usage import load as load_usage
     from .platforms import client_for
 
     args = sys.argv[2:]
     if len(args) < 3:
-        print('usage: combine compare <league> "Player A" "Player B" [week]',
+        print("usage: combine compare <league> <player A> <player B> [week]",
               file=sys.stderr)
         return 2
-    league, want_a, want_b = args[0], args[1], args[2]
-    wk = int(args[3]) if len(args) > 3 and args[3].isdigit() else None
-
-    c = client_for(league)
-    m = c.matchup(wk)
-    pool = m.my_lineup + m.their_lineup
-
-    def find(want: str):
-        needle = want.strip().lower()
-        hits = [p for p in pool if needle in p.name.lower()]
-        if len(hits) == 1:
-            return hits[0], ""
-        if len(hits) > 1:
-            return None, f"'{want}' matches {len(hits)}: " + ", ".join(p.name for p in hits)
-        return None, (f"'{want}' is not in this week's matchup. compare works on "
-                      f"rostered players; free agents need the draft board")
-
-    a, err_a = find(want_a)
-    b, err_b = find(want_b)
-    for err in (err_a, err_b):
-        if err:
-            print(err, file=sys.stderr)
-    if a is None or b is None:
+    league, first, second = args[0], args[1], args[2]
+    week = int(args[3]) if len(args) > 3 and args[3].isdigit() else None
+    if league not in config.leagues():
+        print(f"unknown league {league}. configured: "
+              f"{', '.join(config.leagues())}", file=sys.stderr)
         return 2
 
-    ids = load_ids()
-    api = PffApi()
-    state = api.season_state()
-    print(head_to_head(a, b, load_usage(api), ids, state.in_season, m.week))
+    client = client_for(league)
+    cal = load_cal(league)
+    result, complaint = run(client, first, second, week, cal=cal)
+    if result is None:
+        print(complaint, file=sys.stderr)
+        return 1
+
+    usage = {}
+    try:
+        usage = load_usage(PffApi())
+    except Exception as exc:
+        print(f"(no PFF usage: {type(exc).__name__}: {exc})", file=sys.stderr)
+    dist = None
+    try:
+        with db.connect(readonly=True) as conn:
+            candidate = load_dist(conn, config.SEASON - 1)
+        dist = None if candidate.empty else candidate
+    except Exception:
+        dist = None
+    print(render(result, usage, load_ids(), dist, cal))
     return 0
 
 

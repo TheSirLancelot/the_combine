@@ -451,7 +451,7 @@ class Candidate:
         return line
 
 
-def _synthetic(player, week: int) -> WeeklyPlayer | None:
+def _synthetic(player, week: int, schedule=None) -> WeeklyPlayer | None:
     """A free agent in the shape the lineup code expects.
 
     ESPN's pool players carry a weekly projection and their eligible slots, which
@@ -476,7 +476,12 @@ def _synthetic(player, week: int) -> WeeklyPlayer | None:
         eligible_slots=slots,
         status=status,
         projected=float(proj),
-        game=ProGame(opponent="?", home=True, kickoff_ms=_UNPLAYED),
+        # The real game when the caller has the schedule. Without it the
+        # opponent renders as "?" and `locked` is always False, which would let
+        # the tool recommend adding a player whose game has already kicked off.
+        game=(schedule or {}).get(
+            getattr(player, "proTeam", None),
+            ProGame(opponent="?", home=True, kickoff_ms=_UNPLAYED)),
     )
 
 
@@ -608,13 +613,20 @@ def find(client, week: int | None = None, cal: Calibration | None = None,
     for slot in slot_list:
         weakest.setdefault(slot, 0.0)
 
+    try:
+        schedule = client.pro_schedule(wk)
+    except Exception:
+        schedule = {}        # cached per week; a miss costs the opponent label
+
     out: list[Candidate] = []
     for raw in client.league.free_agents(size=pool_size):
-        candidate = _synthetic(raw, wk)
+        candidate = _synthetic(raw, wk, schedule)
         if candidate is None:
             continue
         if candidate.player_id in claimed:
             continue       # already claimed; recommending him again is noise
+        if candidate.locked:
+            continue       # his game has kicked off; adding him gains nothing
         adjusted = cal.adjust(candidate.pos, candidate.projected)
         if not any(adjusted > weakest.get(slot, 1e9)
                    for slot in candidate.eligible_slots):

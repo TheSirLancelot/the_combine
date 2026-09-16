@@ -1228,12 +1228,31 @@ nothing is projected that ESPN has not already published. The negotiation half
 of the worry stands and was not solved. Nothing models what a manager wants, and
 the tool says so in its own output.
 
-**Multi-player packages.** Two for one is where consolidation trades live, and
-the roster spot freed by giving two and getting one is real value the current
-one-for-one search cannot see. Not built. The search space goes from about 4,400
-pairs to roughly 35,000 triples a league, so it needs the bounds extended to
-sets before it is tractable, and one-for-one found so little in DMWD that it is
-worth knowing whether two-for-one finds more before building for it.
+**Multi-player packages. Measured 2026-09-16 and dropped.** The argument for
+two-for-one was that giving two and getting one frees a roster spot, filled from
+the free pool, and that the freed spot is new value a one-for-one cannot create.
+Probed it before building: 924 two-for-ones in DMWD and 330 in RCL, priced on
+the season assignment with the freed spot filled by whichever of the twelve best
+free agents helped most.
+
+**The freed roster spot is worth 0.0 points in DMWD and 0.1 in RCL.** The best
+free agent in DMWD carries 284 season points and still does not crack the
+starting lineup, because the men already in it beat him at every slot he is
+eligible for. So the premise is false in these leagues: a roster spot is worth
+nothing in starting points. Its real value is insurance against an injury and
+upside on a breakout, and both of those are unpriceable here for the usual
+reason.
+
+Without that, two-for-one is the same near-zero-sum exchange one-for-one already
+measures, with more ways to spell it. Combined season gain came out at a mean of
+-46 in DMWD with zero pairs positive on both sides, and RCL's single qualifying
+package was the same partner and the same complementarity the one-for-one search
+already reports. Nothing to build.
+
+Note what this does NOT say. Real managers make consolidation trades and they
+are often right, because the man they consolidate into is likelier to keep his
+value than two lottery tickets are. That is a variance argument, not a points
+argument, and this system does not have a defensible way to price it.
 
 ## The IR stash
 

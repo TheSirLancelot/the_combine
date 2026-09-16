@@ -29,6 +29,12 @@
   </div>
   {% endif %}
 
+</header>
+
+{# Outside the header, and it has to stay outside: the header carries a
+   backdrop-filter, and a filtered element becomes the containing block for
+   any `position: fixed` inside it. Nested, this bar pinned itself to the
+   bottom of the header -- the top of the screen -- over the league chips. #}
   <nav class="tabs">
     {% for slug, label, path, title in tabs %}
     <a data-nav data-title="{{ title }}" href="/{{ slug }}?league={{ league }}"
@@ -38,7 +44,6 @@
     </a>
     {% endfor %}
   </nav>
-</header>
 
 <main>{% include body %}</main>
 

@@ -478,3 +478,28 @@ def test_the_summary_no_longer_carries_the_truncated_reasoning(client,
     body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
     summary = body.split("</summary>")[0]
     assert "out comes" not in summary
+
+
+def test_the_tab_bar_is_not_nested_inside_the_header(client):
+    """A structural invariant, not a style preference.
+
+    The header carries a backdrop-filter, and a filtered element becomes the
+    containing block for `position: fixed` descendants. Nested in there, the
+    bottom tab bar pinned itself to the bottom of the header — the top of the
+    screen on a phone — sitting on top of the league chips so they could not be
+    tapped at all.
+    """
+    import re
+
+    body = client.get("/week?league=rcl").text
+    header = body[body.index("<header"):body.index("</header>")]
+    assert "<nav" not in header
+    assert re.search(r'</header>.*<nav class="tabs">', body, re.S)
+
+
+def test_the_league_chips_are_present_on_the_pages_that_take_a_league(client):
+    """They were rendering the whole time. Nothing could reach them."""
+    for path in ("/week", "/waivers", "/trades"):
+        body = client.get(f"{path}?league=rcl").text
+        assert 'class="chips"' in body, path
+        assert 'data-league="rcl"' in body, path

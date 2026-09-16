@@ -139,15 +139,49 @@ def test_a_man_outside_the_lineup_costs_nothing_to_lose():
     assert quick["My RB2"] == 0.0
 
 
+def deal(give, get, mine=50.0, theirs=40.0):
+    return T.Deal(give=player(give, "RB"), get=player(get, "QB"),
+                  partner="Them", my_season=mine, their_season=theirs,
+                  my_week=0.0, their_week=0.0)
+
+
 def test_the_table_does_not_fill_with_one_trade_spelled_eight_ways():
     """Before this, every row was the one rival worth raiding paired with each
     man I could send back, and the deal on another roster never appeared."""
-    deals = [T.Deal(give=player(f"Mine {i}", "RB"), get=player("Their Stud", "QB"),
-                    partner="Them", my_season=50.0 - i, their_season=40.0,
-                    my_week=0.0, their_week=0.0)
-             for i in range(5)]
-    kept = T._distinct(deals, 8)
+    kept = T._distinct([deal(f"Mine {i}", "Their Stud", mine=50.0 - i)
+                        for i in range(5)], 8)
     assert len(kept) == 1
+
+
+def test_each_target_keeps_its_own_best_price():
+    """The bug William caught. Keying the dedupe on BOTH sides spent Davis on
+    the first row, so the second row had to find another giver for Daniels and
+    showed +28/+47 while hiding the identical-to-me +28/+60."""
+    kept = T._distinct([deal("Davis", "Lamar", mine=32.0, theirs=56.0),
+                        deal("Davis", "Daniels", mine=28.0, theirs=60.0),
+                        deal("Pitre", "Daniels", mine=28.0, theirs=47.0)], 8)
+    assert [(d.give.name, d.get.name) for d in kept] == [
+        ("Davis", "Lamar"), ("Davis", "Daniels")]
+
+
+def test_a_tie_for_me_goes_to_the_partner_who_gains_more():
+    """He is the one who has to say yes, and leaving it to dictionary order
+    threw away thirteen points of his gain for nothing."""
+    deals = [deal("Pitre", "Daniels", mine=28.0, theirs=47.0),
+             deal("Davis", "Daniels", mine=28.0, theirs=60.0)]
+    deals.sort(key=lambda d: (-d.my_season, -d.their_season))
+    assert deals[0].give.name == "Davis"
+
+
+def test_repeated_givers_are_called_alternatives_not_a_package():
+    both = T.alternatives_note([deal("Davis", "Lamar"), deal("Davis", "Daniels")])
+    assert "Davis appears in more than one row" in both
+    assert "alternatives, not a" in both
+    one = T.alternatives_note([deal("Davis", "Lamar"), deal("Pitre", "Daniels")])
+    assert "appears in more than one row" not in one
+    # Either way, two rows never add up: each is priced against today's roster.
+    assert "not worth the sum of the two" in both
+    assert "not worth the sum of the two" in one
 
 
 def test_a_player_espn_has_no_season_number_for_is_left_out():

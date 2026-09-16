@@ -1377,6 +1377,9 @@ def trades_page():
                      "small or negative: the weekly axis is near zero sum."),
         })
 
+    from combine.pipeline.trades import alternatives_note
+    st.caption(alternatives_note(deals).replace("\n", " "))
+
     _grade_an_offer(league, deals)
 
     with st.expander("What these numbers are, and are not", expanded=False):

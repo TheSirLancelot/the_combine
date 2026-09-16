@@ -318,27 +318,39 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
                 my_week=0.0, their_week=0.0,
                 partner_thin=thin, partner_deep=deep))
 
-    deals.sort(key=lambda d: -d.my_season)
+    # My gain first, then theirs. Among deals worth the same to me, the one
+    # worth more to the partner is the one likelier to be accepted, and leaving
+    # that to dictionary order threw away a strictly better deal: Davis for
+    # Daniels and Pitre for Daniels are both +28 to me, and +60 against +47 to
+    # him.
+    deals.sort(key=lambda d: (-d.my_season, -d.their_season))
     best = _weekly(mine, others, slot_list, cal, season, _distinct(deals, limit))
     return _with_odds(client, wk, mine, slot_list, cal, season, best, dist) \
         if dist else best
 
 
 def _distinct(deals: list[Deal], limit: int) -> list[Deal]:
-    """Best first, never the same player twice on either side.
+    """One row per man you would acquire, at his best price.
 
-    Without this the table is eight spellings of one trade: the one rival worth
-    raiding, paired with each of the eight men I could send back. The second
-    row tells you nothing the first did not, and the deal on some other roster
-    that would have been seventh never appears.
+    Two rules were tried here. Refusing to repeat a player on EITHER side gives
+    a set of deals you could do all at once, which reads well and is wrong: it
+    showed Pitre for Jayden Daniels at +28/+47 while hiding Davis for Daniels at
+    +28/+60, purely because Davis had already been spent on the row above.
+    Identical for me and thirteen points better for the man who has to say yes.
+
+    So the key is the incoming player alone. The question a row answers is "what
+    is the cheapest thing that gets me this man", and that has one answer.
+    Repeating one of my own players across rows is honest, because the rows are
+    alternatives rather than a package -- which `render` says out loud, since
+    each row is priced against the roster as it stands today and two of them do
+    not add up.
     """
     out: list[Deal] = []
-    used: set[str] = set()
+    taken: set[str] = set()
     for deal in deals:
-        if deal.give.player_id in used or deal.get.player_id in used:
+        if deal.get.player_id in taken:
             continue
-        used.add(deal.give.player_id)
-        used.add(deal.get.player_id)
+        taken.add(deal.get.player_id)
         out.append(deal)
         if len(out) >= limit:
             break
@@ -450,6 +462,24 @@ FOOTER = (
     "wants, and nobody in either league has made a trade this season.")
 
 
+def alternatives_note(deals: list[Deal]) -> str:
+    """Said whenever one of my players is on offer in more than one row, which
+    the `get`-keyed dedupe allows on purpose. Each row is priced against the
+    roster as it stands, so two rows sharing a player are alternatives and two
+    rows that do not share one still do not add up."""
+    seen: dict[str, int] = {}
+    for d in deals:
+        seen[d.give.name] = seen.get(d.give.name, 0) + 1
+    repeated = [name for name, n in seen.items() if n > 1]
+    if not repeated:
+        return ("Each row is priced against your roster as it stands today, so "
+                "doing two of them\nis not worth the sum of the two.")
+    return (f"{', '.join(repeated)} appears in more than one row: those are "
+            f"alternatives, not a\npackage. Every row is priced against your "
+            f"roster as it stands today, so doing\ntwo of them is not worth the "
+            f"sum of the two.")
+
+
 def render(deals: list[Deal], league_name: str) -> str:
     if not deals:
         return (f"{league_name} — trades\n"
@@ -479,6 +509,8 @@ def render(deals: list[Deal], league_name: str) -> str:
         out.append("")
         for team, note in shapes.items():
             out.append(f"  {team}: {note}")
+    out.append("")
+    out.append(alternatives_note(deals))
     out.append(FOOTER)
     return "\n".join(out)
 

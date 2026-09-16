@@ -1761,8 +1761,25 @@ for a column that decides nothing.
 **Ordering by the worse of the two bounds, not mine.** Ranking on my own put the
 best player in the league at the top paired with each of the eight men I could
 send back, which is eight spellings of a deal nobody accepts, and buried the pair
-that works. `_distinct` then refuses to reuse a player on either side, for the
-same reason.
+that works.
+
+**`_distinct` keys on the incoming player alone, and the first version keyed on
+both sides.** William spotted the consequence in the app: row one was Davis for
+Lamar Jackson and row two was Pitre for Jayden Daniels at +28/+47, while Davis
+for Daniels at +28/+60 was nowhere, purely because Davis had been spent on the
+row above. Identical for me and thirteen points better for the man who has to
+say yes.
+
+Keying on both sides produces a set of deals you could do all at once, which
+reads well and is the wrong guarantee. The question a row answers is "what is the
+cheapest thing that gets me this man", which has one answer per man. So rows may
+now repeat one of my players, and `alternatives_note` says so: they are
+alternatives rather than a package, and because each row is priced against the
+roster as it stands today, two rows never add up even when they share nobody.
+
+**The sort tie-breaks on the partner's gain.** Among deals worth the same to me,
+the one worth more to him is the one likelier to be accepted, and leaving that to
+dictionary order was what let the worse Daniels row win in the first place.
 
 **The opponent preference model was declined, and the observable half kept.**
 League-wide activity is 24 events in RCL and 7 in DMWD, none of them trades, so

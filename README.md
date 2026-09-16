@@ -427,6 +427,13 @@ WIN% is this week's matchup, simulated by resampling what comparable players
 actually did rather than off a fitted curve. Draws are independent and real
 weeks are not, so it reads a little more confident than it should.
 
+One row per player you would acquire, at his best price, ranked by your gain and
+tie-broken by theirs. Rows can repeat one of your own players, because the
+question a row answers is what the cheapest thing that gets you this man is, and
+that has one answer. When one does repeat, it says so: rows are alternatives,
+not a package. Each is priced against your roster as it stands today, so doing
+two of them is not worth the sum of the two.
+
 Each partner comes with where they are thin and where they carry somebody who
 never starts. That is the whole of the opponent model, and it is deliberate:
 league-wide activity this season is 24 events in RCL and 7 in DMWD, none of

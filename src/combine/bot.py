@@ -386,7 +386,7 @@ def build_trades(league: str) -> Report:
     numbers would repost it every morning until somebody acted.
     """
     from . import discord_out
-    from .pipeline.trades import for_league
+    from .pipeline.trades import alternatives_note, for_league
 
     cfg = config.get_league(league)
     if cfg.platform != "espn":
@@ -420,10 +420,10 @@ def build_trades(league: str) -> Report:
         if shape:
             note += f" {d.partner} is {', '.join(shape)}."
         discord_out.field(e, f"{d.give.name} → {d.get.name} ({d.partner})", note)
-    e.set_footer(text="Whole rosters started best-eligible, before against "
-                      "after. The weekly axis is near zero sum, so the season "
-                      "one is the ranking. Both sides gaining is not the same "
-                      "as them saying yes.")
+    e.set_footer(text=(alternatives_note(deals).replace("\n", " ")
+                       + " Whole rosters started best-eligible, before against "
+                         "after. Both sides gaining is not the same as them "
+                         "saying yes."))
     signature = tuple(f"trade:{d.give.player_id}>{d.get.player_id}"
                       for d in deals)
     return Report([e], news=True, signature=signature)

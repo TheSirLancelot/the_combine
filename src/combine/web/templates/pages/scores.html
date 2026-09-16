@@ -45,6 +45,7 @@
 
 {% if not data.games %}<p class="empty">No matchups to show.</p>{% endif %}
 
+
 <div class="stack">
 {% for g in data.games %}
 {% set ahead = g.my_score >= g.their_score %}
@@ -79,6 +80,34 @@
 </details>
 {% endfor %}
 </div>
+
+{# The feed is built by subtracting one read from the last, so it can only ever
+   describe the stretch this app has been watching. Saying that once, here, is
+   better than letting an empty panel imply a quiet afternoon. #}
+{% if data.feed %}
+<div class="card feed">
+  <div class="casthead">Since you started watching</div>
+  {% for e in data.feed %}
+  <div class="tickrow {{ 'ours' if e.mine else 'theirs' }}">
+    <div class="when">{{ e.clock }}</div>
+    <div class="who">
+      <div class="nm">{{ e.short }}<span class="slotlet">{{ e.slot }}</span></div>
+      <div class="sub">{% if e.what %}{{ e.what }}{% else %}points moved, nothing
+        ESPN named{% endif %}</div>
+      <div class="whose">{{ e.side }}</div>
+    </div>
+    <div class="pts">
+      <div class="d {{ 'up' if e.scored else 'down' }}">{{ "%+.1f"|format(e.points) }}</div>
+      <div class="run">{{ "%.1f"|format(e.total) }}</div>
+    </div>
+  </div>
+  {% endfor %}
+  <p class="foot left">Times are when this looked, not when the play happened.
+    Starters only, both sides. The feed is the difference between reads, so it
+    fills while auto-refresh is on and starts fresh when it has not been
+    watching.</p>
+</div>
+{% endif %}
 
 {% for x in data.missing %}
 <div class="note" style="margin-top:12px"><strong>{{ x.league }}</strong> is not

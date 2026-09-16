@@ -26,6 +26,27 @@ from collections.abc import Mapping
 
 Stats = Mapping[str, float]
 
+# Every key this module can name. Anything outside it is dropped rather than
+# guessed at, both when printing a line and when storing counts to subtract
+# later. Kept in step with the formatters below by a test, which reads them and
+# fails if one of them mentions a key that is not here.
+KNOWN = frozenset({
+    "passingAttempts", "passingCompletions", "passingYards",
+    "passingTouchdowns", "passingInterceptions", "passingTimesSacked",
+    "rushingAttempts", "rushingYards", "rushingTouchdowns",
+    "receivingReceptions", "receivingTargets", "receivingYards",
+    "receivingTouchdowns",
+    "kickoffReturnYards", "puntReturnYards", "lostFumbles",
+    "madeFieldGoals", "missedFieldGoals", "madeExtraPoints",
+    "missedExtraPoints",
+    "defensiveSoloTackles", "defensiveAssistedTackles", "defensiveSacks",
+    "defensiveInterceptions", "defensivePassesDefensed",
+    "defensiveForcedFumbles", "defensiveFumbles", "defensiveBlockedKicks",
+    "defensiveTouchdowns",
+    "defensivePointsAllowed", "defensiveYardsAllowed",
+    "defensivePlusSpecialTeamsTouchdowns",
+})
+
 
 def _n(v: float) -> str:
     """'155', not '155.0'. Counting stats arrive as floats and none of them are
@@ -57,25 +78,35 @@ def _join(parts) -> str:
     return ", ".join(p for p in parts if p)
 
 
+# When the count that gives yards their context is missing, the yards say which
+# kind they are. It reads slightly long on a full line and it is the difference
+# between sense and nonsense on a delta, where a man can pick up three yards
+# between two reads without a new carry or catch crossing a boundary: '1 yd · 3
+# yd' is not a sentence, '1 rush yd · 3 rec yd' is.
+def _yards(s: Stats, key: str, counted: bool, kind: str) -> str:
+    return _bit(s, key, "yd" if counted else f"{kind} yd")
+
+
 def _passing(s: Stats) -> str:
     att, comp = _get(s, "passingAttempts"), _get(s, "passingCompletions")
     head = f"{_n(comp)}/{_n(att)}" if att else ""
-    return _join([head, _bit(s, "passingYards", "yd"),
+    return _join([head, _yards(s, "passingYards", bool(att), "pass"),
                   _bit(s, "passingTouchdowns", "TD"),
                   _bit(s, "passingInterceptions", "INT"),
                   _bit(s, "passingTimesSacked", "sk")])
 
 
 def _rushing(s: Stats) -> str:
+    car = _get(s, "rushingAttempts")
     return _join([_bit(s, "rushingAttempts", "car"),
-                  _bit(s, "rushingYards", "yd"),
+                  _yards(s, "rushingYards", bool(car), "rush"),
                   _bit(s, "rushingTouchdowns", "TD")])
 
 
 def _receiving(s: Stats) -> str:
     rec, tgt = _get(s, "receivingReceptions"), _get(s, "receivingTargets")
     head = f"{_n(rec)}/{_n(tgt)} rec" if tgt else _bit(s, "receivingReceptions", "rec")
-    return _join([head, _bit(s, "receivingYards", "yd"),
+    return _join([head, _yards(s, "receivingYards", bool(rec or tgt), "rec"),
                   _bit(s, "receivingTouchdowns", "TD")])
 
 
@@ -123,6 +154,36 @@ def _is_unit(s: Stats) -> bool:
     string that spells the slot differently in every league."""
     return bool(s.get("defensivePointsAllowed") is not None
                 or s.get("defensiveYardsAllowed") is not None)
+
+
+def pairs(stats: Stats | None) -> tuple[tuple[str, float], ...]:
+    """The counts, sorted, with the noise dropped.
+
+    Only keys this module can name survive, which is the same filter `line`
+    applies and for the same reason: a numeric id we cannot label is no more
+    useful subtracted than it is printed. Sorted so two reads of the same
+    numbers compare equal.
+    """
+    if not stats:
+        return ()
+    return tuple(sorted((k, float(v)) for k, v in stats.items()
+                        if k in KNOWN and v is not None))
+
+
+def delta(before: tuple, after: tuple) -> dict[str, float]:
+    """What changed between two reads, as a breakdown in its own right.
+
+    The point of the whole exercise: this feeds straight back into `line`, so
+    the wording of what a man did in the last thirty seconds comes out of
+    exactly the same vocabulary as the wording of what he did all day.
+    """
+    was = dict(before)
+    out = {}
+    for key, value in after:
+        moved = value - was.get(key, 0.0)
+        if moved:
+            out[key] = moved
+    return out
 
 
 def line(stats: Stats | None) -> str:

@@ -177,3 +177,42 @@ CREATE TABLE IF NOT EXISTS recommendation (
 );
 CREATE INDEX IF NOT EXISTS idx_rec_week ON recommendation(season, week);
 CREATE INDEX IF NOT EXISTS idx_rec_open ON recommendation(scored_at);
+
+-- Live scoring feed. ESPN publishes totals, never events: there is no endpoint
+-- that says "Gibbs scored at 1:42". So an event is manufactured honestly, by
+-- subtracting one read from the one before it. The snapshot is the last read
+-- of each player; the event is what changed since.
+--
+-- Deliberately keyed on ESPN's own player id rather than our canonical one. A
+-- feed that silently drops a man because identity resolution has not seen him
+-- yet is worse than a feed that cannot join him to a projection.
+CREATE TABLE IF NOT EXISTS score_snapshot (
+  league    TEXT NOT NULL,
+  season    INTEGER NOT NULL,
+  week      INTEGER NOT NULL,
+  espn_id   TEXT NOT NULL,
+  points    REAL NOT NULL,
+  stats     TEXT NOT NULL,             -- json of the raw counts
+  seen_at   TEXT NOT NULL,
+  PRIMARY KEY (league, season, week, espn_id)
+);
+
+CREATE TABLE IF NOT EXISTS score_event (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  league    TEXT NOT NULL,
+  season    INTEGER NOT NULL,
+  week      INTEGER NOT NULL,
+  espn_id   TEXT NOT NULL,
+  name      TEXT NOT NULL,
+  short     TEXT NOT NULL,
+  pos       TEXT,
+  team      TEXT,
+  slot      TEXT,
+  side      TEXT NOT NULL,             -- the fantasy team he plays for
+  mine      INTEGER NOT NULL,
+  points    REAL NOT NULL,             -- what this read added
+  total     REAL NOT NULL,             -- his total after it
+  what      TEXT NOT NULL,             -- '1 car, 12 yd, 1 TD', or '' if unnamed
+  at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_event_when ON score_event(season, week, id DESC);

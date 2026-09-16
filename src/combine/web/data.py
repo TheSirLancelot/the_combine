@@ -198,12 +198,39 @@ def _rows(rows) -> list[dict]:
              "lead": round(r.lead, 1)} for r in rows]
 
 
+def _feed(games, week: int) -> list[dict]:
+    """Record this read and hand back the running feed.
+
+    It rides on the scores read rather than a timer of its own: that read
+    already happens on every page load and every auto-refresh tick, and a
+    second clock against ESPN for the same numbers would be a second way to be
+    rate limited.
+    """
+    from .. import db
+    from ..pipeline.feed import observe, recent
+
+    try:
+        db.ensure_schema()
+        with db.connect() as conn:
+            observe(conn, games, config.SEASON, db.now())
+            events = recent(conn, config.SEASON, week, limit=30)
+    except Exception:
+        return []          # a feed that cannot write is not a scoreboard that
+                           # cannot render
+    return [{"clock": e.clock, "name": e.name, "short": e.short, "pos": e.pos,
+             "team": e.team, "slot": e.slot, "side": e.side, "mine": e.mine,
+             "league": e.league, "points": e.points, "total": e.total,
+             "what": e.what, "scored": e.scored} for e in events]
+
+
 def scores(wk: int | None = None) -> dict:
     def build():
         from ..pipeline.scoreboard import build as board
 
         games, missing = board(wk or None)
+        week = next((g.week for g in games if g.involves_me), wk or 0)
         return {
+            "feed": _feed(games, week),
             "games": [{
                 "league": g.league_name, "week": g.week,
                 "me": g.me.team, "them": g.them.team,

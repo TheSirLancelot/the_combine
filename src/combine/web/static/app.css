@@ -388,6 +388,44 @@ details.deal > summary .who .name {
   .spin { animation-duration: 2.4s; }
 }
 
+/* --- the live feed ------------------------------------------------------- */
+
+.card.feed { padding: 0 0 4px; }
+.card.feed .casthead { border-top: 0; margin-top: 0; padding-top: 12px; }
+
+.tickrow {
+  display: grid; grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 4px 10px; align-items: baseline; padding: 8px 14px;
+  border-top: 1px solid var(--line-soft);
+}
+/* A stripe rather than a label. Whose player it was is the first thing you
+   need and the last thing worth spending a word on. */
+.tickrow.ours { box-shadow: inset 3px 0 0 var(--accent); }
+.tickrow.theirs { box-shadow: inset 3px 0 0 var(--line); }
+
+.tickrow .when {
+  color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tickrow .who { min-width: 0; }
+.tickrow .nm { font-weight: 620; font-size: 14px; line-height: 1.25; }
+.tickrow .slotlet {
+  color: var(--faint); font-weight: 600; font-size: 10px; margin-left: 6px;
+  letter-spacing: .04em;
+}
+.tickrow .sub { color: var(--muted); font-size: 12px; line-height: 1.35;
+                margin-top: 1px; }
+.tickrow .whose { color: var(--faint); font-size: 11px; margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tickrow .pts { text-align: right; }
+.tickrow .pts .d {
+  font-size: 15px; font-weight: 680; font-variant-numeric: tabular-nums;
+}
+.tickrow .pts .d.up { color: var(--good); }
+.tickrow .pts .d.down { color: var(--bad); }
+.tickrow .pts .run { color: var(--faint); font-size: 11px;
+  font-variant-numeric: tabular-nums; }
+
 /* --- ESPN's chance to win ------------------------------------------------ */
 
 .odds {

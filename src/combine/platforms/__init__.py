@@ -69,10 +69,15 @@ class WeeklyPlayer:
     actual: float = 0.0
     played: bool = False            # game finished or in progress
     on_bye: bool = False
-    # What he did, already worded: '15/25, 155 yd, 1 INT · 2 car, -1 yd'. A
-    # string rather than the raw breakdown because this object is frozen and
-    # hashable, and a dict field would quietly take the second of those away.
+    # What he did, already worded: '15/25, 155 yd, 1 INT · 2 car, -1 yd'.
     stat_line: str = ""
+    # And the counts behind it, as sorted pairs. A tuple rather than a dict
+    # because this object is frozen and hashable and a dict field would quietly
+    # take the second of those away. The wording is what a view needs; the
+    # counts are what the live feed needs, because the only way to know what a
+    # man did in the last two minutes is to subtract the last two reads, and a
+    # sentence cannot be subtracted from a sentence.
+    stats: tuple[tuple[str, float], ...] = ()
 
     @property
     def starting(self) -> bool:

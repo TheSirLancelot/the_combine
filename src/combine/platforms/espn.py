@@ -239,6 +239,8 @@ class EspnClient:
             on_bye=game is None or bool(getattr(p, "on_bye", False)),
             stat_line=statline.line(self._breakdown(p, wk))
                       if getattr(p, "game_played", 0) else "",
+            stats=statline.pairs(self._breakdown(p, wk))
+                  if getattr(p, "game_played", 0) else (),
         )
 
     @staticmethod

@@ -99,3 +99,79 @@ def test_a_shutout_still_reports_the_points_allowed():
 def test_receiving_without_targets_still_reports_catches():
     assert line({"receivingReceptions": 3.0, "receivingYards": 28.0}
                 ) == "3 rec, 28 yd"
+
+
+def test_every_key_the_formatters_read_is_declared_known():
+    """KNOWN decides what survives into storage, and storage is what the feed
+    subtracts. A key a formatter reads but KNOWN omits would print on the stat
+    line and vanish from the feed, which is the kind of disagreement that takes
+    an afternoon to notice and an evening to find."""
+    import re
+
+    from combine import statline
+
+    src = Path(statline.__file__).read_text()
+    used = set(re.findall(r'_(?:get|bit)\(\w+, "([A-Za-z0-9]+)"', src))
+    used |= {k for pair in re.findall(
+        r'_ratio\(\w+, "([A-Za-z0-9]+)", "([A-Za-z0-9]+)"', src) for k in pair}
+    used |= set(re.findall(r'\w+\.get\("([A-Za-z0-9]+)"\)', src))
+
+    assert used, "the scan found nothing, so it is not guarding anything"
+    assert used - statline.KNOWN == set()
+
+
+def test_pairs_keeps_only_what_can_be_named_and_sorts_it():
+    """Sorted so two reads of the same numbers compare equal, and filtered for
+    the same reason a numeric id never reaches the line: it cannot be labelled,
+    so it cannot be explained."""
+    from combine.statline import pairs
+
+    assert pairs({"rushingYards": 44.0, "rushingAttempts": 11.0, "210": 1.0}
+                 ) == (("rushingAttempts", 11.0), ("rushingYards", 44.0))
+    assert pairs({}) == () and pairs(None) == ()
+
+
+def test_delta_is_what_moved_and_nothing_else():
+    from combine.statline import delta, line
+
+    before = (("rushingAttempts", 11.0), ("rushingYards", 44.0))
+    after = (("rushingAttempts", 12.0), ("rushingTouchdowns", 1.0),
+             ("rushingYards", 56.0))
+    moved = delta(before, after)
+    assert moved == {"rushingAttempts": 1.0, "rushingYards": 12.0,
+                     "rushingTouchdowns": 1.0}
+    # and it words itself with exactly the vocabulary the full line uses
+    assert line(moved) == "1 car, 12 yd, 1 TD"
+
+
+def test_a_delta_of_nothing_is_nothing():
+    from combine.statline import delta
+
+    same = (("rushingYards", 44.0),)
+    assert delta(same, same) == {}
+
+
+def test_a_new_player_delta_is_his_whole_line():
+    from combine.statline import delta, line
+
+    assert line(delta((), (("receivingReceptions", 2.0),
+                           ("receivingYards", 31.0)))) == "2 rec, 31 yd"
+
+
+def test_yards_without_the_count_that_frames_them_say_which_kind_they_are():
+    """The feed's failure mode. Between two reads a man can pick up three yards
+    without a new carry or catch crossing a boundary, and '1 yd · 3 yd' is not a
+    sentence."""
+    from combine.statline import line
+
+    assert line({"rushingYards": 1.0, "receivingYards": 3.0}
+                ) == "1 rush yd · 3 rec yd"
+    assert line({"passingYards": 12.0}) == "12 pass yd"
+
+
+def test_yards_stay_plain_when_the_count_is_there_to_frame_them():
+    from combine.statline import line
+
+    assert line({"rushingAttempts": 2.0, "rushingYards": 9.0}) == "2 car, 9 yd"
+    assert line({"receivingReceptions": 1.0, "receivingYards": 9.0}
+                ) == "1 rec, 9 yd"

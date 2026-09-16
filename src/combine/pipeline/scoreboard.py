@@ -35,6 +35,7 @@ class Cell:
     twelve points with the game over is a different number from twelve points at
     halftime, and no view that prints them the same way is being honest.
     """
+    espn_id: str
     name: str
     short: str              # 'B. Purdy'; a phone has room for one of the two
     pos: str
@@ -47,6 +48,7 @@ class Cell:
     projected: float
     played: bool            # his game has finished or is under way
     locked: bool            # kickoff has passed, so the lineup call is spent
+    counts: tuple = ()      # the same stats, unworded, for the feed to subtract
 
 
 @dataclass(frozen=True)
@@ -168,6 +170,7 @@ def _short(name: str) -> str:
 
 def _cell(p: WeeklyPlayer) -> Cell:
     return Cell(
+        espn_id=p.player_id,
         name=p.name,
         short=_short(p.name),
         pos=p.pos,
@@ -180,6 +183,7 @@ def _cell(p: WeeklyPlayer) -> Cell:
         projected=p.projected,
         played=p.played,
         locked=p.locked,
+        counts=p.stats,
     )
 
 

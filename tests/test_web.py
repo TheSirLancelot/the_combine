@@ -203,3 +203,32 @@ def test_every_tab_carries_the_title_its_page_will_show(client):
     body = client.get("/week?league=rcl").text
     for title in ("This week", "The wire", "Trades", "Scores", "Record"):
         assert f'data-title="{title}"' in body
+
+
+def test_the_trade_pickers_are_real_selects_in_the_markup(client):
+    """The search box is an enhancement layered over these, not a replacement.
+    The select stays in the DOM holding the value, so the form posts exactly
+    what it posted before and a browser with the script blocked still works."""
+    body = client.get("/trades?league=rcl").text
+    assert body.count("<select") >= 5
+    assert 'name="give" multiple' in body
+    assert 'name="get" multiple' in body
+    assert 'name="fill" multiple' in body
+    assert "<option value=\"Mine\">" in body
+
+
+def test_the_grade_endpoint_takes_what_the_form_posts(client, monkeypatch):
+    """Whatever the picker does on screen, the server contract is a plain form
+    post of the same names."""
+    seen = {}
+
+    def fake(league, give, get, fill=None):
+        seen.update(league=league, give=give, get=get, fill=fill)
+        return None, "stubbed"
+
+    monkeypatch.setattr(data, "grade", fake)
+    r = client.post("/trades/grade", data={
+        "league": "rcl", "give": ["A", "B"], "get": ["C"], "fill": ["D"]})
+    assert r.status_code == 200
+    assert seen == {"league": "rcl", "give": ["A", "B"], "get": ["C"],
+                    "fill": ["D"]}

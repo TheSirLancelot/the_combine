@@ -2258,6 +2258,20 @@ list of rows are happening, which is a smaller step from what was there to what
 arrives. The same treatment is on the trade tools, whose target box is usually
 empty, so dimming it showed nothing at all.
 
+**The pickers search, and the select is still what posts.** A `<select multiple>`
+of 350 free agents is a scroll, and on a phone it is a scroll inside a scroll.
+The enhancement wraps the real select rather than replacing it: the select stays
+in the DOM, hidden, holding the value, so the form posts exactly what it posted
+before and a browser with the script blocked still gets a working page. Tests
+hold both ends of that — the selects are in the markup, and the endpoint takes a
+plain form post of the same names.
+
+Only forty matches render at a time, with a "keep typing" line under them,
+because painting 350 rows on each keystroke is the thing that would make it feel
+worse than the scroll it replaced. `input[type=search]` was missing from the form
+control rule, so the boxes came out at the browser's default width, which is the
+kind of thing you only see by looking.
+
 **The depth row read backwards.** Your own player sat in the big name beside a
 big green +32, which says "get this guy" about somebody you already own. The
 waiver list directly above it puts the pickup in the big name, so depth now does

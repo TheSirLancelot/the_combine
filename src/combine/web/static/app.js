@@ -114,5 +114,131 @@
     stop();
   });
 
+  // --- searchable pickers ------------------------------------------------
+  //
+  // Progressive enhancement, not replacement. The <select> stays in the DOM
+  // holding the value, so the form posts exactly what it posted before and a
+  // browser with this script blocked still gets a working page.
+
+  const SHOW = 40;   // rendered at a time; 350 options is a slow list to paint
+
+  function enhance(sel) {
+    if (sel.dataset.picked) return;
+    sel.dataset.picked = "1";
+    const multi = sel.multiple;
+    const all = [...sel.options].map((o) => ({ v: o.value, t: o.textContent.trim() }));
+
+    const box = document.createElement("div");
+    box.className = "picker";
+    const chosen = document.createElement("div");
+    chosen.className = "chosen";
+    const input = document.createElement("input");
+    input.type = "search";
+    input.autocomplete = "off";
+    input.setAttribute("autocapitalize", "off");
+    input.setAttribute("autocorrect", "off");
+    input.placeholder = multi ? "Search, tap to add" : "Search";
+    const opts = document.createElement("div");
+    opts.className = "opts";
+
+    sel.parentNode.insertBefore(box, sel);
+    box.append(chosen, input, opts, sel);
+    sel.style.display = "none";
+    sel.size = 0;
+
+    const picked = () => [...sel.selectedOptions].map((o) => o.value);
+
+    function drawChips() {
+      chosen.innerHTML = "";
+      if (!multi) return;
+      picked().forEach((v) => {
+        const row = all.find((a) => a.v === v);
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = row ? row.t : v;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.textContent = "×";
+        x.setAttribute("aria-label", "Remove " + (row ? row.t : v));
+        x.onclick = () => { setValue(v, false); };
+        tag.append(x);
+        chosen.append(tag);
+      });
+    }
+
+    function setValue(v, on) {
+      for (const o of sel.options) {
+        if (o.value === v) o.selected = on;
+        else if (!multi && on) o.selected = false;
+      }
+      drawChips();
+      if (!multi) {
+        const row = all.find((a) => a.v === v);
+        input.value = row ? row.t : "";
+        box.classList.remove("open");
+      }
+      draw();
+    }
+
+    function draw() {
+      const q = input.value.trim().toLowerCase();
+      const on = new Set(picked());
+      const hits = all.filter((a) => !q || a.t.toLowerCase().includes(q));
+      opts.innerHTML = "";
+      if (!hits.length) {
+        opts.innerHTML = '<div class="none">Nobody by that name.</div>';
+        return;
+      }
+      hits.slice(0, SHOW).forEach((a) => {
+        const el = document.createElement("div");
+        el.className = "opt" + (on.has(a.v) ? " here" : "");
+        el.innerHTML = '<span class="tick">' + (on.has(a.v) ? "✓" : "") +
+                       "</span><span></span>";
+        el.lastChild.textContent = a.t;
+        el.onmousedown = (ev) => {
+          ev.preventDefault();
+          setValue(a.v, multi ? !on.has(a.v) : true);
+          if (multi) input.select();
+        };
+        opts.append(el);
+      });
+      if (hits.length > SHOW) {
+        const more = document.createElement("div");
+        more.className = "more";
+        more.textContent = hits.length - SHOW + " more. Keep typing.";
+        opts.append(more);
+      }
+    }
+
+    input.addEventListener("focus", () => { box.classList.add("open"); draw(); });
+    input.addEventListener("input", () => { box.classList.add("open"); draw(); });
+    input.addEventListener("blur", () =>
+      setTimeout(() => box.classList.remove("open"), 120));
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { input.blur(); }
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        const first = opts.querySelector(".opt");
+        if (first) first.onmousedown(new Event("x"));
+      }
+    });
+
+    if (!multi && sel.selectedIndex >= 0) {
+      input.value = all[sel.selectedIndex].t;
+    }
+    drawChips();
+  }
+
+  function enhanceAll() {
+    document.querySelectorAll("form.tool select").forEach(enhance);
+  }
+
+  document.addEventListener("DOMContentLoaded", enhanceAll);
+  const swapped = new MutationObserver(enhanceAll);
+  document.addEventListener("DOMContentLoaded", () => {
+    const el = main();
+    if (el) swapped.observe(el, { childList: true });
+  });
+
   window.addEventListener("popstate", () => go(location.href, false, ""));
 })();

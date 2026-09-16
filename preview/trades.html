@@ -295,7 +295,7 @@ nav.tabs svg { width: 21px; height: 21px; stroke: currentColor; fill: none;
 form.tool { display: grid; gap: 10px; }
 label { font-size: 12px; color: var(--faint); font-weight: 600;
         letter-spacing: .03em; text-transform: uppercase; }
-select, input[type=text], input[type=number], button {
+select, input[type=text], input[type=number], input[type=search], button {
   font: inherit; font-size: 15px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 10px 12px; width: 100%;
@@ -328,6 +328,93 @@ details[open] > :last-child { padding-bottom: 14px; }
 /* Last, so it beats the generic details rules above rather than racing them. */
 details.rowd > summary::after,
 details.rowd[open] > summary::after { content: ""; }
+
+
+/* --- waiting ------------------------------------------------------------
+ *
+ * The old behaviour dimmed the page you were leaving and kept it there until
+ * the new one arrived, which on a slow view is indistinguishable from the tap
+ * not registering. Now the page changes immediately: a bar starts at the top
+ * and the content is replaced with an outline of what is coming.
+ */
+
+#bar {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0;
+  background: var(--accent); z-index: 100; opacity: 0;
+  box-shadow: 0 0 10px var(--accent);
+}
+#bar.on { width: 82%; opacity: 1; transition: width 9s cubic-bezier(.06,.7,.1,1); }
+#bar.done { width: 100%; opacity: 0;
+            transition: width .15s ease-out, opacity .35s .12s; }
+
+.skel { border-radius: 6px; background: var(--surface-2); position: relative;
+        overflow: hidden; }
+.skel::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent,
+              color-mix(in srgb, var(--text) 7%, transparent), transparent);
+  transform: translateX(-100%); animation: sweep 1.25s infinite;
+}
+@keyframes sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .skel::after { animation: none; }
+  #bar.on { transition: none; width: 40%; }
+}
+
+.skel-h { height: 26px; width: 42%; margin: 2px 0 14px; }
+.skel-p { height: 13px; width: 78%; margin-bottom: 22px; }
+.skel-row { display: grid; grid-template-columns: 34px 1fr 64px; gap: 10px;
+            align-items: center; padding: 12px 0;
+            border-bottom: 1px solid var(--line-soft); }
+.skel-row:last-child { border-bottom: 0; }
+.skel-row .a { height: 22px; border-radius: 6px; }
+.skel-row .b { height: 12px; margin-bottom: 7px; }
+.skel-row .c { height: 11px; width: 55%; }
+.skel-row .d { height: 20px; }
+
+
+/* --- searchable pickers --------------------------------------------------
+ *
+ * A <select multiple> of 350 free agents is a scroll, and on a phone it is a
+ * scroll inside a scroll. These wrap the real select rather than replacing it:
+ * the select stays in the DOM, hidden, still holding the value the form posts,
+ * so the server contract is untouched and the page works with JavaScript off.
+ */
+
+.picker { position: relative; }
+/* Safari draws a search field with its own inset box and its own width. */
+.picker input[type=search] { -webkit-appearance: none; appearance: none; }
+.picker .chosen { display: flex; flex-wrap: wrap; gap: 6px; }
+.picker .chosen:not(:empty) { margin-bottom: 8px; }
+.picker .tag {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 8px 5px 11px; border-radius: 999px; font-size: 13.5px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+.picker .tag button {
+  all: unset; cursor: pointer; color: var(--faint); font-size: 16px;
+  line-height: 1; padding: 0 1px;
+}
+.picker .tag button:hover { color: var(--bad); }
+
+.picker .opts {
+  margin-top: 6px; max-height: 260px; overflow-y: auto; display: none;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.picker.open .opts { display: block; }
+.picker .opt {
+  padding: 11px 12px; cursor: pointer; font-size: 15px;
+  border-bottom: 1px solid var(--line-soft); display: flex; gap: 8px;
+}
+.picker .opt:last-child { border-bottom: 0; }
+.picker .opt.here { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.picker .opt .tick { color: var(--accent); width: 14px; }
+.picker .more, .picker .none {
+  padding: 11px 12px; color: var(--faint); font-size: 13.5px;
+}
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🏈</text></svg>">
 </head>
@@ -360,31 +447,31 @@ details.rowd[open] > summary::after { content: ""; }
 
   <nav class="tabs">
     
-    <a data-nav href="/week?league=rcl"
+    <a data-nav data-title="This week" href="/week?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18M3 10h18M3 16h18"/></svg>
       <span>Week</span>
     </a>
     
-    <a data-nav href="/waivers?league=rcl"
+    <a data-nav data-title="The wire" href="/waivers?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M5 10l7-7 7 7"/></svg>
       <span>Wire</span>
     </a>
     
-    <a data-nav href="/trades?league=rcl"
+    <a data-nav data-title="Trades" href="/trades?league=rcl"
        aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h14l-4-4M17 17H3l4 4"/></svg>
       <span>Trades</span>
     </a>
     
-    <a data-nav href="/scores?league=rcl"
+    <a data-nav data-title="Scores" href="/scores?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20V7"/></svg>
       <span>Scores</span>
     </a>
     
-    <a data-nav href="/card?league=rcl"
+    <a data-nav data-title="Record" href="/card?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg>
       <span>Record</span>
@@ -465,6 +552,250 @@ details.rowd[open] > summary::after { content: ""; }
 </div>
 <div id="find-out" class="stack" style="margin-top:12px"></div></main>
 
+<script>// Turn ordinary links into partial swaps, and never leave a tap looking ignored.
+//
+// Every link here already works on its own: the server renders the whole page
+// for any URL. This only makes the common case cheaper, by asking for the same
+// URL with X-Partial and replacing the main region. If anything at all goes
+// wrong it falls through to a normal navigation, which is why there is no error
+// handling beyond letting the browser do its job.
+//
+// The waiting behaviour is the part that needed care. Dimming the page you are
+// leaving and holding it until the next one arrives is indistinguishable from
+// the tap not registering, and the wire view can take a few seconds. So the
+// page changes at once: a bar starts at the top and the content becomes an
+// outline of what is coming.
 
+(function () {
+  const main = () => document.querySelector("main");
+
+  const bar = document.createElement("div");
+  bar.id = "bar";
+  document.addEventListener("DOMContentLoaded", () => document.body.append(bar));
+
+  function start() {
+    bar.className = "";
+    void bar.offsetWidth;
+    bar.className = "on";
+  }
+  function stop() {
+    bar.className = "done";
+  }
+
+  // An outline, not a spinner. A spinner says "something is happening"; this
+  // says "a heading and a list of rows are happening", which is a smaller step
+  // from what was there to what arrives.
+  function skeleton(title, rows) {
+    const line = () =>
+      '<div class="skel-row"><div class="skel a"></div>' +
+      '<div><div class="skel b"></div><div class="skel c"></div></div>' +
+      '<div class="skel d"></div></div>';
+    return (
+      (title ? `<h1>${title}</h1>` : '<div class="skel skel-h"></div>') +
+      '<div class="skel skel-p"></div>' +
+      '<div class="card">' + line().repeat(rows || 6) + "</div>"
+    );
+  }
+
+  async function go(url, push, title) {
+    const el = main();
+    if (!el) { location.href = url; return; }
+    start();
+    el.innerHTML = skeleton(title, 6);
+    let html;
+    try {
+      const res = await fetch(url, { headers: { "X-Partial": "1" } });
+      if (!res.ok) throw new Error(res.status);
+      html = await res.text();
+    } catch (e) {
+      location.href = url;
+      return;
+    }
+    stop();
+    el.innerHTML = html;
+    el.classList.remove("swap");
+    void el.offsetWidth;
+    el.classList.add("swap");
+    if (push) history.pushState({}, "", url);
+    mark(url);
+    window.scrollTo({ top: 0 });
+  }
+
+  // Keep the tab bar and the league chips showing where you actually are.
+  function mark(url) {
+    const at = new URL(url, location.origin);
+    document.querySelectorAll("nav.tabs a").forEach((a) => {
+      const to = new URL(a.getAttribute("href"), location.origin);
+      a.setAttribute("aria-current",
+        to.pathname === at.pathname ? "page" : "false");
+    });
+    document.querySelectorAll(".chip[data-league]").forEach((a) => {
+      a.setAttribute("aria-current",
+        String(a.dataset.league === (at.searchParams.get("league") || "")));
+    });
+  }
+
+  document.addEventListener("click", (ev) => {
+    const a = ev.target.closest("a[data-nav]");
+    if (!a || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button !== 0) return;
+    ev.preventDefault();
+    // The tab's own label is the heading of the page it is fetching, so the
+    // outline can be titled rather than starting as another grey block.
+    const label = a.querySelector("span");
+    go(a.href, true, a.dataset.title || (label ? label.textContent : ""));
+  });
+
+  // A tool form posts to its own endpoint and renders in place, so working
+  // through half a dozen trade ideas never reloads the page.
+  document.addEventListener("submit", async (ev) => {
+    const form = ev.target.closest("form[data-inline]");
+    if (!form) return;
+    ev.preventDefault();
+    const box = document.querySelector(form.dataset.inline);
+    if (!box) return;
+    start();
+    box.innerHTML = '<div class="card">' +
+      '<div class="skel-row"><div class="skel a"></div>' +
+      '<div><div class="skel b"></div><div class="skel c"></div></div>' +
+      '<div class="skel d"></div></div>'.repeat(3) + "</div>";
+    const body = new URLSearchParams(new FormData(form));
+    try {
+      const res = await fetch(form.action, { method: "POST", body });
+      box.innerHTML = await res.text();
+    } catch (e) {
+      box.innerHTML = '<p class="note bad">That did not come back. Try again.</p>';
+    }
+    stop();
+  });
+
+  // --- searchable pickers ------------------------------------------------
+  //
+  // Progressive enhancement, not replacement. The <select> stays in the DOM
+  // holding the value, so the form posts exactly what it posted before and a
+  // browser with this script blocked still gets a working page.
+
+  const SHOW = 40;   // rendered at a time; 350 options is a slow list to paint
+
+  function enhance(sel) {
+    if (sel.dataset.picked) return;
+    sel.dataset.picked = "1";
+    const multi = sel.multiple;
+    const all = [...sel.options].map((o) => ({ v: o.value, t: o.textContent.trim() }));
+
+    const box = document.createElement("div");
+    box.className = "picker";
+    const chosen = document.createElement("div");
+    chosen.className = "chosen";
+    const input = document.createElement("input");
+    input.type = "search";
+    input.autocomplete = "off";
+    input.setAttribute("autocapitalize", "off");
+    input.setAttribute("autocorrect", "off");
+    input.placeholder = multi ? "Search, tap to add" : "Search";
+    const opts = document.createElement("div");
+    opts.className = "opts";
+
+    sel.parentNode.insertBefore(box, sel);
+    box.append(chosen, input, opts, sel);
+    sel.style.display = "none";
+    sel.size = 0;
+
+    const picked = () => [...sel.selectedOptions].map((o) => o.value);
+
+    function drawChips() {
+      chosen.innerHTML = "";
+      if (!multi) return;
+      picked().forEach((v) => {
+        const row = all.find((a) => a.v === v);
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = row ? row.t : v;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.textContent = "×";
+        x.setAttribute("aria-label", "Remove " + (row ? row.t : v));
+        x.onclick = () => { setValue(v, false); };
+        tag.append(x);
+        chosen.append(tag);
+      });
+    }
+
+    function setValue(v, on) {
+      for (const o of sel.options) {
+        if (o.value === v) o.selected = on;
+        else if (!multi && on) o.selected = false;
+      }
+      drawChips();
+      if (!multi) {
+        const row = all.find((a) => a.v === v);
+        input.value = row ? row.t : "";
+        box.classList.remove("open");
+      }
+      draw();
+    }
+
+    function draw() {
+      const q = input.value.trim().toLowerCase();
+      const on = new Set(picked());
+      const hits = all.filter((a) => !q || a.t.toLowerCase().includes(q));
+      opts.innerHTML = "";
+      if (!hits.length) {
+        opts.innerHTML = '<div class="none">Nobody by that name.</div>';
+        return;
+      }
+      hits.slice(0, SHOW).forEach((a) => {
+        const el = document.createElement("div");
+        el.className = "opt" + (on.has(a.v) ? " here" : "");
+        el.innerHTML = '<span class="tick">' + (on.has(a.v) ? "✓" : "") +
+                       "</span><span></span>";
+        el.lastChild.textContent = a.t;
+        el.onmousedown = (ev) => {
+          ev.preventDefault();
+          setValue(a.v, multi ? !on.has(a.v) : true);
+          if (multi) input.select();
+        };
+        opts.append(el);
+      });
+      if (hits.length > SHOW) {
+        const more = document.createElement("div");
+        more.className = "more";
+        more.textContent = hits.length - SHOW + " more. Keep typing.";
+        opts.append(more);
+      }
+    }
+
+    input.addEventListener("focus", () => { box.classList.add("open"); draw(); });
+    input.addEventListener("input", () => { box.classList.add("open"); draw(); });
+    input.addEventListener("blur", () =>
+      setTimeout(() => box.classList.remove("open"), 120));
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { input.blur(); }
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        const first = opts.querySelector(".opt");
+        if (first) first.onmousedown(new Event("x"));
+      }
+    });
+
+    if (!multi && sel.selectedIndex >= 0) {
+      input.value = all[sel.selectedIndex].t;
+    }
+    drawChips();
+  }
+
+  function enhanceAll() {
+    document.querySelectorAll("form.tool select").forEach(enhance);
+  }
+
+  document.addEventListener("DOMContentLoaded", enhanceAll);
+  const swapped = new MutationObserver(enhanceAll);
+  document.addEventListener("DOMContentLoaded", () => {
+    const el = main();
+    if (el) swapped.observe(el, { childList: true });
+  });
+
+  window.addEventListener("popstate", () => go(location.href, false, ""));
+})();
+</script>
 </body>
 </html>

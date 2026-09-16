@@ -236,6 +236,10 @@ same URL with `X-Partial` and swapping the main region, so moving between tabs
 costs one small response instead of a reload. If that fetch fails for any
 reason the link is still a link.
 
+The trade pickers search rather than scroll, which matters when the wire is 350
+names. They wrap the real `<select>` rather than replacing it, so the form posts
+what it always posted and the page still works with the script blocked.
+
 The draft board stays on Streamlit for now. It is the biggest single view, it is
 off-season code, and there is nothing to gain from porting it in September.
 

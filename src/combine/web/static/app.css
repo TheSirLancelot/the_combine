@@ -286,7 +286,7 @@ nav.tabs svg { width: 21px; height: 21px; stroke: currentColor; fill: none;
 form.tool { display: grid; gap: 10px; }
 label { font-size: 12px; color: var(--faint); font-weight: 600;
         letter-spacing: .03em; text-transform: uppercase; }
-select, input[type=text], input[type=number], button {
+select, input[type=text], input[type=number], input[type=search], button {
   font: inherit; font-size: 15px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 10px 12px; width: 100%;
@@ -362,3 +362,47 @@ details.rowd[open] > summary::after { content: ""; }
 .skel-row .b { height: 12px; margin-bottom: 7px; }
 .skel-row .c { height: 11px; width: 55%; }
 .skel-row .d { height: 20px; }
+
+
+/* --- searchable pickers --------------------------------------------------
+ *
+ * A <select multiple> of 350 free agents is a scroll, and on a phone it is a
+ * scroll inside a scroll. These wrap the real select rather than replacing it:
+ * the select stays in the DOM, hidden, still holding the value the form posts,
+ * so the server contract is untouched and the page works with JavaScript off.
+ */
+
+.picker { position: relative; }
+/* Safari draws a search field with its own inset box and its own width. */
+.picker input[type=search] { -webkit-appearance: none; appearance: none; }
+.picker .chosen { display: flex; flex-wrap: wrap; gap: 6px; }
+.picker .chosen:not(:empty) { margin-bottom: 8px; }
+.picker .tag {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 8px 5px 11px; border-radius: 999px; font-size: 13.5px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+.picker .tag button {
+  all: unset; cursor: pointer; color: var(--faint); font-size: 16px;
+  line-height: 1; padding: 0 1px;
+}
+.picker .tag button:hover { color: var(--bad); }
+
+.picker .opts {
+  margin-top: 6px; max-height: 260px; overflow-y: auto; display: none;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.picker.open .opts { display: block; }
+.picker .opt {
+  padding: 11px 12px; cursor: pointer; font-size: 15px;
+  border-bottom: 1px solid var(--line-soft); display: flex; gap: 8px;
+}
+.picker .opt:last-child { border-bottom: 0; }
+.picker .opt.here { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.picker .opt .tick { color: var(--accent); width: 14px; }
+.picker .more, .picker .none {
+  padding: 11px 12px; color: var(--faint); font-size: 13.5px;
+}

@@ -1,0 +1,12 @@
+{# A ticket, not an answer. The browser polls /jobs/<id> until this is replaced
+   by the real fragment, which is what keeps any one request short enough for
+   Cloudflare to let it through. #}
+<div class="card working" data-job="{{ job }}">
+  <div class="spin" aria-hidden="true"></div>
+  <div>
+    <div class="nm">Reading every roster in the league.</div>
+    <div class="sub">A full search takes about a minute. It keeps going whether
+      or not you stay on this page.</div>
+  </div>
+  <div class="tick" data-since="{{ elapsed | default(0) }}">{{ elapsed | default(0) }}s</div>
+</div>

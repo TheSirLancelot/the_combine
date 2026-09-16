@@ -27,7 +27,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from .. import access, config
-from . import data
+from . import data, jobs
 from .cache import asset_version, forget
 
 HERE = Path(__file__).resolve().parent
@@ -81,11 +81,11 @@ def render(request, page: str, ctx: dict) -> HTMLResponse:
                                       {**ctx, "body": name})
 
 
-async def home(request):
+def home(request):
     return RedirectResponse(f"/week?league={_league(request)}")
 
 
-async def week(request):
+def week(request):
     league = _league(request)
     cfg = config.get_league(league)
     if cfg.platform != "espn":
@@ -95,7 +95,7 @@ async def week(request):
                    "unavailable": ""})
 
 
-async def waivers(request):
+def waivers(request):
     league = _league(request)
     cfg = config.get_league(league)
     if cfg.platform != "espn":
@@ -106,16 +106,16 @@ async def waivers(request):
                    "unavailable": ""})
 
 
-async def scores(request):
+def scores(request):
     return render(request, "scores", {"data": data.scores(_week(request) or None)})
 
 
-async def card(request):
+def card(request):
     return render(request, "card",
                   {"data": data.scorecard(_week(request) or None)})
 
 
-async def trades(request):
+def trades(request):
     league = _league(request)
     cfg = config.get_league(league)
     if cfg.platform != "espn":
@@ -135,45 +135,88 @@ def fragment(request, name: str, ctx: dict) -> HTMLResponse:
                                       {"request": request, **ctx})
 
 
+def defer(request, key: tuple, build) -> HTMLResponse:
+    """Hand back a ticket instead of an answer.
+
+    Every trade tool goes through here, not just the slow one. Which of them is
+    slow depends on the league and on how ESPN is feeling, and a tool that
+    usually answers in four seconds and occasionally takes two minutes is worse
+    than one that always shows a progress card — at least the second is honest
+    about what it is doing.
+    """
+    return fragment(request, "waiting", {"job": jobs.start(key, build)})
+
+
 async def trade_grade(request):
     form = await request.form()
-    verdict, err = data.grade(form.get("league", ""), _many(form, "give"),
-                              _many(form, "get"), _many(form, "fill"))
-    return fragment(request, "grade", {"v": verdict, "err": err})
+    league, give = form.get("league", ""), _many(form, "give")
+    get, fill = _many(form, "get"), _many(form, "fill")
+
+    def build():
+        verdict, err = data.grade(league, give, get, fill)
+        return "grade", {"v": verdict, "err": err}
+
+    return defer(request, ("grade", league, tuple(give), tuple(get),
+                           tuple(fill)), build)
 
 
 async def trade_target(request):
     form = await request.form()
-    items, err = data.target(form.get("league", ""), form.get("player", ""))
-    return fragment(request, "target",
-                    {"items": items, "err": err,
-                     "who": form.get("player", "")})
+    league, who = form.get("league", ""), form.get("player", "")
+
+    def build():
+        items, err = data.target(league, who)
+        return "target", {"items": items, "err": err, "who": who}
+
+    return defer(request, ("target", league, who), build)
 
 
 async def trade_raid(request):
     form = await request.form()
+    league, team = form.get("league", ""), form.get("team", "")
     try:
         reach = float(form.get("reach", 2))
     except ValueError:
         reach = 2.0
-    deals = data.raid(form.get("league", ""), form.get("team", ""), reach)
-    return fragment(request, "deals",
-                    {"deals": deals, "team": form.get("team", "")})
+
+    def build():
+        return "deals", {"deals": data.raid(league, team, reach), "team": team}
+
+    return defer(request, ("raid", league, team, reach), build)
 
 
 async def trade_find(request):
     form = await request.form()
-    deals = data.find_trades(form.get("league", ""))
-    return fragment(request, "deals", {"deals": deals, "team": ""})
+    league = form.get("league", "")
+
+    def build():
+        return "deals", {"deals": data.find_trades(league), "team": ""}
+
+    return defer(request, ("find", league), build)
 
 
-async def refresh(request):
+def job(request):
+    """One poll. Short by construction, whatever the work behind it is doing."""
+    found = jobs.get(request.path_params["job"])
+    if found is None:
+        return fragment(request, "lost", {})
+    if found.state == "running":
+        return fragment(request, "waiting", {"job": found.id,
+                                             "elapsed": int(found.elapsed)})
+    if found.state == "failed":
+        return fragment(request, "lost", {"why": found.error})
+    name, ctx = found.value
+    return fragment(request, name, ctx)
+
+
+def refresh(request):
     forget()
+    jobs.forget()
     back = request.headers.get("referer") or "/week"
     return RedirectResponse(back, status_code=303)
 
 
-async def health(request):
+def health(request):
     return JSONResponse({"ok": True, "leagues": [x["slug"]
                                                  for x in data.leagues()]})
 
@@ -212,6 +255,7 @@ def build() -> Starlette:
             Route("/trades/target", trade_target, methods=["POST"]),
             Route("/trades/raid", trade_raid, methods=["POST"]),
             Route("/trades/find", trade_find, methods=["POST"]),
+            Route("/jobs/{job}", job),
             Route("/scores", scores),
             Route("/card", card),
             Route("/refresh", refresh, methods=["POST", "GET"]),

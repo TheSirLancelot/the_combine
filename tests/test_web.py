@@ -231,6 +231,25 @@ def test_the_trade_pickers_are_real_selects_in_the_markup(client):
     assert "<option value=\"Mine\">" in body
 
 
+def finish(client, response, tries: int = 200):
+    """Follow a ticket to its answer.
+
+    The trade tools hand back a job rather than a result, so a test that wants
+    the result has to walk the same path the browser does.
+    """
+    import re
+    import time
+
+    body = response.text
+    for _ in range(tries):
+        found = re.search(r'data-job="([^"]+)"', body)
+        if not found:
+            return body
+        time.sleep(0.02)
+        body = client.get("/jobs/" + found.group(1)).text
+    raise AssertionError("job never finished")
+
+
 def test_the_grade_endpoint_takes_what_the_form_posts(client, monkeypatch):
     """Whatever the picker does on screen, the server contract is a plain form
     post of the same names."""
@@ -244,6 +263,7 @@ def test_the_grade_endpoint_takes_what_the_form_posts(client, monkeypatch):
     r = client.post("/trades/grade", data={
         "league": "rcl", "give": ["A", "B"], "get": ["C"], "fill": ["D"]})
     assert r.status_code == 200
+    finish(client, r)
     assert seen == {"league": "rcl", "give": ["A", "B"], "get": ["C"],
                     "fill": ["D"]}
 
@@ -339,3 +359,63 @@ def test_no_odds_means_no_bar_rather_than_an_even_one(client, monkeypatch):
 def test_a_player_who_has_played_shows_what_he_did(client):
     body = client.get("/scores").text
     assert "18/25, 220 yd, 2 TD" in body
+
+
+def test_a_slow_search_answers_immediately_with_a_ticket(client, monkeypatch):
+    """The 524 this exists to prevent: Cloudflare gives the origin 100 seconds.
+    The POST has to come back in one, however long the search runs."""
+    import threading
+    import time
+
+    gate = threading.Event()
+
+    def slow(league):
+        gate.wait(5)
+        return []
+
+    monkeypatch.setattr(data, "find_trades", slow)
+    began = time.time()
+    r = client.post("/trades/find", data={"league": "rcl"})
+    assert time.time() - began < 1.0
+    assert r.status_code == 200
+    assert "data-job=" in r.text
+    gate.set()
+
+
+def test_the_page_stays_answerable_while_a_search_runs(client, monkeypatch):
+    """The quieter half of the same bug. These were `async def` around blocking
+    calls, so a search held the event loop and every other request queued
+    behind it — the app looked dead to anyone who touched it mid-search."""
+    import threading
+    import time
+
+    gate = threading.Event()
+    monkeypatch.setattr(data, "find_trades", lambda league: gate.wait(5) or [])
+    client.post("/trades/find", data={"league": "rcl"})
+
+    began = time.time()
+    assert client.get("/scores").status_code == 200
+    assert time.time() - began < 1.0
+    gate.set()
+
+
+def test_polling_a_ticket_gives_the_answer_once_it_lands(client, monkeypatch):
+    monkeypatch.setattr(data, "find_trades", lambda league: [])
+    body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
+    assert "data-job=" not in body
+
+
+def test_a_ticket_that_has_been_swept_says_so_rather_than_hanging(client):
+    body = client.get("/jobs/neverwasajob").text
+    assert "no longer around" in body
+    assert "data-job=" not in body          # nothing left to poll
+
+
+def test_a_search_that_fails_reaches_the_person(client, monkeypatch):
+    def boom(league):
+        raise RuntimeError("ESPN timed out")
+
+    monkeypatch.setattr(data, "find_trades", boom)
+    body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
+    assert "ESPN timed out" in body
+    assert "data-job=" not in body

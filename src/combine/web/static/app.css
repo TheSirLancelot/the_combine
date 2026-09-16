@@ -258,6 +258,31 @@ details.game > summary:focus-visible { outline: 2px solid var(--accent); }
   .castrow .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
+/* --- a job in flight ----------------------------------------------------- */
+
+.card.working {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 12px;
+}
+.card.working .nm { font-weight: 600; font-size: 14px; }
+.card.working .sub { color: var(--faint); font-size: 12px; line-height: 1.35;
+                     margin-top: 2px; }
+.card.working .tick {
+  color: var(--faint); font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.spin {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* A spinner that never stops is the one animation people ask to be rid of, so
+   it respects the setting that asks for less of them. */
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation-duration: 2.4s; }
+}
+
 /* --- ESPN's chance to win ------------------------------------------------ */
 
 .odds {

@@ -110,7 +110,11 @@
       box.innerHTML = await res.text();
     } catch (e) {
       box.innerHTML = '<p class="note bad">That did not come back. Try again.</p>';
+      stop();
+      return;
     }
+    // A ticket rather than an answer: keep the bar running and start polling.
+    if (box.querySelector("[data-job]")) { watch(box); return; }
     stop();
   });
 
@@ -227,6 +231,52 @@
       input.value = all[sel.selectedIndex].t;
     }
     drawChips();
+  }
+
+  // --- long jobs ----------------------------------------------------------
+  //
+  // A trade search outlives the request that asked for it. The POST comes back
+  // with a ticket, and this walks it: poll, swap when the answer lands, count
+  // the seconds in the meantime so the card is visibly alive rather than
+  // merely present.
+
+  const POLL = 1500;
+
+  function watch(box) {
+    const card = box.querySelector("[data-job]");
+    if (!card) return;
+    const id = card.dataset.job;
+    const tick = card.querySelector(".tick");
+    let at = parseInt((tick && tick.dataset.since) || "0", 10);
+
+    const count = setInterval(() => {
+      at += 1;
+      const now = box.querySelector(".tick");
+      if (now) now.textContent = at + "s";
+    }, 1000);
+
+    const poll = setInterval(async () => {
+      // The card going away means the person navigated or asked for something
+      // else. The job carries on; we simply stop caring about it.
+      if (!box.querySelector("[data-job]")) {
+        clearInterval(poll); clearInterval(count); return;
+      }
+      let html;
+      try {
+        const res = await fetch("/jobs/" + id);
+        if (!res.ok) return;              // a dropped poll is a missed tick
+        html = await res.text();
+      } catch (e) {
+        return;
+      }
+      if (!box.querySelector("[data-job]")) {
+        clearInterval(poll); clearInterval(count); return;
+      }
+      box.innerHTML = html;
+      if (!box.querySelector("[data-job]")) {
+        clearInterval(poll); clearInterval(count); stop();
+      }
+    }, POLL);
   }
 
   // --- auto refresh ------------------------------------------------------

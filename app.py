@@ -830,10 +830,12 @@ def scorecard_page():
 
     st.subheader("Scorecard")
     st.caption(
-        "Every recommendation the tool made, and what actually happened. This "
-        "grades the tool rather than the manager: it counts what was "
-        "recommended whether or not you acted on it, because whether it would "
-        "have helped is what decides if the advice is worth following. "
+        "Every recommendation the tool made, and what actually happened. It "
+        "counts what was recommended whether or not you acted on it, because "
+        "whether it would have helped is what decides if the advice is worth "
+        "following. The taken and not-taken rows split that: one says whether "
+        "the advice was right, the other whether following it helped, and the "
+        "gap between them is what says whether ignoring it costs you. "
         "Everything else in here was measured on 2025. This is the same "
         "questions asked of 2026 as it happens.")
 
@@ -877,11 +879,13 @@ def scorecard_page():
 
     with st.expander("Every call"):
         st.dataframe(
-            df[["week", "league", "kind", "subject_name", "against_name",
-                "edge", "subject_actual", "against_actual", "gain"]].rename(
+            df[["week", "league", "kind", "taken", "subject_name",
+                "against_name", "edge", "subject_actual", "against_actual",
+                "gain"]].rename(
                 columns={"week": "Wk", "league": "League", "kind": "Kind",
-                         "subject_name": "Recommended", "against_name": "Over",
-                         "edge": "Projected edge", "subject_actual": "He scored",
+                         "taken": "Taken", "subject_name": "Recommended",
+                         "against_name": "Over", "edge": "Projected edge",
+                         "subject_actual": "He scored",
                          "against_actual": "Other scored", "gain": "Gain"}),
             hide_index=True, use_container_width=True)
 

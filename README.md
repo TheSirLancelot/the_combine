@@ -377,9 +377,15 @@ advised, and graded once the week's games are final. There is a Scorecard tab in
 the app and a `/scorecard` command in Discord, and the bot runs the grading pass
 Tuesday at 09:00 Pacific, after Monday night.
 
-It grades the tool, not you. It counts what was recommended whether or not you
-acted on it, because whether the advice would have helped is what decides if the
-advice is worth following.
+It counts what was recommended whether or not you acted on it, because whether
+the advice would have helped is what decides if the advice is worth following.
+
+It also knows which ones you took, without you telling it. A waiver call counts
+as taken when ESPN reports the add as EXECUTED; a lineup call counts as taken
+when the player named actually started that week. The summary splits on that,
+and the split is the useful part: one row says whether the advice was right, the
+other says whether following it helped, and the gap between them is what says
+whether ignoring the tool costs you anything.
 
 The projection is stored at the moment of the call and never restated. ESPN
 revises projections through the day, so grading a Sunday recommendation against

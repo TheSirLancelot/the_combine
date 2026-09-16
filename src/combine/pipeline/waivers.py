@@ -190,6 +190,34 @@ def pending_adds(client) -> dict[str, Claim]:
             if status == "PENDING"}
 
 
+def executed_adds(client, week: int | None = None) -> dict[str, str]:
+    """{espn player id: name} for claims and pickups that actually went through.
+
+    The other half of the transaction feed. ESPN reports outcomes, not just
+    intent: EXECUTED, CANCELED, and failures with a reason attached
+    (FAILED_PLAYERALREADYDROPPED is what a waiver ladder looks like when the
+    first claim in it lands). That is what makes it possible to know which
+    recommendations were acted on.
+    """
+    try:
+        rows = client.league.transactions(
+            scoring_period=week, types={"WAIVER", "FREEAGENT"})
+    except Exception:
+        return {}
+    mine = str(getattr(client.cfg, "team_id", ""))
+    out: dict[str, str] = {}
+    for tx in rows or []:
+        if str(getattr(tx, "status", "")).upper() != "EXECUTED":
+            continue
+        if str(getattr(getattr(tx, "team", None), "team_id", "")) != mine:
+            continue
+        for item in getattr(tx, "items", []) or []:
+            if str(getattr(item, "type", "")).upper() == "ADD":
+                out[str(getattr(item, "playerId", ""))] = getattr(
+                    item, "player", "?")
+    return out
+
+
 def pending_note(claims: dict[str, Claim]) -> str:
     if not claims:
         return ""

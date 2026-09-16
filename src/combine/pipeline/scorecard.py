@@ -120,6 +120,24 @@ def _actuals(conn, league: str, season: int, week: int) -> dict[str, float]:
         " WHERE league=? AND season=? AND week=?", (league, season, week))}
 
 
+def _started(conn, league: str, season: int, week: int) -> dict[str, bool]:
+    """{espn id: did he actually start} for one league-week."""
+    return {str(r["espn_id"]): bool(r["started"]) for r in conn.execute(
+        "SELECT espn_id, started FROM espn_player_week"
+        " WHERE league=? AND season=? AND week=?", (league, season, week))}
+
+
+def _acted_on(league: str, week: int) -> dict[str, str]:
+    """Adds that actually went through, for deciding what was taken."""
+    try:
+        from ..platforms import client_for
+        from .waivers import executed_adds
+
+        return executed_adds(client_for(league), week)
+    except Exception:
+        return {}
+
+
 def _by_name(conn, league: str, season: int, week: int) -> dict[str, float]:
     """D/ST and free agents are recorded by name, because a pool player has no
     row in espn_player_week to carry an id."""
@@ -185,6 +203,11 @@ def score(conn, season: int, week: int) -> tuple[int, int]:
                 wanted.setdefault(row["league"], set()).add(str(ident))
     from_espn = {lg: _from_espn(lg, season, week, ids)
                  for lg, ids in wanted.items()}
+    # Which of these were actually acted on. Separate from whether the advice
+    # was right: the scorecard grades the tool either way, and the gap between
+    # the two is the number worth looking at.
+    leagues = {row["league"] for row in open_rows}
+    executed = {lg: _acted_on(lg, week) for lg in leagues}
 
     for row in open_rows:
         by_id = _actuals(conn, row["league"], season, week)
@@ -203,11 +226,22 @@ def score(conn, season: int, week: int) -> tuple[int, int]:
         if subject is None or against is None:
             missing += 1
             continue
+
+        # A waiver call is taken if the add went through. A lineup call is
+        # taken if the man we named actually started. Both are observable after
+        # the fact and neither needs William to tell us anything.
+        if row["kind"] == "waiver":
+            taken = int(str(row["subject_id"]) in executed.get(row["league"], {}))
+        else:
+            started = _started(conn, row["league"], season, week)
+            flag = started.get(str(row["subject_id"]))
+            taken = None if flag is None else int(flag)
+
         conn.execute(
             "UPDATE recommendation SET subject_actual=?, against_actual=?,"
-            " scored_at=? WHERE league=? AND season=? AND week=? AND kind=?"
-            " AND subject_id=? AND against_id=?",
-            (subject, against, db.now(), row["league"], season, week,
+            " taken=?, scored_at=? WHERE league=? AND season=? AND week=?"
+            " AND kind=? AND subject_id=? AND against_id=?",
+            (subject, against, taken, db.now(), row["league"], season, week,
              row["kind"], row["subject_id"], row["against_id"]))
         scored += 1
     conn.commit()
@@ -234,27 +268,39 @@ def frame(conn, season: int):
     return df
 
 
+def _line(label: str, cell) -> dict:
+    return {
+        "kind": label,
+        "n": len(cell),
+        "right": float(cell["right"].astype(float).mean()),
+        "points": float(cell["gain"].sum()),
+        "per_call": float(cell["gain"].mean()),
+    }
+
+
 def summary(df) -> list[dict]:
-    """One line per kind: how often it was right, and what it was worth."""
+    """One line per kind, then the taken/not-taken split.
+
+    The split is the point. "Was the advice right" and "did following it help"
+    are different questions, and the gap between them is what says whether
+    ignoring the tool costs anything.
+    """
     if df is None or df.empty:
         return []
     done = df[df["gain"].notna()]
     if done.empty:
         return []
-    out = []
-    for kind, cell in done.groupby("kind"):
-        out.append({
-            "kind": kind,
-            "n": len(cell),
-            "right": float(cell["right"].astype(float).mean()),
-            "points": float(cell["gain"].sum()),
-            "per_call": float(cell["gain"].mean()),
-        })
-    total = {"kind": "all", "n": len(done),
-             "right": float(done["right"].astype(float).mean()),
-             "points": float(done["gain"].sum()),
-             "per_call": float(done["gain"].mean())}
-    return sorted(out, key=lambda r: -r["n"]) + [total]
+    out = [_line(kind, cell) for kind, cell in done.groupby("kind")]
+    out.sort(key=lambda r: -r["n"])
+
+    if "taken" in done.columns:
+        acted = done[done["taken"] == 1]
+        ignored = done[done["taken"] == 0]
+        if len(acted):
+            out.append(_line("— taken", acted))
+        if len(ignored):
+            out.append(_line("— not taken", ignored))
+    return out + [_line("all", done)]
 
 
 def render(df) -> str:
@@ -268,6 +314,8 @@ def render(df) -> str:
                    f"{r['points']:>+9.1f}{r['per_call']:>+10.2f}")
     out.append("\nRIGHT is how often the recommended player outscored the one he\n"
                "would have replaced. POINTS is what following every call would\n"
-               "have been worth. This grades the tool, not the manager: it counts\n"
-               "what was recommended whether or not it was acted on.")
+               "have been worth.\n\nThe taken and not-taken rows answer different "
+               "questions: whether the\nadvice was right, and whether following "
+               "it helped. The gap between\nthem is what says whether ignoring "
+               "the tool costs anything.")
     return "\n".join(out)

@@ -1056,9 +1056,9 @@ def build_scorecard(week: int | None = None) -> list[discord.Embed]:
     e = discord.Embed(title=title, colour=colour,
                       description=discord_out.code("\n".join(table)))
     e.set_footer(text="RIGHT is how often the recommended player outscored the "
-                      "one he would have replaced. This grades the tool, not "
-                      "the manager: it counts what was recommended whether or "
-                      "not it was acted on.")
+                      "one he would have replaced. Taken and not taken are "
+                      "different questions: whether the advice was right, and "
+                      "whether following it helped.")
     return [e]
 
 

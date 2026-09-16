@@ -31,3 +31,20 @@ def _never_the_real_database(tmp_path_factory):
     db.ensure_schema(scratch)
     yield scratch
     config.DB_PATH, db.DB_PATH = real_config, real_db
+
+
+@pytest.fixture(autouse=True)
+def _no_network(monkeypatch):
+    """Tests must not reach ESPN.
+
+    Both of these are guarded by try/except in production, so a test that hits
+    the network does not FAIL, it just quietly takes eight seconds and depends
+    on the internet. Defaulting them to empty keeps the suite offline and fast;
+    a test that cares about them patches them itself.
+    """
+    from combine.pipeline import scorecard
+
+    monkeypatch.setattr(scorecard, "_acted_on", lambda league, week: {},
+                        raising=False)
+    monkeypatch.setattr(scorecard, "_from_espn",
+                        lambda league, season, week, ids: {}, raising=False)

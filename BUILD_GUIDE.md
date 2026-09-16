@@ -1524,6 +1524,39 @@ and "A. Starter" in week 3 were sitting in the table the app reads.
 database whether or not it thinks about the database at all. Verified by
 counting rows before and after a full run.
 
+## Knowing which advice was taken
+
+Added 2026-09-16, from William asking how the bot knows which moves he listened
+to. It did not, and the answer was that it deliberately does not need to: the
+scorecard is counterfactual, and "would this have helped" is the question that
+decides whether to trust the tool. But it CAN know, and knowing both is better
+than either.
+
+ESPN's transaction feed reports outcomes, not just intent. Statuses seen live:
+EXECUTED, CANCELED, PENDING, FAILED_INVALIDPLAYERSOURCE and
+FAILED_PLAYERALREADYDROPPED. That last one is what a waiver ladder looks like
+when the first claim in it lands, which incidentally confirmed the ladder
+reading from the day before: Drake Thomas executed dropping Josh Downs, and Jack
+Gibbens failed because Downs was already gone.
+
+So a waiver call is taken when the add shows EXECUTED, and a lineup call is
+taken when `espn_player_week` says the named player actually started. Both are
+observed after the fact with nothing for William to record.
+
+`summary()` now emits "— taken" and "— not taken" rows alongside the per-kind
+ones. The gap between them is the number worth looking at: right-in-general
+versus helped-in-practice.
+
+**Schema note.** `CREATE TABLE IF NOT EXISTS` does nothing to a table that
+already exists, so the new `taken` column needed an explicit migration.
+`db.ADDED_COLUMNS` plus `db.migrate()` handle columns added after a table
+shipped, and `ensure_schema` calls it.
+
+**And the tests were reaching ESPN.** `_acted_on` and `_from_espn` are both
+exception-guarded, so a test that hit the network did not fail, it just took
+eight seconds and depended on the internet. `conftest.py` stubs both by default;
+a test that cares patches them itself.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

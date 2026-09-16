@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS recommendation (
   made_at       TEXT NOT NULL,
   subject_actual REAL,                -- filled in after the week is final
   against_actual REAL,
+  taken         INTEGER,              -- 1 acted on, 0 not, NULL not yet known
   scored_at     TEXT,
   PRIMARY KEY (league, season, week, kind, subject_id, against_id)
 );

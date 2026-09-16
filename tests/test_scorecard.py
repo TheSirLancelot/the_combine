@@ -31,13 +31,14 @@ def conn(tmp_path):
     c.close()
 
 
-def player_week(conn, league, week, espn_id, name, actual, projected=10.0):
+def player_week(conn, league, week, espn_id, name, actual, projected=10.0,
+                started=1):
     conn.execute(
         "INSERT OR REPLACE INTO espn_player_week (league, season, week, espn_id,"
         " fantasy_team, versus, name, pos, slot, eligible, started, projected,"
         " actual, played, pulled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (league, 2026, week, espn_id, "me", "them", name, "WR", "WR", "WR,BE",
-         1, projected, actual, 1, db.now()))
+         started, projected, actual, 1, db.now()))
     conn.commit()
 
 
@@ -205,3 +206,63 @@ def test_a_candidate_with_no_id_still_records_under_his_name():
                   week_proj=1.0, season_proj=1.0, drop_name="X", drop_pos="WR",
                   drop_season_proj=1.0, week_gain=1.0, displaces=None)
     assert scorecard.from_waivers([c])[0].subject_id == "Nameless"
+
+
+# --- did he act on it -------------------------------------------------------
+
+def test_a_waiver_call_is_taken_when_the_add_went_through(conn, monkeypatch):
+    """Observable after the fact, with nothing for William to tell us: ESPN
+    reports EXECUTED on the transaction."""
+    scorecard.record("rcl", 2026, 2, [a_row(kind="waiver", subject_id="4428659")],
+                     conn=conn)
+    player_week(conn, "rcl", 2, "4428659", "Drake Thomas", actual=14.0)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0)
+    monkeypatch.setattr(scorecard, "_acted_on",
+                        lambda league, week: {"4428659": "Drake Thomas"})
+    scorecard.score(conn, 2026, 2)
+    assert scorecard.frame(conn, 2026).loc[0, "taken"] == 1
+
+
+def test_a_waiver_call_is_not_taken_when_nothing_was_added(conn, monkeypatch):
+    scorecard.record("rcl", 2026, 2, [a_row(kind="waiver", subject_id="999")],
+                     conn=conn)
+    player_week(conn, "rcl", 2, "999", "Ignored Guy", actual=20.0)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0)
+    monkeypatch.setattr(scorecard, "_acted_on", lambda league, week: {})
+    scorecard.score(conn, 2026, 2)
+    assert scorecard.frame(conn, 2026).loc[0, "taken"] == 0
+
+
+def test_a_lineup_call_is_taken_when_the_man_actually_started(conn):
+    scorecard.record("rcl", 2026, 2, [a_row()], conn=conn)
+    player_week(conn, "rcl", 2, "11", "Bench Guy", actual=18.0, started=1)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0, started=0)
+    scorecard.score(conn, 2026, 2)
+    assert scorecard.frame(conn, 2026).loc[0, "taken"] == 1
+
+
+def test_a_lineup_call_is_not_taken_when_he_stayed_benched(conn):
+    scorecard.record("rcl", 2026, 2, [a_row()], conn=conn)
+    player_week(conn, "rcl", 2, "11", "Bench Guy", actual=18.0, started=0)
+    player_week(conn, "rcl", 2, "22", "Starter", actual=6.0, started=1)
+    scorecard.score(conn, 2026, 2)
+    assert scorecard.frame(conn, 2026).loc[0, "taken"] == 0
+
+
+def test_the_summary_splits_taken_from_ignored(conn, monkeypatch):
+    """The whole point. "Was the advice right" and "did following it help" are
+    different questions, and the gap between them says whether ignoring the
+    tool costs anything."""
+    scorecard.record("rcl", 2026, 2, [
+        a_row(subject_id="11", against_id="22"),
+        a_row(subject_id="33", against_id="44"),
+    ], conn=conn)
+    player_week(conn, "rcl", 2, "11", "A", actual=18.0, started=1)   # taken, +12
+    player_week(conn, "rcl", 2, "22", "B", actual=6.0, started=0)
+    player_week(conn, "rcl", 2, "33", "C", actual=4.0, started=0)    # ignored, -6
+    player_week(conn, "rcl", 2, "44", "D", actual=10.0, started=1)
+    scorecard.score(conn, 2026, 2)
+    rows = {r["kind"]: r for r in scorecard.summary(scorecard.frame(conn, 2026))}
+    assert rows["— taken"]["n"] == 1 and rows["— taken"]["points"] == 12.0
+    assert rows["— not taken"]["n"] == 1 and rows["— not taken"]["points"] == -6.0
+    assert rows["all"]["n"] == 2

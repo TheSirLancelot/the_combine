@@ -28,9 +28,36 @@ def connect(path: Path = DB_PATH, *, readonly: bool = False) -> sqlite3.Connecti
     return conn
 
 
+# Columns added after a table shipped. `CREATE TABLE IF NOT EXISTS` does
+# nothing to a table that already exists, so a new column has to be added
+# explicitly or every existing database silently lacks it.
+ADDED_COLUMNS = {
+    "recommendation": {"taken": "INTEGER"},
+}
+
+
+def migrate(conn) -> list[str]:
+    """Add columns the schema gained since this database was created."""
+    done = []
+    known = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    for table, columns in ADDED_COLUMNS.items():
+        if table not in known:
+            continue          # the schema script will create it, with the column
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, kind in columns.items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+                done.append(f"{table}.{name}")
+    if done:
+        conn.commit()
+    return done
+
+
 def ensure_schema(path: Path = DB_PATH) -> None:
     with connect(path) as conn:
         conn.executescript(SCHEMA.read_text())
+        migrate(conn)
 
 
 @contextmanager

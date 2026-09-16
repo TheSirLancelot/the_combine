@@ -1206,6 +1206,112 @@ def outcome_band(player) -> str:
             f"boom {band.boom * 100:.0f}% · bust {band.bust * 100:.0f}%")
 
 
+@st.cache_data(ttl=300, show_spinner="reading every roster...")
+def load_trade_names(league: str, week: int, _nonce: int, _version: str):
+    """({label: name} for my players, same for everybody else's).
+
+    Two pickers rather than a text box: the grader has to match a name exactly,
+    and typing "Smith" into a league with three of them is a worse experience
+    than scrolling.
+    """
+    from combine.pipeline.trades import rosters
+
+    if config.get_league(league).platform != "espn":
+        return {}, {}
+    mine, others = rosters(client_for(league), week)
+    ours = {f"{p.name} · {p.pos}": p.name for p in mine}
+    theirs = {f"{p.name} · {p.pos} · {team}": p.name
+              for team, roster in others.items() for p in roster}
+    return dict(sorted(ours.items())), dict(sorted(theirs.items()))
+
+
+def _grade_an_offer(league: str, deals):
+    """Price an offer that already exists, which is the other half of this tab.
+
+    The finder answers "what deal is out there". This answers "is the one in my
+    inbox any good", which is the same two assignments without the search, and
+    it takes any number of players a side.
+    """
+    st.divider()
+    st.markdown("**Grade an offer**")
+    st.caption(
+        "Somebody sent you a trade, or you are working out a counter. Same "
+        "arithmetic as the list above, without the search: both rosters priced "
+        "before and after, and what actually changes in your lineup.")
+
+    ours, theirs = load_trade_names(league, week_no or client_for(league).week,
+                                    st.session_state.nonce, _code_version())
+    if not ours:
+        st.info("Needs the API to read every roster.")
+        return
+
+    left, right = st.columns(2)
+    with left:
+        give = st.multiselect("You give", list(ours), key="grade_give")
+    with right:
+        get = st.multiselect("You get", list(theirs), key="grade_get")
+    if not give or not get:
+        st.caption("Pick at least one player each way.")
+        return
+
+    from combine.pipeline.calibration import load as load_cal
+    from combine.pipeline.trades import grade
+
+    verdict, err = grade(client_for(league), [ours[k] for k in give],
+                         [theirs[k] for k in get], cal=load_cal(league),
+                         dist=outcome_distribution(config.SEASON - 1))
+    if err:
+        st.warning(err)
+        return
+
+    headline = ("The numbers favour you" if verdict.my_season > 0
+                else "The numbers are against you" if verdict.my_season < 0
+                else "The numbers are a wash")
+    shout = (st.success if verdict.my_season > 0
+             else st.error if verdict.my_season < 0 else st.info)
+    shout(f"**{headline}** against {verdict.partner}.")
+    cols = st.columns(4)
+    cols[0].metric("Your roster, season", f"{verdict.my_season:+.0f}")
+    cols[1].metric("Their roster, season", f"{verdict.their_season:+.0f}")
+    cols[2].metric("Your lineup this week", f"{verdict.my_week:+.1f}")
+    cols[3].metric("Your odds this week",
+                   f"{verdict.odds_after * 100:.0f}%" if verdict.odds_after
+                   else "--",
+                   delta=(f"{verdict.odds_gain * 100:+.0f} pts"
+                          if verdict.odds_after else None))
+
+    a, b = st.columns(2)
+    with a:
+        st.markdown("_What changes over the season_")
+        if verdict.season_moves:
+            for m in verdict.season_moves:
+                st.markdown(f"- {m.describe()}")
+        else:
+            st.caption("Nothing. The men coming in do not crack your lineup, "
+                       "and the men going out were not in it.")
+    with b:
+        st.markdown("_What changes this Sunday_")
+        if verdict.week_moves:
+            for m in verdict.week_moves:
+                st.markdown(f"- {m.describe()}")
+        else:
+            st.caption("Nothing.")
+
+    if verdict.my_cuts:
+        st.warning(f"You take on {-verdict.spots} more than you send with "
+                   f"{verdict.room} spot(s) open, so you would have to cut "
+                   f"{', '.join(verdict.my_cuts)}. What that costs is already "
+                   f"inside the season number.")
+    elif verdict.spots > 0:
+        st.caption(f"You free {verdict.spots} roster spot(s). Worth close to "
+                   f"nothing in points, since the best free agent does not "
+                   f"crack this lineup, and worth something as insurance, "
+                   f"which none of these numbers price.")
+    st.caption("This grades the offer. It does not tell you to accept it. The "
+               "depth you give up, an injury in November, and whether ESPN is "
+               "right about either man are all outside it.")
+
+
 @st.cache_data(ttl=600, show_spinner="pricing every one-for-one in the league...")
 def load_trades(league: str, _nonce: int, _version: str):
     """Ten minutes. This solves a few thousand lineup assignments across every
@@ -1270,6 +1376,8 @@ def trades_page():
                 help="Your starting lineup this Sunday. Expect this to be "
                      "small or negative: the weekly axis is near zero sum."),
         })
+
+    _grade_an_offer(league, deals)
 
     with st.expander("What these numbers are, and are not", expanded=False):
         st.markdown(

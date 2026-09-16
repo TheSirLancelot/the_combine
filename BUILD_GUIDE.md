@@ -728,7 +728,8 @@ inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
 Commands are `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`, `/clear`, locked to
+`/compare`, `/grade`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
+`/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
 
@@ -1780,6 +1781,37 @@ signature is which players are on each side with the numbers left out, the same
 rule the other builders follow: a deal worth +32 today and +29 tomorrow is the
 same deal, and digesting the numbers would repost it every morning until
 somebody acted on it.
+
+### Grading an offer
+
+`grade()` and `render_verdict()`, added 2026-09-16, the fourth of William's
+original four bullets (the negotiation workspace) and the one that turned out to
+be nearly free. The finder searches; this prices a deal that already exists, so
+it is the same two assignments with the search removed, and it takes any number
+of players a side.
+
+**The output is mostly the two "what changes" blocks, and that is deliberate.**
+A total does not tell you where the points went. William asked, correctly, why
+the Davis deal did not seem to charge him for losing a starting linebacker; the
+answer is that the two axes rank his linebackers differently. Davis starts this
+week at 11.2 against Edwards at 10.4, and is fourth over a season at 176 against
+206, 206 and 178. So he costs 9.8 on Sunday and nothing over the year, and the
++32 is Lamar displacing Purdy at quarterback. An answer that needed a probe to
+explain belongs in the product, so the assignment diff is now printed on both
+axes.
+
+**Uneven packages need the roster size, and two things there were wrong first
+time.** The cut has to be chosen on the roster AS IT WOULD BE after the trade:
+ask beforehand and the man about to become surplus still looks like a starter,
+so the cut lands on somebody useful. And a player on IR must never be offered,
+because he occupies no active spot and cutting him frees nothing. The first
+version offered Myles Garrett, stashed at 118 points, as the cheapest man on the
+roster, which was true and useless. Whichever cut is chosen is then actually
+removed from the valuation rather than assumed free.
+
+Among men who cost the assignment nothing, the cut goes to the LOWEST season
+projection, which keeps the best insurance. That is why a surplus Brock Purdy at
+311 survives and a bench corner at 139 does not.
 
 ### odds.py
 

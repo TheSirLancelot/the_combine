@@ -481,3 +481,308 @@ def render(deals: list[Deal], league_name: str) -> str:
             out.append(f"  {team}: {note}")
     out.append(FOOTER)
     return "\n".join(out)
+
+
+# --- grading an offer somebody actually sent -------------------------------
+#
+# The finder asks "what deal exists". This asks "is the one in my inbox any
+# good", which is the same two assignments without the search, and it takes any
+# number of players a side. The extra thing it has to handle is roster size: a
+# two for one frees a spot, a one for two forces a cut, and the cut is a real
+# player whose value has to come out of the total rather than being waved at.
+
+
+@dataclass(frozen=True)
+class Move:
+    """One change the deal makes to a lineup."""
+
+    name: str
+    pos: str
+    value: float
+    joining: bool
+    dp: int = 0            # season points are whole, a week's are not
+
+    def describe(self) -> str:
+        arrow = "in " if self.joining else "out"
+        return f"{arrow} {self.name} ({self.pos}) {self.value:.{self.dp}f}"
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """What an offer is worth, from both ends."""
+
+    give: list[WeeklyPlayer]
+    get: list[WeeklyPlayer]
+    partner: str
+    my_season: float
+    their_season: float
+    my_week: float
+    their_week: float
+    season_moves: list[Move]           # what changes in my season assignment
+    week_moves: list[Move]             # what changes in my lineup this Sunday
+    spots: int = 0                     # roster spots freed (+) or needed (-)
+    room: int = 0                      # spots I have open right now
+    my_cuts: list[str] = ()            # who I would have to cut to fit them in
+    their_cuts: list[str] = ()
+    odds_now: float = 0.0
+    odds_after: float = 0.0
+
+    @property
+    def good(self) -> bool:
+        """Whether the numbers favour me. Not whether to accept: depth,
+        injuries and what happens to this roster in November are not in it."""
+        return self.my_season > 0
+
+    @property
+    def mutual(self) -> bool:
+        return self.my_season > 0 and self.their_season > 0
+
+    @property
+    def odds_gain(self) -> float:
+        return self.odds_after - self.odds_now
+
+
+def _pick(index: dict[str, WeeklyPlayer], want: str) -> tuple:
+    """(player, complaint). Exact name beats a substring, so asking for a man
+    whose name is contained in somebody else's is not ambiguous."""
+    key = want.strip().lower()
+    if key in index:
+        return index[key], ""
+    hits = [name for name in index if key and key in name]
+    if not hits:
+        return None, f"`{want}` is not on either roster"
+    if len(hits) > 1:
+        shown = ", ".join(sorted(index[h].name for h in hits)[:6])
+        return None, f"`{want}` matches {len(hits)}: {shown}"
+    return index[hits[0]], ""
+
+
+def _cheapest(cands: list[dict], drop_costs: dict[str, float], how_many: int,
+              spare: set[str]) -> list[dict]:
+    """The men a roster would cut to make room, least painful first.
+
+    Cheapest by what losing them costs the assignment, then by season
+    projection, so two players who both cost nothing are separated by the
+    smaller loss of depth rather than by dictionary order.
+
+    A player on IR is never offered. He is not occupying an active spot, so
+    cutting him frees nothing, and he is on IR because somebody decided to keep
+    him. The first version offered Myles Garrett, stashed at 118 points, as the
+    cheapest man on the roster, which was true and useless.
+    """
+    if how_many <= 0:
+        return []
+    pool = [c for c in cands
+            if c["espn_id"] not in spare
+            and getattr(c.get("player"), "slot", "") != "IR"]
+    pool.sort(key=lambda c: (drop_costs.get(c["espn_id"], 0.0), _season(c)))
+    return pool[:how_many]
+
+
+def _moves(before: list[dict], after: list[dict], key, dp: int = 0) -> list[Move]:
+    was = {c["espn_id"]: c for c in before}
+    now = {c["espn_id"]: c for c in after}
+    out = [Move(c["name"], c["pos"], key(c), True, dp)
+           for pid, c in now.items() if pid not in was]
+    out += [Move(c["name"], c["pos"], key(c), False, dp)
+            for pid, c in was.items() if pid not in now]
+    return sorted(out, key=lambda m: (not m.joining, -m.value))
+
+
+def grade(client, give: list[str], get: list[str], week: int | None = None,
+          cal=None, dist=None) -> tuple[Verdict | None, str]:
+    """Price an offer that already exists. (verdict, complaint).
+
+    Any number a side. Everything the finder says about the two axes applies
+    unchanged: the season number is where a trade can create value and the
+    weekly one is close to zero sum.
+    """
+    from .waivers import roster_room
+
+    wk = int(week or client.week)
+    slots = client.roster_slots()
+    slot_list = [slot for slot, count in slots.items() for _ in range(count)]
+    mine, others = rosters(client, wk)
+    season = season_projections(client)
+
+    mine_index = {p.name.lower(): p for p in mine}
+    theirs_index = {p.name.lower(): (team, p)
+                    for team, roster in others.items() for p in roster}
+
+    giving, problems = [], []
+    for want in give:
+        player, err = _pick(mine_index, want)
+        if err:
+            problems.append(err.replace("either roster", "your roster"))
+        else:
+            giving.append(player)
+
+    getting, partners = [], set()
+    for want in get:
+        owned = {name: player for name, (_team, player) in theirs_index.items()}
+        player, err = _pick(owned, want)
+        if err:
+            problems.append(err.replace("either roster",
+                                        "any other roster in the league"))
+            continue
+        getting.append(player)
+        partners.add(theirs_index[player.name.lower()][0])
+
+    if problems:
+        return None, " ".join(problems)
+    if not giving or not getting:
+        return None, "a trade needs at least one player each way"
+    if len(partners) > 1:
+        return None, ("that is a three way trade: "
+                      f"{', '.join(sorted(partners))}. One partner at a time.")
+    partner = next(iter(partners))
+    theirs = others[partner]
+
+    # Both sides, on both axes, with the forced cuts actually removed rather
+    # than assumed free.
+    my_cands = [_cand(p, cal, season) for p in mine]
+    their_cands = [_cand(p, cal, season) for p in theirs]
+    my_chosen = _assignment(my_cands, slot_list)
+
+    gave = {p.player_id for p in giving}
+    got = {p.player_id for p in getting}
+    spots = len(giving) - len(getting)
+    room = roster_room(client, mine)
+
+    def traded(cands, out_ids, incoming):
+        return ([c for c in cands if c["espn_id"] not in out_ids]
+                + [_cand(p, cal, season, incoming=True) for p in incoming])
+
+    def make_room(cands, how_many, keep):
+        """Who gets cut, chosen on the roster AS IT WOULD BE after the trade.
+
+        Choosing beforehand picks the wrong man. Take Lamar Jackson in and
+        Brock Purdy becomes the surplus quarterback and the obvious cut; ask
+        before the trade lands and Purdy is still a starter, so the cut falls on
+        somebody who was doing useful work.
+        """
+        if how_many <= 0:
+            return [], cands
+        chosen = _assignment(cands, slot_list)
+        costs = _drop_costs(cands, slot_list,
+                            sum(_season(c) for c in chosen), _season,
+                            {c["espn_id"] for c in chosen})
+        cuts = _cheapest(cands, costs, how_many, keep)
+        dropped = {c["espn_id"] for c in cuts}
+        return cuts, [c for c in cands if c["espn_id"] not in dropped]
+
+    my_cuts, mine_after = make_room(traded(my_cands, gave, getting),
+                                    -spots - room, got)
+    their_cuts, theirs_after = make_room(traded(their_cands, got, giving),
+                                         spots, gave)
+
+    return Verdict(
+        give=giving, get=getting, partner=partner,
+        my_season=(_value(mine_after, slot_list, _season)
+                   - _value(my_cands, slot_list, _season)),
+        their_season=(_value(theirs_after, slot_list, _season)
+                      - _value(their_cands, slot_list, _season)),
+        my_week=(_value(mine_after, slot_list, _week)
+                 - _value(my_cands, slot_list, _week)),
+        their_week=(_value(theirs_after, slot_list, _week)
+                    - _value(their_cands, slot_list, _week)),
+        season_moves=_moves(my_chosen, _assignment(mine_after, slot_list),
+                            _season),
+        week_moves=_moves(
+            best_lineup(my_cands, slot_list, key=_week),
+            best_lineup(mine_after, slot_list, key=_week), _week, dp=1),
+        spots=spots, room=room,
+        my_cuts=[c["name"] for c in my_cuts],
+        their_cuts=[c["name"] for c in their_cuts],
+        **_grade_odds(client, wk, my_cands, mine_after, slot_list, dist),
+    ), ""
+
+
+def _grade_odds(client, week: int, before: list[dict], after: list[dict],
+                slot_list: list[str], dist) -> dict[str, float]:
+    """P(I win this week) either side of the deal, when there is history to
+    resample. An empty dict when there is not, so the render can say nothing
+    rather than print a made-up fifty."""
+    if dist is None:
+        return {}
+    from .odds import as_lineup, win_probability
+
+    opponent = as_lineup([p for p in client.matchup(week).their_lineup
+                          if p.starting])
+
+    def field(cands):
+        chosen = best_lineup(cands, slot_list, key=_week)
+        return as_lineup([c["player"] for c in chosen])
+
+    return {"odds_now": win_probability(field(before), opponent, dist),
+            "odds_after": win_probability(field(after), opponent, dist)}
+
+
+VERDICT_FOOTER = (
+    "\nSEASON is your whole roster started best-eligible, before against after, "
+    "so a\nplayer who never cracks the lineup is correctly worth nothing and a "
+    "man who\ndisplaces a starter is worth the difference, not his own "
+    "projection. It counts\ngames already played, so read the change and not "
+    "the totals.\n\nWEEK is this Sunday only, and it is close to zero sum "
+    "across the two sides.\nIt is here so a deal that quietly costs you Sunday "
+    "is visible.\n\nThis grades the offer. It does not tell you to accept it. "
+    "What it cannot see:\nthe depth you give up, an injury in November, whether "
+    "ESPN's season numbers are\nright about either man, and whether this "
+    "manager comes back with something\nbetter if you say no.")
+
+
+def render_verdict(v: Verdict, league_name: str) -> str:
+    give = ", ".join(f"{p.name} ({p.pos})" for p in v.give)
+    get = ", ".join(f"{p.name} ({p.pos})" for p in v.get)
+    out = [f"{league_name} — offer from {v.partner}", "",
+           f"  you give   {give}",
+           f"  you get    {get}", ""]
+
+    verdict = ("the numbers favour you" if v.my_season > 0
+               else "the numbers are against you" if v.my_season < 0
+               else "the numbers are a wash")
+    out.append(f"  {verdict.upper()}")
+    out.append(f"  {'your roster, season':<24}{v.my_season:>+8.0f}")
+    out.append(f"  {'their roster, season':<24}{v.their_season:>+8.0f}")
+    out.append(f"  {'your lineup this week':<24}{v.my_week:>+8.1f}")
+    if v.odds_after:
+        out.append(f"  {'your odds this week':<24}"
+                   f"{v.odds_now * 100:>7.0f}% → {v.odds_after * 100:.0f}%")
+    out.append("")
+
+    if v.season_moves:
+        out.append("WHAT CHANGES in your season lineup")
+        for move in v.season_moves:
+            out.append(f"  {move.describe()}")
+        out.append("")
+    else:
+        out.append("Nothing changes in your season lineup: the men coming in "
+                   "do not crack it\nand the men going out were not in it.\n")
+
+    if v.week_moves:
+        out.append("WHAT CHANGES this Sunday")
+        for move in v.week_moves:
+            out.append(f"  {move.describe()}")
+        out.append("")
+
+    if v.spots < 0:
+        short = -v.spots - v.room
+        if short > 0:
+            out.append(f"ROSTER: you take on {-v.spots} more than you send "
+                       f"with {v.room} spot(s) open, so {short} would\nhave to "
+                       f"go, cheapest first: {', '.join(v.my_cuts)}\nWhat "
+                       f"cutting them costs is already inside the season "
+                       f"number above.")
+        else:
+            out.append(f"ROSTER: you take on {-v.spots} more than you send and "
+                       f"have {v.room} spot(s) open, so\nnobody has to be cut.")
+        out.append("")
+    elif v.spots > 0:
+        out.append(f"ROSTER: you free {v.spots} spot(s). Worth close to nothing "
+                   f"in points -- the best\nfree agent does not crack this "
+                   f"lineup -- and worth something as insurance,\nwhich none of "
+                   f"these numbers price.")
+        out.append("")
+
+    out.append(VERDICT_FOOTER.lstrip("\n"))
+    return "\n".join(out)

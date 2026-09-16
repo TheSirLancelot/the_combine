@@ -99,7 +99,8 @@ down this file, and restarting is the fix in both directions.
 you would rather not re-run the installer.
 
 Commands: `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`, `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
+`/compare`, `/grade`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
+`/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
@@ -445,6 +446,58 @@ Empty is a normal answer. It needs two rosters whose surpluses fit each other's
 holes, and most pairs do not: DMWD finds nothing at all, RCL finds a manager
 sitting on two elite quarterbacks in a one-quarterback league who needs
 linebackers.
+
+Trades ride along with the 08:30 morning post, because the useful moment for a
+trade finder is the day somebody's roster goes lopsided, which is a day you have
+no reason to go and look. Same dedupe as everything else there: a deal that
+stands for a week is said once.
+
+### Grading an offer
+
+```bash
+uv run combine grade rcl "Demario Davis" "Lamar Jackson"
+uv run combine grade rcl "Davis, Dowdle" "Nabers"          # packages
+```
+
+Also `/grade` in Discord and a picker under the Trades tab. The finder asks what
+deal is out there; this asks whether the one in your inbox is any good. Same two
+assignments without the search, any number of players a side.
+
+```
+  you give   Demario Davis (LB)
+  you get    Lamar Jackson (QB)
+
+  THE NUMBERS FAVOUR YOU
+  your roster, season          +32
+  their roster, season         +56
+  your lineup this week       +0.6
+  your odds this week          57% → 57%
+
+WHAT CHANGES in your season lineup
+  in  Lamar Jackson (QB) 343
+  out Brock Purdy (QB) 311
+
+WHAT CHANGES this Sunday
+  in  Lamar Jackson (QB) 21.3
+  in  T.J. Edwards (LB) 9.1
+  out Brock Purdy (QB) 19.9
+  out Demario Davis (LB) 9.8
+```
+
+The two "what changes" blocks are the point. A total on its own does not tell
+you where the points went, and the two axes routinely disagree: Davis is a
+starting linebacker this Sunday and your fourth linebacker over a season, so
+giving him up costs a real 9.8 on Sunday and nothing at all over the year. The
++32 is entirely Lamar displacing Purdy at quarterback.
+
+Uneven packages are handled properly rather than waved at. Take on more than you
+send and it names who you would have to cut, chosen on the roster as it would be
+AFTER the trade, since asking beforehand picks a man who is about to become
+surplus anyway. A player on IR is never offered as a cut: he occupies no active
+spot, so cutting him frees nothing. Send more than you take and it says how many
+spots you free, and that they are worth close to nothing in points.
+
+It grades the offer. It does not tell you to accept it.
 
 ## Look ahead
 

@@ -167,3 +167,150 @@ def test_render_says_what_it_found_or_says_why_it_found_nothing():
     full = T.render(T.find(complementary(), band=10.0), "A League")
     assert "My RB2" in full and "Their WR2" in full
     assert "zero sum" in full and "not the same as them saying yes" in full
+
+
+# --- grading an offer somebody sent ----------------------------------------
+
+
+def with_ir(client, name, pos, sn):
+    """Park a player on IR. Cutting him frees no active spot, so he must never
+    be offered up as the cheapest man on the roster."""
+    client.teams["Mine"].append(
+        player(name, pos, slot="IR", proj=0.0))
+    client._season[name] = sn
+    client.league.teams[0].roster = [
+        Rostered(p.player_id, client._season.get(p.player_id, 0.0))
+        for p in client.teams["Mine"]]
+    return client
+
+
+class Roomy(Client):
+    """A client that can answer how many active roster spots are open."""
+
+    def __init__(self, teams, season, capacity=4):
+        super().__init__(teams, season)
+        counts = {"RB": 1, "WR": 1, "BE": capacity - 2, "IR": 1}
+        self.league.settings = type("S", (), {"position_slot_counts": counts})()
+
+
+def test_it_prices_an_offer_from_both_ends():
+    client = complementary()
+    v, err = T.grade(client, ["My RB2"], ["Their WR2"])
+    assert not err
+    assert v.partner == "Rival"
+    assert v.my_season > 0 and v.their_season > 0
+    assert v.mutual and v.good
+
+
+def test_it_says_what_actually_changes_in_the_lineup():
+    """The number on its own is not an explanation. This is the part that
+    answers 'but he is a starter, where did his points go'."""
+    client = complementary()
+    v, _ = T.grade(client, ["My WR1"], ["Their WR1"])
+    joining = [m.name for m in v.season_moves if m.joining]
+    leaving = [m.name for m in v.season_moves if not m.joining]
+    assert joining == ["Their WR1"] and leaving == ["My WR1"]
+
+
+def test_a_man_who_was_never_starting_moves_nothing():
+    """Giving up a bench player changes the lineup not at all, and saying so is
+    better than an empty section."""
+    client = complementary()
+    v, _ = T.grade(client, ["My RB2"], ["Their RB1"])
+    assert v.season_moves == []
+    assert v.my_season <= 0
+
+
+def test_an_offer_against_you_reads_as_against_you():
+    client = complementary()
+    v, _ = T.grade(client, ["My RB1"], ["Their RB1"])
+    assert v.my_season < 0 and not v.good
+
+
+def test_taking_on_more_than_you_send_forces_a_cut():
+    client = Roomy({
+        "Mine": [player("Star", "RB", slot="RB", proj=15.0),
+                 player("Filler", "WR", slot="WR", proj=3.0),
+                 player("Spare", "WR", proj=2.0),
+                 player("Deadweight", "WR", proj=1.0)],
+        "Rival": [player("Theirs A", "WR", slot="WR", proj=14.0),
+                  player("Theirs B", "WR", proj=13.0)]},
+        {"Star": 300.0, "Filler": 90.0, "Spare": 60.0, "Deadweight": 30.0,
+         "Theirs A": 280.0, "Theirs B": 260.0}, capacity=4)
+    v, err = T.grade(client, ["Star"], ["Theirs A", "Theirs B"])
+    assert not err
+    assert v.spots == -1              # one more in than out
+    assert v.room == 0                # four men, four active spots
+    assert v.my_cuts == ["Deadweight"]
+
+
+def test_the_cut_is_chosen_on_the_roster_as_it_would_be_after_the_trade():
+    """Ask before the deal lands and the man who is about to become surplus
+    still looks like a starter, so the cut falls on somebody useful."""
+    client = Roomy({
+        "Mine": [player("Old RB", "RB", slot="RB", proj=10.0),
+                 player("Keeper", "WR", slot="WR", proj=9.0),
+                 player("Scrub", "WR", proj=1.0),
+                 player("Chaff", "WR", proj=1.0)],
+        "Rival": [player("New RB", "RB", slot="RB", proj=20.0),
+                  player("Throw-in", "WR", proj=8.0)]},
+        {"Old RB": 100.0, "Keeper": 190.0, "Scrub": 40.0, "Chaff": 20.0,
+         "New RB": 400.0, "Throw-in": 170.0}, capacity=4)
+    v, err = T.grade(client, ["Old RB"], ["New RB", "Throw-in"])
+    assert not err
+    assert v.my_cuts == ["Chaff"]     # the cheapest, not the newly surplus man
+
+
+def test_an_ir_stash_is_never_the_cheapest_man_to_cut():
+    client = Roomy({
+        "Mine": [player("Star", "RB", slot="RB", proj=15.0),
+                 player("Filler", "WR", slot="WR", proj=3.0),
+                 player("Spare", "WR", proj=2.0)],
+        "Rival": [player("Theirs A", "WR", slot="WR", proj=14.0),
+                  player("Theirs B", "WR", proj=13.0)]},
+        {"Star": 300.0, "Filler": 90.0, "Spare": 60.0,
+         "Theirs A": 280.0, "Theirs B": 260.0}, capacity=3)
+    with_ir(client, "Hurt Man", "WR", 10.0)
+    v, _ = T.grade(client, ["Star"], ["Theirs A", "Theirs B"])
+    assert "Hurt Man" not in v.my_cuts
+    assert v.my_cuts == ["Spare"]
+
+
+def test_sending_more_than_you_take_frees_a_spot():
+    client = complementary()
+    v, _ = T.grade(client, ["My RB1", "My RB2"], ["Their WR1"])
+    assert v.spots == 1
+    assert v.my_cuts == []
+
+
+def test_a_name_on_nobody_s_roster_is_refused():
+    v, err = T.grade(complementary(), ["My RB2"], ["Nobody At All"])
+    assert v is None and "not on any other roster" in err
+
+
+def test_one_of_your_own_cannot_be_on_the_receiving_side():
+    v, err = T.grade(complementary(), ["My RB2"], ["My RB1"])
+    assert v is None and "not on any other roster" in err
+
+
+def test_a_three_way_trade_is_refused_rather_than_guessed_at():
+    mine = [player("Mine", "RB", slot="RB", proj=10.0)]
+    client = Client({"Mine": mine,
+                     "A": [player("From A", "WR", slot="WR", proj=10.0)],
+                     "B": [player("From B", "WR", slot="WR", proj=10.0)]},
+                    {"Mine": 200.0, "From A": 200.0, "From B": 200.0})
+    v, err = T.grade(client, ["Mine"], ["From A", "From B"])
+    assert v is None and "three way" in err
+
+
+def test_an_empty_side_is_not_a_trade():
+    v, err = T.grade(complementary(), [], ["Their WR1"])
+    assert v is None and "at least one player each way" in err
+
+
+def test_the_verdict_render_leads_with_the_answer():
+    v, _ = T.grade(complementary(), ["My RB2"], ["Their WR1"])
+    text = T.render_verdict(v, "A League")
+    assert "THE NUMBERS FAVOUR YOU" in text
+    assert "WHAT CHANGES" in text
+    assert "does not tell you to accept it" in text

@@ -429,6 +429,65 @@ def build_trades(league: str) -> Report:
     return Report([e], news=True, signature=signature)
 
 
+def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
+    """An offer somebody sent, priced. Comma separate either side."""
+    from . import discord_out
+    from .pipeline.calibration import load as load_cal
+    from .pipeline.trades import grade
+    from .platforms import client_for
+
+    cfg = config.get_league(league)
+    if cfg.platform != "espn":
+        return [discord_out.message_embed(
+            "Needs the API to read every roster.", cfg.name)]
+    def names(side: str) -> list[str]:
+        return [x.strip() for x in side.split(",") if x.strip()]
+
+    verdict, err = grade(client_for(league), names(give), names(get),
+                         cal=load_cal(league), dist=_distribution())
+    if err:
+        return [discord_out.message_embed(err, f"Trade · {cfg.name}")]
+
+    colour = (discord_out.GOOD if verdict.my_season > 0
+              else discord_out.BAD if verdict.my_season < 0
+              else discord_out.INFO)
+    headline = ("The numbers favour you" if verdict.my_season > 0
+                else "The numbers are against you" if verdict.my_season < 0
+                else "The numbers are a wash")
+    e = discord.Embed(title=f"{headline} · {cfg.name}", colour=colour)
+    e.description = discord_out.code("\n".join([
+        f"give  {', '.join(p.name for p in verdict.give)}",
+        f"get   {', '.join(p.name for p in verdict.get)}",
+        "",
+        f"{'your roster, season':<22}{verdict.my_season:>+7.0f}",
+        f"{'their roster, season':<22}{verdict.their_season:>+7.0f}",
+        f"{'your lineup this week':<22}{verdict.my_week:>+7.1f}",
+    ]))[:discord_out.DESC]
+
+    if verdict.season_moves:
+        discord_out.field(e, "What changes over the season", "\n".join(
+            m.describe() for m in verdict.season_moves))
+    else:
+        discord_out.field(e, "What changes over the season",
+                          "Nothing. The men coming in do not crack your "
+                          "lineup and the men going out were not in it.")
+    if verdict.week_moves:
+        discord_out.field(e, "What changes this Sunday", "\n".join(
+            m.describe() for m in verdict.week_moves))
+    if verdict.odds_after:
+        discord_out.field(e, "Your odds this week",
+                          f"{verdict.odds_now * 100:.0f}% → "
+                          f"{verdict.odds_after * 100:.0f}%")
+    if verdict.my_cuts:
+        discord_out.field(e, "You would have to cut",
+                          ", ".join(verdict.my_cuts))
+    e.set_footer(text="Season is your whole roster started best-eligible, "
+                      "before against after. It grades the offer; it does not "
+                      "tell you to accept it. The depth you give up and an "
+                      "injury in November are not in it.")
+    return [e]
+
+
 def build_trades_all() -> list[discord.Embed]:
     out: list[discord.Embed] = []
     for slug, cfg in config.leagues().items():
@@ -761,6 +820,16 @@ async def trades(interaction: discord.Interaction, league: str | None = None):
                   build_trades_all if league is None
                   else (lambda lg: build_trades(lg).embeds),
                   *((), (league,))[league is not None])
+
+
+@client.tree.command(description="Price a trade offer somebody sent you")
+@app_commands.describe(league="Which league", give="Who you send, comma separated",
+                       get="Who you receive, comma separated")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def grade(interaction: discord.Interaction, league: str, give: str,
+                get: str):
+    await respond(interaction, build_grade, league, give, get)
 
 
 @client.tree.command(description="Weeks ahead where the roster cannot fill a slot")

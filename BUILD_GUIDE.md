@@ -1777,6 +1777,35 @@ now repeat one of my players, and `alternatives_note` says so: they are
 alternatives rather than a package, and because each row is priced against the
 roster as it stands today, two rows never add up even when they share nobody.
 
+**The partner's bar is -band, not +band.** William asked whether deals that are
+close to good for the other side are worth surfacing. Measured it: in RCL, 16
+pairs clear my bar, 8 are clearly good for the partner and 8 land inside the
+band, and one of those 8 is the best deal in the league for me, Davis for Malik
+Nabers at +36/+8. In DMWD, which found nothing at all under the old rule, every
+pair that clears my bar sits inside the band for the partner.
+
+The band already means "these numbers cannot tell". A partner at +8 and a
+partner at -8 are the same answer, so demanding +17 of him was over-precise for
+a module whose own footer says it does not model what a manager wants. He now
+has to clear -17 instead, the same band from the other side of zero, and
+`Deal.stretch` labels which side he landed on rather than blurring them
+together. My own side is unchanged.
+
+**The pruning had to come off his side entirely, and there is no sound
+replacement.** `wanted` survives because `my_season > bar` genuinely requires
+`my_add > bar`, the monotone bound. On his side the only sound bound is
+`their_season <= their_add`, and since `their_add >= 0` always, nothing prunes
+against a -17 floor. A filter on `their_add > 0` was tried first and is wrong
+for the same reason the lower bound is a lower bound: a man who cannot crack
+their lineup today may well start once the player they send me is gone. So
+every one of my players stays a candidate and the shortlist cap is what keeps
+it bounded. RCL went from 41 to 48 seconds, which is the whole cost.
+
+The shortlist now ranks on `min(my_lb - bar, their_lb + bar)`, the slack each
+side has against ITS OWN bar. Ranking on the raw bounds sent the shortlist after
+deals the partner loves and skipped the ones he merely does not mind, which are
+most of what this change is for.
+
 **The sort tie-breaks on the partner's gain.** Among deals worth the same to me,
 the one worth more to him is the one likelier to be accepted, and leaving that to
 dictionary order was what let the worse Daniels row win in the first place.

@@ -1346,9 +1346,10 @@ def trades_page():
 
     deals, at = load_trades(league, st.session_state.nonce, _code_version())
     if not deals:
-        st.info("No one-for-one improves both rosters by more than the noise "
-                "band. That is a normal answer: it needs two rosters whose "
-                "surpluses fit each other's holes, and most pairs do not.")
+        st.info("No one-for-one gains you more than the noise band without "
+                "clearly costing the other side. That is a normal answer: it "
+                "needs two rosters whose surpluses fit each other's holes, and "
+                "most pairs do not.")
         freshness(at)
         return
 
@@ -1356,6 +1357,7 @@ def trades_page():
         "Give": d.give.name, "Get": d.get.name, "From": d.partner,
         "You / season": d.my_season, "Them / season": d.their_season,
         "You / week": d.my_week,
+        "Ask": "stretch" if d.stretch else "solid",
         "Win odds": (f"{d.odds_now * 100:.0f}% → {d.odds_after * 100:.0f}%"
                      if d.odds_after else "--"),
         "They are": ", ".join(n for n in (
@@ -1375,6 +1377,11 @@ def trades_page():
                 "You / week", format="%+.1f",
                 help="Your starting lineup this Sunday. Expect this to be "
                      "small or negative: the weekly axis is near zero sum."),
+            "Ask": st.column_config.TextColumn(
+                "Ask", help="solid: the numbers say he gains too. stretch: his "
+                            "side is inside the noise band, where these numbers "
+                            "cannot tell a gain from a loss, so it is worth "
+                            "asking and not worth expecting."),
         })
 
     from combine.pipeline.trades import alternatives_note
@@ -1389,6 +1396,11 @@ def trades_page():
             "correctly worth nothing to the side holding him, and can be worth "
             "real points to the side that would start him. That is the only "
             "axis where a trade creates value for both teams.\n\n"
+            "**Ask** is how the partner's side reads. `solid` means the "
+            "numbers say he gains too. `stretch` means his side lands inside "
+            "the noise band, where these numbers cannot tell a gain from a "
+            "loss, so it is worth asking and not worth expecting. A deal that "
+            "is clearly bad for him is not listed at all.\n\n"
             "**Week** is this Sunday's starting lineup. Measured over 999 "
             "priced pairs the two sides' weekly gains summed to a median of "
             "-0.6, so expect one side to be negative. It is here so a deal "

@@ -98,7 +98,38 @@ def test_the_surplus_man_is_the_one_offered_not_the_starter():
     assert gave[0] == "My RB2"
 
 
+def test_a_partner_inside_the_noise_band_is_offered_and_labelled():
+    """The band is the width below which these numbers cannot tell a gain from
+    a loss. Requiring him to clear +band before a deal is worth mentioning hid
+    the best deal in RCL: Davis for Nabers at +36 to me and +8 to him."""
+    client = complementary()
+    deals = T.find(client, band=10.0, limit=99)
+    assert deals
+    assert all(d.their_season > -10.0 for d in deals)
+    inside = [d for d in deals if 0 < d.their_season <= 10.0]
+    for d in inside:
+        assert d.stretch, "a partner inside the band must be flagged, not hidden"
+
+
+def test_a_deal_that_clearly_costs_the_partner_is_still_refused():
+    """Relaxed is not removed. Below the band the numbers do say he loses."""
+    deals = T.find(complementary(), band=10.0, limit=99)
+    assert all(d.their_season > -10.0 for d in deals)
+
+
+def test_solid_and_stretch_are_the_two_sides_of_the_same_band():
+    d = T.Deal(give=player("A", "RB"), get=player("B", "QB"), partner="Them",
+               my_season=30.0, their_season=8.0, my_week=0.0, their_week=0.0,
+               bar=17.0)
+    assert d.stretch is True
+    assert T.Deal(give=player("A", "RB"), get=player("B", "QB"),
+                  partner="Them", my_season=30.0, their_season=56.0,
+                  my_week=0.0, their_week=0.0, bar=17.0).stretch is False
+
+
 def test_two_balanced_rosters_produce_nothing_and_that_is_the_answer():
+    """Identical rosters: every swap is a wash for me, so nothing clears MY
+    bar, which is the side that stayed strict."""
     same = {"A1": 300.0, "A2": 200.0, "B1": 300.0, "B2": 200.0}
     client = Client({
         "Mine": [player("A1", "RB", slot="RB", proj=15.0),
@@ -199,8 +230,9 @@ def test_render_says_what_it_found_or_says_why_it_found_nothing():
     empty = T.render([], "A League")
     assert "noise band" in empty and "surpluses fit" in empty
     full = T.render(T.find(complementary(), band=10.0), "A League")
-    assert "My RB2" in full and "Their WR2" in full
+    assert "My RB2" in full
     assert "zero sum" in full and "not the same as them saying yes" in full
+    assert "ASK" in full and "worth asking and" in full
 
 
 # --- grading an offer somebody sent ----------------------------------------

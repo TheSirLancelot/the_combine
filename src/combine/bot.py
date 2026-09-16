@@ -395,21 +395,24 @@ def build_trades(league: str) -> Report:
     deals = for_league(league)
     if not deals:
         return Report([discord_out.message_embed(
-            "No one-for-one improves both rosters by more than the noise band. "
-            "That needs two rosters whose surpluses fit each other's holes, "
-            "and most pairs do not.",
+            "No one-for-one gains you more than the noise band without "
+            "clearly costing the other side. That needs two rosters whose "
+            "surpluses fit each other's holes, and most pairs do not.",
             f"Trades · {cfg.name}", colour=discord_out.INFO)])
 
     e = discord.Embed(title=f"Trades · {cfg.name}", colour=discord_out.GOOD)
-    table = [f"{'GIVE':<14}{'GET':<14}{'ME':>5}{'THEM':>6}"]
+    table = [f"{'GIVE':<14}{'GET':<14}{'ME':>5}{'THEM':>6}  ASK"]
     for d in deals:
         table.append(f"{discord_out.short_name(d.give.name, 13):<14}"
                      f"{discord_out.short_name(d.get.name, 13):<14}"
-                     f"{d.my_season:>+5.0f}{d.their_season:>+6.0f}")
+                     f"{d.my_season:>+5.0f}{d.their_season:>+6.0f}  "
+                     f"{'stretch' if d.stretch else 'solid'}")
     e.description = discord_out.code("\n".join(table))[:discord_out.DESC]
     for d in deals:
         note = (f"{d.my_season:+.0f} season for you, {d.their_season:+.0f} for "
-                f"them, {d.my_week:+.1f} to your lineup this week.")
+                f"them, {d.my_week:+.1f} to your lineup this week."
+                + (" His side is inside the noise band, so worth asking and "
+                   "not worth expecting." if d.stretch else ""))
         if d.odds_after:
             note += (f" Win odds {d.odds_now * 100:.0f}% → "
                      f"{d.odds_after * 100:.0f}%.")

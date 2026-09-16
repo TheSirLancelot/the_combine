@@ -427,6 +427,17 @@ WIN% is this week's matchup, simulated by resampling what comparable players
 actually did rather than off a fitted curve. Draws are independent and real
 weeks are not, so it reads a little more confident than it should.
 
+**The partner only has to not be clearly worse off.** The noise band, 17 season
+points, is the width below which these numbers cannot tell one outcome from
+another. Requiring him to clear +17 before a deal was worth mentioning threw
+away the ones worth asking about, including the best deal in RCL: Davis for
+Malik Nabers at +36 to you and +8 to him. So the bar for him is now -17 rather
+than +17, the same band read from the other side of zero, and the ASK column
+says which side he landed on. `solid` means the numbers say he gains too.
+`stretch` means his side is inside the band, where a gain and a loss look the
+same, so it is worth asking and not worth expecting. Clearly bad for him is
+still not listed. Your own side is unchanged and still has to clear +17.
+
 One row per player you would acquire, at his best price, ranked by your gain and
 tie-broken by theirs. Rows can repeat one of your own players, because the
 question a row answers is what the cheapest thing that gets you this man is, and

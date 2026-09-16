@@ -95,12 +95,29 @@ class Deal:
     their_week: float
     partner_thin: str = ""        # weakest position they still start
     partner_deep: str = ""        # where they carry someone who never starts
+    bar: float = 0.0              # the noise band this was judged against
     odds_now: float = 0.0         # P(I win this week) as things stand
     odds_after: float = 0.0
 
     @property
     def odds_gain(self) -> float:
         return self.odds_after - self.odds_now
+
+    @property
+    def stretch(self) -> bool:
+        """Whether the partner's side is inside the band rather than above it.
+
+        The band is the width below which these numbers cannot tell two
+        outcomes apart. So a partner at +8 and a partner at -8 are the same
+        answer -- "no idea" -- and requiring him to clear +17 before a deal is
+        worth mentioning throws away the ones worth asking about. It hid the
+        best deal in RCL: Davis for Malik Nabers at +36 to me and +8 to him.
+
+        It is a real distinction and it is labelled rather than blurred. Above
+        the band the numbers say he gains. Inside it they say nothing, and
+        whether he says yes comes down to what he thinks of his own roster.
+        """
+        return self.their_season <= self.bar
 
     def describe(self) -> str:
         return (f"give {self.give.name} ({self.give.pos}), "
@@ -287,14 +304,29 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
                                [_cand(p, cal, season, incoming=True)
                                 for p in mine], _season,
                                _floor(their_chosen, slot_list))
+        # My side still prunes: `my_season > bar` needs `my_add > bar`, which is
+        # the monotone bound and sound.
         wanted = [pid for pid, gain in my_add.items() if gain > bar]
-        offered = [pid for pid, gain in their_add.items() if gain > bar]
-        if not wanted or not offered:
+        if not wanted:
             continue
 
+        # His side no longer does, and cannot. The test is now that he is not
+        # clearly worse off, and the only sound bound on his gain is `their_add
+        # >= 0`, which every player satisfies. A filter on `their_add > 0`
+        # looks reasonable and is wrong: a man who cannot crack their lineup
+        # today may well start once the player they send me is gone, which is
+        # the same submodularity that made the lower bound a lower bound. So
+        # every one of my players stays a candidate, and the shortlist cap is
+        # what keeps this bounded.
+        offered = list(their_add)
+
+        # Ranked by how much slack each side has against ITS OWN bar, which is
+        # +bar for me and -bar for him. Ranking on the raw pair of bounds sent
+        # the shortlist after deals he loves and skipped the ones he merely
+        # does not mind, which are most of what this change is for.
         pairs = sorted(
-            ((min(my_add[got] - my_drop[gave],
-                  their_add[gave] - their_drop[got]), gave, got)
+            ((min(my_add[got] - my_drop[gave] - bar,
+                  their_add[gave] - their_drop[got] + bar), gave, got)
              for gave in offered for got in wanted),
             key=lambda row: -row[0])[:shortlist]
 
@@ -310,13 +342,13 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
                 [c for c in their_cands if c["espn_id"] != got]
                 + [_cand(give, cal, season, incoming=True)],
                 slot_list, _season) - their_base
-            if their_season <= bar:
+            if their_season <= -bar:
                 continue
             deals.append(Deal(
                 give=give, get=get, partner=team,
                 my_season=my_season, their_season=their_season,
                 my_week=0.0, their_week=0.0,
-                partner_thin=thin, partner_deep=deep))
+                partner_thin=thin, partner_deep=deep, bar=bar))
 
     # My gain first, then theirs. Among deals worth the same to me, the one
     # worth more to the partner is the one likelier to be accepted, and leaving
@@ -445,6 +477,14 @@ def for_league(league: str, limit: int = LIMIT) -> list[Deal]:
                 dist=dist)
 
 
+ASK_NOTE = (
+    "\nASK says how the partner's side reads. `solid` means the numbers say he "
+    "gains too.\n`stretch` means his side lands inside the noise band, where "
+    "these numbers cannot\ntell a gain from a loss, so it is worth asking and "
+    "not worth expecting. A deal\nthat is clearly bad for him is not listed at "
+    "all.")
+
+
 FOOTER = (
     "\nSEASON is each whole roster started best-eligible, before against after, "
     "so a\nfourth back who never cracks a lineup is correctly worth nothing to "
@@ -483,19 +523,20 @@ def alternatives_note(deals: list[Deal]) -> str:
 def render(deals: list[Deal], league_name: str) -> str:
     if not deals:
         return (f"{league_name} — trades\n"
-                f"No one-for-one improves both rosters by more than the noise "
-                f"band.\nThat is a normal answer: it needs two rosters whose "
-                f"surpluses fit each\nother's holes, and most pairs of rosters "
-                f"do not.")
+                f"No one-for-one gains you more than the noise band without "
+                f"clearly costing\nthe other side. That is a normal answer: it "
+                f"needs two rosters whose\nsurpluses fit each other's holes, "
+                f"and most pairs of rosters do not.")
     out = [f"{league_name} — trades", ""]
-    out.append(f"  {'GIVE':<20}{'GET':<20}{'FROM':<16}"
-               f"{'ME/SZN':>8}{'THEM/SZN':>10}{'ME/WK':>7}{'WIN%':>9}")
+    out.append(f"  {'GIVE':<20}{'GET':<20}{'FROM':<14}"
+               f"{'ME/SZN':>8}{'THEM/SZN':>10}{'ME/WK':>7}{'WIN%':>9}  ASK")
     for d in deals:
         odds = (f"{d.odds_now * 100:.0f}→{d.odds_after * 100:.0f}"
                 if d.odds_after else "--")
         out.append(f"  {d.give.name[:19]:<20}{d.get.name[:19]:<20}"
-                   f"{d.partner[:15]:<16}{d.my_season:>+8.0f}"
-                   f"{d.their_season:>+10.0f}{d.my_week:>+7.1f}{odds:>9}")
+                   f"{d.partner[:13]:<14}{d.my_season:>+8.0f}"
+                   f"{d.their_season:>+10.0f}{d.my_week:>+7.1f}{odds:>9}  "
+                   f"{'stretch' if d.stretch else 'solid'}")
     shapes: dict[str, str] = {}
     for d in deals:
         note = []
@@ -509,6 +550,7 @@ def render(deals: list[Deal], league_name: str) -> str:
         out.append("")
         for team, note in shapes.items():
             out.append(f"  {team}: {note}")
+    out.append(ASK_NOTE.lstrip("\n"))
     out.append("")
     out.append(alternatives_note(deals))
     out.append(FOOTER)

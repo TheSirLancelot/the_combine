@@ -889,3 +889,116 @@ def test_the_render_says_it_is_two_moves():
     assert "not on your roster yet" in text
     assert "two moves and the first one can fail" in text
     assert "Spare" in text
+
+
+# --- a claim you have already put in ----------------------------------------
+
+
+class Claimed(Roomy):
+    """A roster with a pending waiver claim of my own already in."""
+
+    def __init__(self, *a, claims=(), wire=(), **kw):
+        super().__init__(*a, **kw)
+        self.league.free_agents = lambda size=350: list(wire)
+        self._claims = list(claims)
+        self.cfg = type("C", (), {"team_id": 6})()
+        self.league.transactions = lambda types=None: self._claims
+
+
+def claim_row(player_id, name, drop=""):
+    """One PENDING transaction shaped the way espn-api hands them back."""
+    items = [type("I", (), {"type": "ADD", "playerId": player_id,
+                            "player": name})()]
+    if drop:
+        items.append(type("I", (), {"type": "DROP", "playerId": drop,
+                                    "player": drop})())
+    return type("T", (), {
+        "team": type("T", (), {"team_id": 6})(), "date": 1_700_000_000,
+        "status": "PENDING", "items": items})()
+
+
+def claimable(capacity=3, claims=()):
+    mine = [player("My RB", "RB", slot="RB", proj=15.0),
+            player("My WR", "WR", slot="WR", proj=9.0),
+            player("Spare", "WR", proj=1.0)]
+    theirs = [player("Their WR", "WR", slot="WR", proj=16.0),
+              player("Their RB", "RB", slot="RB", proj=3.0)]
+    season = {"My RB": 300.0, "My WR": 190.0, "Spare": 40.0,
+              "Their WR": 320.0, "Their RB": 60.0}
+    return Claimed({"Mine": mine, "Rival": theirs}, season,
+                   capacity=capacity, claims=claims,
+                   wire=[Pooled("Free QB", "QB", 280.0)])
+
+
+def test_a_claim_you_already_made_decides_the_drop():
+    """Guessing a different one answers a question you already answered, and
+    the guess is cheapest-first, which is rarely what somebody picks."""
+    client = claimable(claims=[claim_row("Free QB", "Free QB", drop="My WR")])
+    v, err = T.grade(client, ["Free QB"], ["Their WR"])
+    assert not err, err
+    assert v.claim_known == (("Free QB", "My WR"),)
+    assert v.claim_cuts == ["My WR"], "not the cheapest man, the one you chose"
+
+
+def test_without_a_claim_it_guesses_and_says_it_is_guessing():
+    client = claimable()
+    v, _ = T.grade(client, ["Free QB"], ["Their WR"])
+    assert v.claim_known == ()
+    assert v.claim_cuts == ["Spare"]
+    text = " ".join(T.render_verdict(v, "A League").split())
+    assert "cheapest first" in text
+    assert "put the claim in first and ask again" in text
+
+
+def test_the_named_drop_is_actually_removed_from_the_valuation():
+    """Saying whose spot it is and then pricing somebody else's would be worse
+    than guessing. Here the choice really matters: dropping the quarterback to
+    rent one, then trading the rented one away, leaves the slot empty."""
+    def client(claims=()):
+        mine = [player("My QB", "QB", slot="QB", proj=14.0),
+                player("My RB", "RB", slot="RB", proj=15.0),
+                player("My WR", "WR", slot="WR", proj=9.0),
+                player("Spare", "WR", proj=1.0)]
+        theirs = [player("Their WR", "WR", slot="WR", proj=16.0),
+                  player("Their RB", "RB", slot="RB", proj=3.0)]
+        season = {"My QB": 200.0, "My RB": 300.0, "My WR": 190.0,
+                  "Spare": 40.0, "Their WR": 320.0, "Their RB": 60.0}
+        out = Claimed({"Mine": mine, "Rival": theirs}, season, capacity=4,
+                      claims=claims, wire=[Pooled("Free QB", "QB", 280.0)])
+        out.roster_slots = lambda: {"QB": 1, "RB": 1, "WR": 1}
+        return out
+
+    guessed, _ = T.grade(client(), ["Free QB"], ["Their WR"])
+    named, _ = T.grade(client([claim_row("Free QB", "Free QB", drop="My QB")]),
+                       ["Free QB"], ["Their WR"])
+    assert guessed.claim_cuts == ["Spare"] and guessed.my_season > 0
+    assert named.claim_cuts == ["My QB"]
+    assert named.my_season < 0, "your quarterback slot is empty afterwards"
+
+
+def test_a_claim_with_no_drop_named_still_needs_a_spot():
+    client = claimable(capacity=4,
+                       claims=[claim_row("Free QB", "Free QB")])
+    v, _ = T.grade(client, ["Free QB"], ["Their WR"])
+    assert v.claim_known == (("Free QB", ""),)
+    assert v.claim_cuts == []
+    text = " ".join(T.render_verdict(v, "A League").split())
+    assert "no drop named" in text
+
+
+def test_a_claim_for_somebody_else_still_eats_a_spot():
+    """A pending bare add has already spoken for a roster spot. Counting it as
+    open would recommend a second move that will not fit."""
+    loose = claimable(capacity=4)
+    busy = claimable(capacity=4,
+                     claims=[claim_row("999", "Some Other Guy")])
+    assert T.grade(loose, ["Free QB"], ["Their WR"])[0].claim_cuts == []
+    assert T.grade(busy, ["Free QB"], ["Their WR"])[0].claim_cuts == ["Spare"]
+
+
+def test_the_render_names_the_claim_and_the_drop():
+    client = claimable(claims=[claim_row("Free QB", "Free QB", drop="My WR")])
+    v, _ = T.grade(client, ["Free QB"], ["Their WR"])
+    text = " ".join(T.render_verdict(v, "A League").split())
+    assert "already have a claim in for Free QB, dropping My WR" in text
+    assert "rather than a guess" in text

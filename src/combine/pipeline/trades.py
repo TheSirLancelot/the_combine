@@ -750,6 +750,7 @@ class Verdict:
     their_cuts: list[str] = ()
     claimed: list[str] = ()            # men I would have to add off the wire first
     claim_cuts: list[str] = ()         # and who that claim would cost me
+    claim_known: tuple = ()            # (player, drop) for claims already in
     odds_now: float = 0.0
     odds_after: float = 0.0
 
@@ -857,7 +858,7 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
     unchanged: the season number is where a trade can create value and the
     weekly one is close to zero sum.
     """
-    from .waivers import roster_room
+    from .waivers import pending_adds, roster_room
 
     wk = int(week or client.week)
     slots = client.roster_slots()
@@ -923,7 +924,17 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
     gave = {p.player_id for p in giving}
     got = {p.player_id for p in getting}
     spots = len(giving) - len(getting)
-    room = roster_room(client, mine)
+
+    # A claim I have already put in has a drop attached to it, decided by me.
+    # Guessing a different one would be answering a question I already
+    # answered, and the guess is cheapest-first, which is rarely what somebody
+    # picks in the ESPN app.
+    pending = pending_adds(client) if claiming else {}
+    claim_ids = {p.player_id for p in claiming}
+    # Claims for players NOT in this deal have still spoken for their spots.
+    room = roster_room(client, mine,
+                       {pid: c for pid, c in pending.items()
+                        if pid not in claim_ids})
 
     def traded(cands, out_ids, incoming):
         return ([c for c in cands if c["espn_id"] not in out_ids]
@@ -951,11 +962,25 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
     # and that costs a spot before the trade gives it back. Priced as the two
     # steps it really is: the claim, then the deal, with the BEFORE still being
     # the roster exactly as it stands today.
-    claim_ids = {p.player_id for p in claiming}
-    with_claims = my_cands + [_cand(p, cal, season, incoming=True)
-                              for p in claiming]
-    claim_cuts, with_claims = make_room(
-        with_claims, len(claiming) - room, claim_ids)
+    settled, known = [], []
+    for man in claiming:
+        claim = pending.get(man.player_id)
+        if claim is None:
+            continue
+        known.append((man.name, claim.drop_name))
+        if not claim.drop_name:
+            continue
+        already = next((c for c in my_cands
+                        if c["name"] == claim.drop_name), None)
+        if already is not None:
+            settled.append(already)
+
+    decided = {c["espn_id"] for c in settled}
+    with_claims = ([c for c in my_cands if c["espn_id"] not in decided]
+                   + [_cand(p, cal, season, incoming=True) for p in claiming])
+    guessed, with_claims = make_room(
+        with_claims, len(claiming) - len(settled) - room, claim_ids)
+    claim_cuts = settled + guessed
     # What the claim leaves behind, which is what the trade then works with.
     left = room - len(claiming) + len(claim_cuts)
 
@@ -987,6 +1012,7 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
         their_cuts=[c["name"] for c in their_cuts],
         claimed=[p.name for p in claiming],
         claim_cuts=[c["name"] for c in claim_cuts],
+        claim_known=tuple(known),
         **_grade_odds(client, wk, my_cands, mine_after, slot_list, dist),
     ), ""
 
@@ -1011,6 +1037,37 @@ def _grade_odds(client, week: int, before: list[dict], after: list[dict],
             "odds_after": win_probability(field(after), opponent, dist)}
 
 
+def claim_note(v: Verdict) -> list[str]:
+    """What landing the wire players would take, as sentences.
+
+    One place, because three views say it and the interesting part is which
+    drop is a fact and which is a guess. Getting that backwards in one surface
+    and right in another is exactly the drift this project keeps avoiding.
+    """
+    if not v.claimed:
+        return []
+    out = [f"{', '.join(v.claimed)} is not on your roster yet. This assumes "
+           f"you land the claim first and then make the trade, so it is two "
+           f"moves and the first one can fail."]
+    for man, drop in v.claim_known:
+        out.append(
+            f"You already have a claim in for {man}"
+            + (f", dropping {drop}, so that is the drop this uses rather than "
+               f"a guess." if drop else
+               ", with no drop named, so it needs a spare roster spot."))
+    named = {drop for _man, drop in v.claim_known}
+    guessed = [c for c in v.claim_cuts if c not in named]
+    if guessed:
+        out.append(f"Fitting the rest in would cost you "
+                   f"{', '.join(guessed)}, cheapest first, and that is already "
+                   f"inside the numbers. If you would drop somebody else, put "
+                   f"the claim in first and ask again.")
+    elif not v.claim_cuts:
+        out.append("You have the roster spot for it, so the claim itself "
+                   "costs nothing.")
+    return out
+
+
 VERDICT_FOOTER = (
     "\nSEASON is your whole roster started best-eligible, before against after, "
     "so a\nplayer who never cracks the lineup is correctly worth nothing and a "
@@ -1031,16 +1088,11 @@ def render_verdict(v: Verdict, league_name: str) -> str:
            f"  you give   {give}",
            f"  you get    {get}", ""]
 
-    if v.claimed:
-        out.append(fill(
-            f"{', '.join(v.claimed)} is not on your roster yet. This assumes "
-            f"you land the claim first and then make the trade, so it is two "
-            f"moves and the first one can fail."
-            + (f" Fitting the claim in costs you {', '.join(v.claim_cuts)}, "
-               f"and that is already inside the numbers below."
-               if v.claim_cuts else
-               " You have the roster spot for it, so the claim itself costs "
-               "nothing.")))
+    notes = claim_note(v)
+    if notes:
+        out.append(fill(notes[0]))
+        for line in notes[1:]:
+            out.append(fill(line, initial_indent="  ", subsequent_indent="  "))
         out.append("")
 
     verdict = ("the numbers favour you" if v.my_season > 0

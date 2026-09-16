@@ -1996,6 +1996,26 @@ pretending there is a penalty. The case that is not free has its own test:
 claiming a quarterback with no room drops your own, then the trade sends the new
 one away, and the slot is empty. That comes out negative, which it should.
 
+**A claim already in decides its own drop.** `pending_adds` was built for the
+waiver view and carries the dropped player's name, so when the man being sent
+already has a claim against him, that drop is used and the guess is skipped.
+It changes the answer rather than the wording: the live Stafford deal prices at
++36 guessing cheapest-first and +11 once it knows the claim drops Travis Hunter.
+Cheapest-first is a fine default and a poor prediction of what somebody picks in
+the ESPN app.
+
+Three parts to get right. The named drop is actually removed from the valuation,
+because saying whose spot it is and then pricing somebody else's would be worse
+than guessing. A pending claim for a player NOT in this deal still eats a spot,
+so `roster_room` is passed those and not the ones being modelled, which would
+double-count. And where a drop is still a guess the output says so and says how
+to make it a fact, since the fix is one move in the app.
+
+`claim_note()` builds those sentences once for the CLI, Discord and the app.
+Which drop is a fact and which is a guess is the interesting part, and getting
+it backwards in one surface and right in another is the drift this repo keeps
+designing away.
+
 `pool()` deliberately does not reuse `waivers._synthetic`, which refuses a
 kicker, a man ruled out this week and anyone with no projection today. All three
 are right for "would he improve my lineup on Sunday" and all three are wrong for

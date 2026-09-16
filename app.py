@@ -1487,7 +1487,7 @@ def _grade_an_offer(league: str):
         return
 
     from combine.pipeline.calibration import load as load_cal
-    from combine.pipeline.trades import grade
+    from combine.pipeline.trades import claim_note, grade
 
     verdict, err = grade(client_for(league), [ours[k] for k in give],
                          [theirs[k] for k in get], cal=load_cal(league),
@@ -1538,16 +1538,8 @@ def _grade_an_offer(league: str):
                        "is why giving up a quarterback can be nearly free to a "
                        "manager carrying two of them.")
 
-    if verdict.claimed:
-        st.info(
-            f"{', '.join(verdict.claimed)} is not on your roster yet. This "
-            f"assumes you land the claim first and then make the trade, so it "
-            f"is two moves and the first one can fail."
-            + (f" Fitting the claim in costs you "
-               f"{', '.join(verdict.claim_cuts)}, and that is already inside "
-               f"the numbers above." if verdict.claim_cuts else
-               " You have the roster spot for it, so the claim itself costs "
-               "nothing."))
+    for note in claim_note(verdict):
+        st.info(note)
     if verdict.my_cuts:
         st.warning(f"You take on {-verdict.spots} more than you send with "
                    f"{verdict.room} spot(s) open, so you would have to cut "

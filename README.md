@@ -724,10 +724,19 @@ one can fail. Fitting the claim in costs you Tyrique Stevenson Sr.,
 and that is already inside the numbers below.
 ```
 
+**If you have already put the claim in, it uses the drop you chose.** ESPN shows
+a team its own pending claims, including the player named to go, so guessing a
+different one would be answering a question you already answered. The guess is
+cheapest-first, which is rarely what somebody picks in the app, and the
+difference is not small: the same Stafford deal prices at +36 with a guessed
+drop and +11 once it knows the claim actually drops Travis Hunter.
+
 The before is your roster exactly as it stands today, so the claim's cost shows
 up rather than being quietly absorbed. With a spot open it costs nothing and
-says so. With no spot it names who goes, and that loss is inside the season
-number. The trap it exists to catch is claiming a quarterback with no room,
+says so. With no spot and no claim in, it names who it would take, cheapest
+first, and tells you to put the claim in and ask again if you had somebody else
+in mind. A pending claim for a player who is NOT in the deal still eats a spot,
+because it has already spoken for one. The trap it exists to catch is claiming a quarterback with no room,
 dropping your own to fit him, and then trading the new one away, which leaves
 the slot empty.
 

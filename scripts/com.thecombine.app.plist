@@ -27,10 +27,16 @@
   Stop:       launchctl unload -w ~/Library/LaunchAgents/com.thecombine.app.plist
   Logs:       tail -f <REPO>/logs/app.out
 
-  The CORS and XSRF flags are for running behind a reverse proxy. Streamlit is a
-  websocket app, and behind a proxy without them it serves the page and then
-  hangs on "Please wait...", which looks like a tunnel problem and is not. They
-  are safe here only because Access is doing the authentication.
+  Which front end serves 8501 is filled in by install_agents.sh: Streamlit by
+  default, or the hand-built web app with --web. Only one process can hold the
+  port, which is what makes this a switch rather than two agents.
+
+  The CORS and XSRF flags in the Streamlit command are for running behind a
+  reverse proxy. Streamlit is a websocket app, and behind a proxy without them
+  it serves the page and then hangs on "Please wait...", which looks like a
+  tunnel problem and is not. They are safe there only because Access is doing
+  the authentication. The web app needs neither: it is ordinary HTTP and it
+  checks the Access assertion itself on every request.
 -->
 <plist version="1.0">
 <dict>
@@ -43,7 +49,7 @@
     <string>-lc</string>
     <!-- REPLACE <REPO> with the absolute path to the checkout, e.g.
          /Users/williamweir/the_combine -->
-    <string>cd &lt;REPO&gt; &amp;&amp; exec &lt;UV&gt; run streamlit run app.py --server.address &lt;BIND&gt; --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false</string>
+    <string>cd &lt;REPO&gt; &amp;&amp; exec &lt;UV&gt; &lt;RUN&gt;</string>
   </array>
 
   <key>WorkingDirectory</key>

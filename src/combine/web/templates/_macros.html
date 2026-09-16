@@ -1,0 +1,44 @@
+{% macro player(p, show_actual=false) %}
+<div class="row">
+  <div class="slot">{{ p.slot }}</div>
+  <div class="who">
+    <div class="name">{{ p.name }}
+      {% if p.status %}<span class="pill bad">{{ p.status }}</span>{% endif %}
+      {% if p.bye %}<span class="pill warn">BYE</span>{% endif %}
+      {% if p.locked %}<span class="pill info">LOCK</span>{% endif %}
+    </div>
+    <div class="meta">{{ p.pos }} · {{ p.team }} · {{ p.opp or "—" }}</div>
+  </div>
+  <div class="role">{{ p.role }}</div>
+  <div class="figure">
+    <div class="v num">{{ "%.1f"|format(p.actual if show_actual else p.proj) }}</div>
+    {% if p.floor is not none %}
+    <div class="band num">{{ "%.0f"|format(p.floor) }}–{{ "%.0f"|format(p.ceiling) }}
+      · {{ p.boom }}%↑</div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro signed(v, dp=1) %}
+<span class="num {{ 'pos' if v > 0 else ('neg' if v < 0 else '') }}">{{ "%+.*f"|format(dp, v) }}</span>
+{% endmacro %}
+
+{# ESPN's chance to win, drawn the way ESPN draws it: one bar, two shares, the
+   percentages at the ends under the team they belong to. Absent whenever ESPN
+   publishes nothing — every week but the one in play — because an empty bar
+   reads as a dead heat rather than as no answer. It is labelled as theirs
+   because it is theirs: we have odds of our own and this is not them. #}
+{% macro odds(mine, theirs) %}
+{% if mine is defined and mine is not none
+      and theirs is defined and theirs is not none %}
+<div class="odds" title="ESPN's chance to win">
+  <span class="pct left">{{ (mine * 100) | round | int }}%</span>
+  <div class="track">
+    <div class="mine" style="width: {{ (mine * 100) | round(1) }}%"></div>
+  </div>
+  <span class="pct right">{{ (theirs * 100) | round | int }}%</span>
+  <small>ESPN's chance to win</small>
+</div>
+{% endif %}
+{% endmacro %}

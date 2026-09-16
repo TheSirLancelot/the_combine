@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>The Combine</title>
+<link rel="stylesheet" href="/static/app.css?v={{ assets() }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🏈</text></svg>">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="dot" aria-hidden="true"></span>
+    <span>The Combine</span>
+    <small>{% if who %}{{ who }}{% elif request.state.gate_off %}⚠︎ open{% endif %}</small>
+  </div>
+
+  {% if page in ("week", "waivers", "trades") %}
+  <div class="chips" role="tablist" aria-label="League">
+    {% for lg in leagues %}
+    <a class="chip" data-nav data-league="{{ lg.slug }}"
+       aria-current="{{ 'true' if lg.slug == league else 'false' }}"
+       href="/{{ page }}?league={{ lg.slug }}{% if week %}&week={{ week }}{% endif %}">{{ lg.slug }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <nav class="tabs">
+    {% for slug, label, path, title in tabs %}
+    <a data-nav data-title="{{ title }}" href="/{{ slug }}?league={{ league }}"
+       aria-current="{{ 'page' if slug == page else 'false' }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ path }}"/></svg>
+      <span>{{ label }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+</header>
+
+<main>{% include body %}</main>
+
+<script src="/static/app.js?v={{ assets() }}" defer></script>
+</body>
+</html>

@@ -18,3 +18,11 @@ probe_*_output.txt
 # holds the client secret and refresh token in a pickle.
 .yahoofantasy
 *.yahoofantasy
+# Rendered snapshots for eyeballing the design. The comment is on its own line
+# because git does not support trailing ones: `preview/  # why` is a pattern
+# containing spaces and a hash, which matches nothing, which is why these kept
+# turning up in `git status` despite apparently being ignored.
+preview/
+
+# Where the desktop app drops files it has handed back.
+Claude outputs/

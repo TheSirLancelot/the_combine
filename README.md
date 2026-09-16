@@ -199,6 +199,50 @@ wraps code blocks rather than scrolling them. The terminal renderers run to 130
 characters and are unreadable on a phone. Prose stays as markdown so Discord can
 wrap it.
 
+## The web front end (branch `new-web`)
+
+Streamlit got this from nothing to useful and its limits are all in one place:
+the phone. Desktop-first layout, tables that scroll sideways off a small screen,
+and a full script re-run for every interaction. `src/combine/web/` is the same
+pipeline behind a small Starlette app that renders real HTML.
+
+```bash
+uv run python scripts/webserve.py --port 8501     # or --host 0.0.0.0
+./scripts/install_agents.sh --with-app --web      # and to run it under launchd
+./scripts/install_agents.sh --with-app            # back to Streamlit
+```
+
+Both share the launchd label `com.thecombine.app`, so the switch stops the other
+one as part of the swap: one label, one process, one port, and the tunnel never
+knows the difference. Expect a few seconds of downtime in the middle, and note
+that any run of the installer also reloads the Discord bot.
+
+The command is baked into the plist and the file it names lives on whichever
+branch is checked out, so switch the front end back before switching branches.
+Otherwise launchd keeps trying to run a script that is not there and, with
+`KeepAlive` on, loops silently. The installer refuses up front if the file it
+would name is missing, which is the case somebody actually hits.
+
+Nothing there computes anything. Every number still comes from
+`combine.pipeline`, and the sentences a trade needs are the same
+`headline()` and `claim_note()` Discord uses, so the three front ends cannot
+drift into saying different things about one deal.
+
+Built mobile-first: a single column, a bottom tab bar where a thumb is, and the
+figures set in tabular numerals because the figures are the point. It is dark by
+default and follows the system for light. Every URL renders server side and
+works with JavaScript off; the navigation then upgrades itself by fetching the
+same URL with `X-Partial` and swapping the main region, so moving between tabs
+costs one small response instead of a reload. If that fetch fails for any
+reason the link is still a link.
+
+The trade pickers search rather than scroll, which matters when the wire is 350
+names. They wrap the real `<select>` rather than replacing it, so the form posts
+what it always posted and the page still works with the script blocked.
+
+The draft board stays on Streamlit for now. It is the biggest single view, it is
+off-season code, and there is nothing to gain from porting it in September.
+
 ## Reaching it from a phone
 
 The app runs on the Mac mini, which is always on and is also the Plex server.

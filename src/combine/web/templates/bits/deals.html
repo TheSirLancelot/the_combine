@@ -1,0 +1,107 @@
+{% import "_macros.html" as m %}
+{% if not deals %}
+  <div class="note info">Nothing{% if team %} with {{ team }}{% endif %} gains
+    you more than the noise band without clearly costing the other side.</div>
+{% else %}
+<div class="card">
+  {% for d in deals %}
+  {# The summary is the row that was here before, minus the reasoning line that
+     was being cut off mid-sentence. That line was never going to fit on a
+     phone, and a truncated explanation is worse than a closed one: it looks
+     like the whole answer. It moves inside. #}
+  <details class="deal">
+    <summary>
+      <div class="row">
+        <div class="slot {{ d.ask }}">{{ d.ask[:3]|upper }}</div>
+        <div class="who">
+          <div class="name">{{ d.give.name }} → {{ d.get.name }}</div>
+          <div class="meta">{{ d.partner }} · them {{ "%+.0f"|format(d.their_season) }}
+            · week {{ "%+.1f"|format(d.my_week) }}</div>
+        </div>
+        <div class="figure"><div class="v">{{ m.signed(d.my_season, 0) }}</div>
+          <div class="band">season</div></div>
+        <div class="chev" aria-hidden="true">›</div>
+      </div>
+    </summary>
+
+    <div class="why">
+      <div class="swap">
+        <div class="leg out">
+          <div class="cap">You send</div>
+          <div class="nm">{{ d.give.name }}</div>
+          <div class="sub">{{ d.give.pos }}{% if d.give.team %} · {{ d.give.team }}{% endif %}
+            · {{ "%.1f"|format(d.give.projected) }} this week</div>
+        </div>
+        <div class="leg in">
+          <div class="cap">You get</div>
+          <div class="nm">{{ d.get.name }}</div>
+          <div class="sub">{{ d.get.pos }}{% if d.get.team %} · {{ d.get.team }}{% endif %}
+            · {{ "%.1f"|format(d.get.projected) }} this week</div>
+        </div>
+      </div>
+
+      <div class="figures">
+        <div><span class="k">You, season</span><span class="v">{{ m.signed(d.my_season, 0) }}</span></div>
+        <div><span class="k">Them, season</span><span class="v">{{ m.signed(d.their_season, 0) }}</span></div>
+        <div><span class="k">You, this week</span><span class="v">{{ m.signed(d.my_week, 1) }}</span></div>
+        <div><span class="k">Them, this week</span><span class="v">{{ m.signed(d.their_week, 1) }}</span></div>
+      </div>
+
+      {# The badge, spelled out against the number it came from, rather than
+         left as a three letter code with a legend at the bottom of the page. #}
+      <p class="note {{ 'good' if d.ask == 'solid' else 'info' if d.ask == 'stretch' else 'bad' }}">
+        {% if d.ask == 'solid' %}The numbers say he gains too:
+          {{ "%+.0f"|format(d.their_season) }} clears the
+          {{ "%.0f"|format(d.bar) }} point band where a gain and a loss look
+          the same.
+        {% elif d.ask == 'stretch' %}His side lands inside the
+          {{ "%.0f"|format(d.bar) }} point band, where these numbers cannot
+          tell a gain from a loss. Worth asking, not worth expecting.
+        {% else %}The numbers do say he loses
+          {{ "%.0f"|format(-d.their_season) }}. Only somebody who likes trading
+          is going to listen.
+        {% endif %}
+      </p>
+
+      {% if d.their_moves %}
+      <div class="cap">What it does to their lineup</div>
+      <ul class="moves">
+        {% for mv in d.their_moves %}
+        <li class="{{ 'in' if mv.joining else 'out' }}">
+          <span class="dir">{{ 'starts' if mv.joining else 'out' }}</span>
+          <span class="nm">{{ mv.name }}</span>
+          <span class="pos">{{ mv.pos }}</span>
+          <span class="val">{{ "%.0f"|format(mv.value) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="foot left">Season points for the seat, not for the man. Losing a
+        starter costs what his replacement is short by, which is usually far
+        less than he is worth.</p>
+      {% endif %}
+
+      {% if d.partner_thin or d.partner_deep %}
+      <p class="note">{{ d.partner }}
+        {%- if d.partner_thin %} is thinnest at {{ d.partner_thin }}
+          against the rest of the league{% endif %}
+        {%- if d.partner_thin and d.partner_deep %}, and{% endif %}
+        {%- if d.partner_deep %} carries more {{ d.partner_deep }} than they can
+          start{% endif %}.</p>
+      {% endif %}
+
+      {% if d.odds_now or d.odds_after %}
+      <div class="figures">
+        <div><span class="k">Win odds now</span><span class="v">{{ "%.0f"|format(d.odds_now * 100) }}%</span></div>
+        <div><span class="k">After the deal</span><span class="v">{{ "%.0f"|format(d.odds_after * 100) }}%</span></div>
+      </div>
+      <p class="foot left">This week only, drawn from what comparable players
+        actually did. Their lineup is the one their manager has set, not an
+        optimised one.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</div>
+<p class="foot">Tap a deal for the reasoning. solid: the numbers say he gains
+  too. stretch: inside the noise band. longshot: the numbers say he loses.</p>
+{% endif %}

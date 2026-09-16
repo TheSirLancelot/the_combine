@@ -824,6 +824,10 @@ def scoreboard() -> int:
     Live scores across every league at once. `*` marks your matchup, `F` a
     finished one, and the count is starters whose game has not ended, because a
     20 point lead with nine players left is not a lead.
+
+    Then what has moved since anything last looked, which is built by
+    subtracting one read from the one before it rather than reported: ESPN
+    publishes totals and never events.
     """
     from .pipeline.scoreboard import build, render
 
@@ -837,6 +841,25 @@ def scoreboard() -> int:
         return 2
     games, missing = build(week, slugs)
     print(render(games, missing))
+
+    # This records the read as well as reading the feed, so running it twice
+    # during a game is itself two reads and produces the difference.
+    from . import db
+    from .pipeline.feed import observe, recent
+    from .pipeline.feed import render as feed_render
+
+    mine = [g for g in games if g.involves_me]
+    if mine:
+        try:
+            db.ensure_schema()
+            with db.connect() as conn:
+                observe(conn, mine, config.SEASON, db.now())
+                events = recent(conn, config.SEASON, mine[0].week, limit=15)
+            print("\nSINCE LAST LOOK")
+            print(feed_render(events))
+        except Exception as exc:
+            print(f"\nfeed unavailable: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
     return 0
 
 

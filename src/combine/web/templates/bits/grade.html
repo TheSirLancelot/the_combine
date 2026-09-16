@@ -1,0 +1,71 @@
+{% import "_macros.html" as m %}
+{% if err %}
+  <div class="note bad">{{ err }}</div>
+{% else %}
+{% set tone = {"gain": "good", "loss": "bad", "wash": "info"}[v.reading] %}
+<div class="note {{ tone }}"><strong>{{ headline(v) }}</strong>
+  Offer from {{ v.partner }}.</div>
+
+{% for line in claim_note(v) %}<div class="note">{{ line }}</div>{% endfor %}
+
+<div class="card">
+  <div class="row"><div class="slot">SZN</div>
+    <div class="who"><div class="name">Your roster</div>
+      <div class="meta">whole roster, best-eligible, before against after</div></div>
+    <div class="figure"><div class="v">{{ m.signed(v.my_season, 0) }}</div></div></div>
+  <div class="row"><div class="slot">SZN</div>
+    <div class="who"><div class="name">Their roster</div>
+      <div class="meta">the same number from their side</div></div>
+    <div class="figure"><div class="v">{{ m.signed(v.their_season, 0) }}</div></div></div>
+  <div class="row"><div class="slot">WK</div>
+    <div class="who"><div class="name">Your lineup this Sunday</div>
+      <div class="meta">near zero sum, so expect one side negative</div></div>
+    <div class="figure"><div class="v">{{ m.signed(v.my_week) }}</div></div></div>
+  {% if v.odds_after %}
+  <div class="row"><div class="slot">WIN</div>
+    <div class="who"><div class="name">Your odds this week</div>
+      <div class="meta">resampled from what comparable players did</div></div>
+    <div class="figure"><div class="v num">{{ "%.0f"|format(v.odds_now * 100) }}→{{ "%.0f"|format(v.odds_after * 100) }}%</div></div></div>
+  {% endif %}
+</div>
+
+<div class="grid two" style="margin-top:12px">
+  <div class="card"><h2 style="margin-top:0">Over the season</h2>
+    {% if v.season_moves %}
+      {% for x in v.season_moves %}<div class="meta">{{ x.describe() }}</div>{% endfor %}
+    {% else %}<div class="meta">Nothing. The men coming in do not crack your
+      lineup and the men going out were not in it.</div>{% endif %}
+  </div>
+  <div class="card"><h2 style="margin-top:0">This Sunday</h2>
+    {% if v.week_moves %}
+      {% for x in v.week_moves %}<div class="meta">{{ x.describe() }}</div>{% endfor %}
+    {% else %}<div class="meta">Nothing.</div>{% endif %}
+    {% for name, his, blocker, theirs in v.week_benched %}
+      <div class="meta" style="margin-top:6px">{{ name }} does not crack it:
+        {{ "%.1f"|format(his) }}{% if blocker %} against {{ blocker }}'s
+        {{ "%.1f"|format(theirs) }}{% endif %}.</div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if v.their_moves %}
+<details style="margin-top:12px"><summary>What changes for {{ v.partner }}</summary>
+  {% for x in v.their_moves %}<div class="meta">{{ x.describe() }}</div>{% endfor %}
+  <div class="meta" style="margin-top:6px">Losing a starter usually costs them
+    far less than his projection, because the man behind him steps up.</div>
+</details>
+{% endif %}
+
+{% if v.picked_up %}
+<div class="note" style="margin-top:12px">Penciled into the freed spots:
+  {{ v.picked_up|join(", ") }}.{% if v.picked_idle|length == v.picked_up|length %}
+  None of them crack your best-eligible lineup, so that is cover rather than
+  points.{% endif %}</div>
+{% endif %}
+{% if v.my_cuts %}
+<div class="note warn" style="margin-top:12px">You would have to cut
+  {{ v.my_cuts|join(", ") }}. That is already inside the season number.</div>
+{% endif %}
+
+<p class="foot">It grades the offer. It does not tell you to accept it.</p>
+{% endif %}

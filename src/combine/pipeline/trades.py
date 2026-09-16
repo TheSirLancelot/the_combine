@@ -107,6 +107,20 @@ class Deal:
         return self.odds_after - self.odds_now
 
     @property
+    def ask(self) -> str:
+        """How hard a sell this is, in bands of noise.
+
+        `solid`, the numbers say he gains. `stretch`, his side is inside the
+        band where a gain and a loss look the same. `longshot`, the numbers do
+        say he loses, and only a manager who likes trading is going to listen.
+        Three words rather than a probability, because nothing here knows how
+        any of them will answer.
+        """
+        if self.their_season > self.bar:
+            return "solid"
+        return "stretch" if self.their_season > -self.bar else "longshot"
+
+    @property
     def stretch(self) -> bool:
         """Whether the partner's side is inside the band rather than above it.
 
@@ -330,9 +344,16 @@ def league_shape(profiles: dict[str, tuple[dict, dict]], band: float
 
 def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
          shortlist: int = SHORTLIST, band: float | None = None,
-         dist=None, progress=None) -> list[Deal]:
+         dist=None, progress=None, only: str | None = None,
+         reach: float = 1.0) -> list[Deal]:
     """One-for-ones where both rosters gain more than the noise band over a
     season, best first by my own gain.
+
+    `only` narrows the search to one partner, which is the question you ask
+    when you know somebody trades. `reach` is how far below zero his side is
+    allowed to land, in noise bands: 1.0 refuses anything the numbers call a
+    loss for him, higher asks for things he has a reason to turn down. Nothing
+    here knows who is willing, so that judgement stays with the caller.
 
     `progress(done, total, team)` is called for a caller that wants to show how
     far along this is: once with `team=None` before anything is read, once per
@@ -347,6 +368,12 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
     slots = client.roster_slots()
     slot_list = [slot for slot, count in slots.items() for _ in range(count)]
     mine, others = rosters(client, wk)
+    if only:
+        others = {team: roster for team, roster in others.items()
+                  if team.lower() == only.lower()
+                  or only.lower() in team.lower()}
+        if not others:
+            return []
     if not mine or not others:
         return []
     season = season_projections(client)
@@ -420,7 +447,7 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
         # does not mind, which are most of what this change is for.
         pairs = sorted(
             ((min(my_add[got] - my_drop[gave] - bar,
-                  their_add[gave] - their_drop[got] + bar), gave, got)
+                  their_add[gave] - their_drop[got] + bar * reach), gave, got)
              for gave in offered for got in wanted),
             key=lambda row: -row[0])[:shortlist]
 
@@ -436,7 +463,7 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
                 [c for c in their_cands if c["espn_id"] != got]
                 + [_cand(give, cal, season, incoming=True)],
                 slot_list, _season) - their_base
-            if their_season <= -bar:
+            if their_season <= -bar * reach:
                 continue
             deals.append(Deal(
                 give=give, get=get, partner=team,
@@ -560,7 +587,9 @@ def _with_odds(client, week: int, mine: list[WeeklyPlayer],
     return out
 
 
-def for_league(league: str, limit: int = LIMIT, progress=None) -> list[Deal]:
+def for_league(league: str, limit: int = LIMIT, progress=None,
+               only: str | None = None, reach: float = 1.0,
+               shortlist: int = SHORTLIST) -> list[Deal]:
     """The whole question for one league, so three callers cannot drift."""
     from .. import config, db
     from ..platforms import client_for
@@ -575,15 +604,16 @@ def for_league(league: str, limit: int = LIMIT, progress=None) -> list[Deal]:
     except Exception:
         dist = None      # no history yet: the deals still price, the odds do not
     return find(client_for(league), None, load_cal(league), limit=limit,
-                dist=dist, progress=progress)
+                dist=dist, progress=progress, only=only, reach=reach,
+                shortlist=shortlist)
 
 
 ASK_NOTE = (
-    "\nASK says how the partner's side reads. `solid` means the numbers say he "
-    "gains too.\n`stretch` means his side lands inside the noise band, where "
-    "these numbers cannot\ntell a gain from a loss, so it is worth asking and "
-    "not worth expecting. A deal\nthat is clearly bad for him is not listed at "
-    "all.")
+    "\nASK says how hard a sell this is. `solid`, the numbers say he gains too. "
+    "`stretch`,\nhis side lands inside the noise band, where a gain and a loss "
+    "look the same, so\nit is worth asking and not worth expecting. "
+    "`longshot`, the numbers do say he\nloses, and only somebody who likes "
+    "trading is going to listen.")
 
 
 FOOTER = (
@@ -621,14 +651,19 @@ def alternatives_note(deals: list[Deal]) -> str:
             f"sum of the two.")
 
 
-def render(deals: list[Deal], league_name: str) -> str:
+def render(deals: list[Deal], league_name: str, focus: str = "") -> str:
+    head = f"{league_name} — trades" + (f" with {focus}" if focus else "")
     if not deals:
+        if focus:
+            return (f"{head}\nNothing with {focus} gains you more than the "
+                    f"noise band at this much\npushing. Try asking for more, "
+                    f"or their roster simply does not fit yours.")
         return (f"{league_name} — trades\n"
                 f"No one-for-one gains you more than the noise band without "
                 f"clearly costing\nthe other side. That is a normal answer: it "
                 f"needs two rosters whose\nsurpluses fit each other's holes, "
                 f"and most pairs of rosters do not.")
-    out = [f"{league_name} — trades", ""]
+    out = [head, ""]
     out.append(f"  {'GIVE':<20}{'GET':<20}{'FROM':<14}"
                f"{'ME/SZN':>8}{'THEM/SZN':>10}{'ME/WK':>7}{'WIN%':>9}  ASK")
     for d in deals:
@@ -637,7 +672,7 @@ def render(deals: list[Deal], league_name: str) -> str:
         out.append(f"  {d.give.name[:19]:<20}{d.get.name[:19]:<20}"
                    f"{d.partner[:13]:<14}{d.my_season:>+8.0f}"
                    f"{d.their_season:>+10.0f}{d.my_week:>+7.1f}{odds:>9}  "
-                   f"{'stretch' if d.stretch else 'solid'}")
+                   f"{d.ask}")
     shapes: dict[str, str] = {}
     for d in deals:
         note = []

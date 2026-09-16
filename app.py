@@ -1265,6 +1265,85 @@ def _find_trades(league: str):
             shown["bar"].empty()
 
 
+REACH = {"They have to gain too": 1.0,
+         "Push a bit": 2.0,
+         "Ask for the moon": 3.0}
+
+
+@st.cache_data(ttl=600, show_spinner="going through their roster...")
+def load_raid(league: str, team: str, reach: float, _nonce: int, _version: str):
+    from combine.pipeline.trades import for_league
+
+    return for_league(league, limit=10, only=team, reach=reach, shortlist=250)
+
+
+def _raid_a_team(league: str):
+    """One manager's roster, gone through properly.
+
+    Whether somebody trades at all is the biggest factor in whether a deal
+    happens, and it is the one thing none of these numbers can see. So it is
+    left as a choice: pick the manager you know will talk, and say how hard you
+    are willing to push.
+    """
+    st.divider()
+    st.markdown("**Target a team**")
+    st.caption(
+        "Some managers trade and some never answer. Pick one you know will "
+        "talk and this goes through his whole roster. One team is about eight "
+        "seconds rather than the minute the search above takes.")
+
+    _ours, theirs = load_trade_names(league, week_no or client_for(league).week,
+                                     st.session_state.nonce, _code_version())
+    if not theirs:
+        st.info("Needs the API to read every roster.")
+        return
+    teams = sorted({label.rsplit(" · ", 1)[-1] for label in theirs})
+    left, right = st.columns([2, 1])
+    with left:
+        team = st.selectbox("Whose roster", [""] + teams, key="raid_team",
+                            format_func=lambda t: t or "Pick a team")
+    with right:
+        pushiness = st.select_slider("How much to ask for", list(REACH),
+                                     value="Push a bit", key="raid_reach")
+    if not team:
+        return
+
+    deals = load_raid(league, team, REACH[pushiness], st.session_state.nonce,
+                      _code_version())
+    if not deals:
+        st.info(f"Nothing with {team} gains you more than the noise band at "
+                f"this much pushing. Try asking for more, or their roster "
+                f"simply does not fit yours.")
+        return
+
+    st.dataframe(pd.DataFrame([{
+        "You give": d.give.name, "You get": d.get.name,
+        "You / season": d.my_season, "Them / season": d.their_season,
+        "You / week": d.my_week, "Ask": d.ask,
+        "For them": d.why_they_might() or "--",
+    } for d in deals]), hide_index=True, use_container_width=True,
+        column_config={
+            "You / season": st.column_config.NumberColumn(
+                "You / season", format="%+.0f"),
+            "Them / season": st.column_config.NumberColumn(
+                "Them / season", format="%+.0f"),
+            "You / week": st.column_config.NumberColumn(
+                "You / week", format="%+.1f"),
+            "Ask": st.column_config.TextColumn(
+                "Ask", help="solid: the numbers say he gains too. stretch: "
+                            "inside the noise band, where a gain and a loss "
+                            "look the same. longshot: the numbers say he "
+                            "loses, so only somebody who likes trading will "
+                            "listen."),
+        })
+    st.caption(
+        "solid means the numbers say he gains too. stretch means his side is "
+        "inside the noise band, where a gain and a loss look the same. "
+        "longshot means the numbers do say he loses, and only a manager who "
+        "likes trading is going to listen. Nothing here knows which of those "
+        "he is, which is why you picked him.")
+
+
 def _go_after_someone(league: str):
     """Pick a man, get the ways to land him, cheapest ask first.
 
@@ -1505,6 +1584,7 @@ def trades_page():
 
     deals, at = _find_trades(league)
     if deals is None:
+        _raid_a_team(league)
         _go_after_someone(league)
         _grade_an_offer(league)
         return
@@ -1514,6 +1594,7 @@ def trades_page():
                 "needs two rosters whose surpluses fit each other's holes, and "
                 "most pairs do not.")
         freshness(at)
+        _raid_a_team(league)
         _go_after_someone(league)
         _grade_an_offer(league)
         return
@@ -1522,7 +1603,7 @@ def trades_page():
         "Give": d.give.name, "Get": d.get.name, "From": d.partner,
         "You / season": d.my_season, "Them / season": d.their_season,
         "You / week": d.my_week,
-        "Ask": "stretch" if d.stretch else "solid",
+        "Ask": d.ask,
         "Win odds": (f"{d.odds_now * 100:.0f}% → {d.odds_after * 100:.0f}%"
                      if d.odds_after else "--"),
         "They are": ", ".join(n for n in (
@@ -1564,6 +1645,7 @@ def trades_page():
 
     st.caption(alternatives_note(deals).replace("\n", " "))
 
+    _raid_a_team(league)
     _go_after_someone(league)
     _grade_an_offer(league)
 
@@ -1574,11 +1656,12 @@ def trades_page():
             "correctly worth nothing to the side holding him, and can be worth "
             "real points to the side that would start him. That is the only "
             "axis where a trade creates value for both teams.\n\n"
-            "**Ask** is how the partner's side reads. `solid` means the "
-            "numbers say he gains too. `stretch` means his side lands inside "
-            "the noise band, where these numbers cannot tell a gain from a "
-            "loss, so it is worth asking and not worth expecting. A deal that "
-            "is clearly bad for him is not listed at all.\n\n"
+            "**Ask** is how hard a sell it is. `solid`, the numbers say he "
+            "gains too. `stretch`, his side lands inside the noise band, where "
+            "a gain and a loss look the same. `longshot`, the numbers do say "
+            "he loses, and only somebody who likes trading will listen. The "
+            "league-wide search above stops at `stretch`; targeting one team "
+            "lets you push further.\n\n"
             "**Week** is this Sunday's starting lineup. Measured over 999 "
             "priced pairs the two sides' weekly gains summed to a median of "
             "-0.6, so expect one side to be negative. It is here so a deal "

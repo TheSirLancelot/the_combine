@@ -99,7 +99,7 @@ down this file, and restarting is the fix in both directions.
 you would rather not re-run the installer.
 
 Commands: `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/grade`, `/target`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
+`/compare`, `/grade`, `/target`, `/raid`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
 `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
@@ -496,6 +496,32 @@ Trades ride along with the 08:30 morning post, because the useful moment for a
 trade finder is the day somebody's roster goes lopsided, which is a day you have
 no reason to go and look. Same dedupe as everything else there: a deal that
 stands for a week is said once.
+
+### Targeting one team
+
+```bash
+uv run combine raid rcl "Super Lamario" 2
+```
+
+Also `/raid` in Discord and a **Target a team** section on the Trades tab. Whether
+a manager trades at all is the biggest factor in whether a deal happens, and it
+is the one thing none of these numbers can see. So it is left as a choice: pick
+the one you know will talk, and say how hard you are willing to push.
+
+One team is about eight seconds rather than the minute the league-wide search
+takes, and it looks harder at that roster: ten rows and a much wider shortlist.
+
+The last argument is reach, in noise bands, and it sets how far below zero his
+side may land. That adds a third ASK level:
+
+- `solid` — the numbers say he gains too.
+- `stretch` — his side is inside the band, where a gain and a loss look the same.
+- `longshot` — the numbers do say he loses, and only somebody who likes trading
+  will listen.
+
+The league-wide search stops at `stretch`. Pushing to 3 in RCL turns up Sam
+LaPorta for Trey McBride at +43 to you and -43 to him, which is exactly the kind
+of thing a willing manager might take and a quiet one will ignore.
 
 ### Going after somebody
 

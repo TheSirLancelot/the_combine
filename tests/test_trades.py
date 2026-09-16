@@ -675,3 +675,83 @@ def test_the_search_reports_progress_as_it_goes():
 def test_progress_is_optional():
     assert T.find(complementary(), band=10.0) == T.find(
         complementary(), band=10.0, progress=None)
+
+
+# --- going through one manager's roster -------------------------------------
+
+
+def three_teams():
+    """Two rival rosters, and nothing on mine that a rival wants badly.
+
+    My only spare is a scrub, so the good player on each of their rosters can
+    only be had by asking for something they have a reason to refuse. That is
+    the shape the reach setting exists for.
+    """
+    mine = [player("My RB1", "RB", slot="RB", proj=15.0),
+            player("My WR1", "WR", slot="WR", proj=4.0),
+            player("My Scrub", "WR", proj=1.0)]
+    willing = [player("Willing WR1", "WR", slot="WR", proj=15.0),
+               player("Willing WR2", "WR", proj=13.0),
+               player("Willing RB", "RB", slot="RB", proj=4.0)]
+    quiet = [player("Quiet WR1", "WR", slot="WR", proj=14.0),
+             player("Quiet WR2", "WR", proj=12.0),
+             player("Quiet RB", "RB", slot="RB", proj=5.0)]
+    season = {"My RB1": 300.0, "My WR1": 80.0, "My Scrub": 20.0,
+              "Willing WR1": 300.0, "Willing WR2": 250.0, "Willing RB": 80.0,
+              "Quiet WR1": 290.0, "Quiet WR2": 240.0, "Quiet RB": 90.0}
+    return Client({"Mine": mine, "Willing": willing, "Quiet": quiet}, season)
+
+
+def test_narrowing_to_one_team_leaves_the_others_out():
+    deals = T.find(three_teams(), band=10.0, limit=99, only="Willing")
+    assert deals
+    assert {d.partner for d in deals} == {"Willing"}
+
+
+def test_the_whole_league_still_sees_both_of_them():
+    deals = T.find(three_teams(), band=10.0, limit=99)
+    assert {d.partner for d in deals} == {"Willing", "Quiet"}
+
+
+def test_a_partial_team_name_is_enough():
+    assert T.find(three_teams(), band=10.0, only="willi")
+
+
+def test_a_team_nobody_is_called_returns_nothing_rather_than_everything():
+    """Falling back to the whole league on a typo would quietly answer a
+    different question."""
+    assert T.find(three_teams(), band=10.0, only="Nobody FC") == []
+
+
+def test_reach_is_how_far_below_zero_his_side_may_land():
+    """Their best receiver can only be had by asking for something the numbers
+    say hurts them. At reach 1 that deal is not listed; pushing surfaces it."""
+    strict = T.find(three_teams(), band=10.0, limit=99, only="Willing")
+    pushy = T.find(three_teams(), band=10.0, limit=99, only="Willing",
+                   reach=6.0)
+    assert all(d.their_season > -10.0 for d in strict)
+    assert all(d.their_season > -60.0 for d in pushy)
+    assert len(pushy) > len(strict), "pushing has to surface something new"
+    assert "Willing WR1" not in {d.get.name for d in strict}
+    assert "Willing WR1" in {d.get.name for d in pushy}
+    assert any(d.ask == "longshot" for d in pushy)
+
+
+def test_ask_has_three_levels_and_they_are_bands_of_noise():
+    def deal_at(theirs):
+        return T.Deal(give=player("A", "RB"), get=player("B", "QB"),
+                      partner="Them", my_season=30.0, their_season=theirs,
+                      my_week=0.0, their_week=0.0, bar=17.0)
+
+    assert deal_at(56.0).ask == "solid"
+    assert deal_at(8.0).ask == "stretch"
+    assert deal_at(-8.0).ask == "stretch"
+    assert deal_at(-29.0).ask == "longshot"
+
+
+def test_the_render_names_the_team_when_there_is_one():
+    deals = T.find(three_teams(), band=10.0, only="Willing")
+    text = T.render(deals, "A League", focus="Willing")
+    assert "trades with Willing" in text
+    empty = T.render([], "A League", focus="Willing")
+    assert "Nothing with Willing" in empty and "asking for more" in empty

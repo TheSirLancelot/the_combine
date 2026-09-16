@@ -728,7 +728,7 @@ inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
 Commands are `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/grade`, `/target`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
+`/compare`, `/grade`, `/target`, `/raid`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
 `/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
@@ -1871,6 +1871,36 @@ before anything is read, once per partner, once with `team=""` at the end. The
 app makes the bar on the FIRST callback rather than before the call, so a rerun
 served from session state never shows one. A bar that appears at nought percent
 and immediately vanishes is worse than no bar.
+
+### Targeting one team
+
+`find(only=..., reach=...)`, `combine raid`, `/raid` and a Trades tab section,
+added 2026-09-16. William's point: some managers trade and some never answer, so
+against a willing one it is worth asking for something the numbers call a loss
+for him.
+
+**`reach` puts the arbitrary number in the user's hands, which is where it
+belongs.** It is how far below zero the partner's side may land, in noise bands.
+There is no defensible constant for "how much worse off will a manager accept"
+because it depends entirely on who he is, and that is the one thing this system
+cannot see. So it is a choice with plain labels rather than a default dressed up
+as a finding.
+
+`Deal.ask` gains a third level to match: `solid` above the band, `stretch`
+inside it, `longshot` below. Three words rather than a probability, because
+nothing here knows how any of them will answer.
+
+**Narrowing is cheap enough to search harder.** One partner is a eleventh of the
+work, so the team view runs a shortlist of 250 against 60 and returns ten rows
+against eight, and still answers in about eight seconds. A typo in the team name
+returns nothing rather than falling back to the league, which would quietly
+answer a different question.
+
+Known and left alone: among givers who cost me the same, `find` picks the one
+worth most to the partner, which means offering the more valuable spare. The
+model says both cost me nothing and only one of them is likely to be accepted,
+so this is defensible, but it is the same depth blind spot `packages` handles
+with a ladder. If it bites, the fix is the `packages` tie-break.
 
 ### Going after somebody
 

@@ -560,6 +560,50 @@ def build_target(league: str, player: str) -> list[discord.Embed]:
     return [e]
 
 
+REACH = {"they have to gain": 1.0, "push a bit": 2.0, "ask for the moon": 3.0}
+
+
+def build_raid(league: str, team: str, pushiness: str = "push a bit"
+               ) -> list[discord.Embed]:
+    """What one manager's roster could give you."""
+    from . import discord_out
+    from .pipeline.trades import for_league
+
+    cfg = config.get_league(league)
+    if cfg.platform != "espn":
+        return [discord_out.message_embed(
+            "Needs the API to read every roster.", cfg.name)]
+    deals = for_league(league, limit=10, only=team,
+                       reach=REACH.get(pushiness, 2.0), shortlist=250)
+    if not deals:
+        return [discord_out.message_embed(
+            f"Nothing with {team} gains you more than the noise band at this "
+            f"much pushing. Try asking for more, or their roster simply does "
+            f"not fit yours.",
+            f"Trades · {cfg.name}", colour=discord_out.INFO)]
+
+    e = discord.Embed(title=f"Trades with {deals[0].partner} · {cfg.name}",
+                      colour=discord_out.GOOD)
+    table = [f"{'GIVE':<14}{'GET':<14}{'ME':>5}{'THEM':>6}  ASK"]
+    for d in deals:
+        table.append(f"{discord_out.short_name(d.give.name, 13):<14}"
+                     f"{discord_out.short_name(d.get.name, 13):<14}"
+                     f"{d.my_season:>+5.0f}{d.their_season:>+6.0f}  {d.ask}")
+    e.description = discord_out.code("\n".join(table))[:discord_out.DESC]
+    for d in deals:
+        why = d.why_they_might()
+        discord_out.field(
+            e, f"{d.give.name} → {d.get.name} ({d.ask})",
+            f"{d.my_season:+.0f} season for you, {d.their_season:+.0f} for "
+            f"them, {d.my_week:+.1f} this week."
+            + (f"\nFor them: {why}." if why else ""))
+    e.set_footer(text="solid: the numbers say he gains too. stretch: inside "
+                      "the noise band, worth asking. longshot: the numbers say "
+                      "he loses, so only somebody who likes trading will "
+                      "listen.")
+    return [e]
+
+
 def build_trades_all() -> list[discord.Embed]:
     out: list[discord.Embed] = []
     for slug, cfg in config.leagues().items():
@@ -910,6 +954,16 @@ async def grade(interaction: discord.Interaction, league: str, give: str,
 @owner_only()
 async def target(interaction: discord.Interaction, league: str, player: str):
     await respond(interaction, build_target, league, player)
+
+
+@client.tree.command(description="What one manager's roster could give you")
+@app_commands.describe(league="Which league", team="Whose roster to go through",
+                       pushiness="How much you are willing to ask for")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def raid(interaction: discord.Interaction, league: str, team: str,
+               pushiness: str = "push a bit"):
+    await respond(interaction, build_raid, league, team, pushiness)
 
 
 @client.tree.command(description="Weeks ahead where the roster cannot fill a slot")

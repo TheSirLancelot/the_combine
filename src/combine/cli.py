@@ -730,6 +730,29 @@ def target() -> int:
     return 0
 
 
+def raid() -> int:
+    """combine raid <league> <team> [reach]
+
+    What one manager's roster could give you. `reach` is how far below zero his
+    side may land, in noise bands: 1 refuses anything the numbers call a loss
+    for him, 3 asks for things he has every reason to turn down.
+    """
+    if len(sys.argv) < 4:
+        print("usage: combine raid <league> <team> [reach]")
+        return 2
+    from .pipeline.trades import for_league, render
+
+    slug, team = sys.argv[2], sys.argv[3]
+    reach = float(sys.argv[4]) if len(sys.argv) > 4 else 2.0
+    cfg = config.get_league(slug)
+    if cfg.platform != "espn":
+        print(f"{cfg.name}: needs the API to read every roster")
+        return 1
+    deals = for_league(slug, limit=10, only=team, reach=reach, shortlist=250)
+    print(render(deals, cfg.name, focus=team))
+    return 0
+
+
 def lookahead() -> int:
     """combine lookahead [league...]
 
@@ -890,6 +913,8 @@ def main() -> int:
         return grade()
     if cmd == "target":
         return target()
+    if cmd == "raid":
+        return raid()
     if cmd == "scorecard":
         return scorecard()
     if cmd == "calibration":

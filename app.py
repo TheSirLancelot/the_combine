@@ -1492,7 +1492,7 @@ def _grade_an_offer(league: str):
         return
 
     from combine.pipeline.calibration import load as load_cal
-    from combine.pipeline.trades import claim_note, grade
+    from combine.pipeline.trades import claim_note, grade, headline
 
     verdict, err = grade(client_for(league), [ours[k] for k in give],
                          [theirs[k] for k in get], cal=load_cal(league),
@@ -1502,12 +1502,9 @@ def _grade_an_offer(league: str):
         st.warning(err)
         return
 
-    headline = ("The numbers favour you" if verdict.my_season > 0
-                else "The numbers are against you" if verdict.my_season < 0
-                else "The numbers are a wash")
-    shout = (st.success if verdict.my_season > 0
-             else st.error if verdict.my_season < 0 else st.info)
-    shout(f"**{headline}** against {verdict.partner}.")
+    shout = {"gain": st.success, "loss": st.error,
+             "wash": st.info}[verdict.reading]
+    shout(f"**{headline(verdict)}** Offer from {verdict.partner}.")
     cols = st.columns(4)
     cols[0].metric("Your roster, season", f"{verdict.my_season:+.0f}")
     cols[1].metric("Their roster, season", f"{verdict.their_season:+.0f}")

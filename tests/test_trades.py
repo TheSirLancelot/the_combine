@@ -394,9 +394,44 @@ def test_an_empty_side_is_not_a_trade():
 def test_the_verdict_render_leads_with_the_answer():
     v, _ = T.grade(complementary(), ["My RB2"], ["Their WR1"])
     text = T.render_verdict(v, "A League")
-    assert "THE NUMBERS FAVOUR YOU" in text
+    assert "Your roster gains" in text
     assert "WHAT CHANGES" in text
     assert "does not tell you to accept it" in text
+
+
+def test_the_headline_is_about_my_roster_and_not_a_scoreline():
+    """"The numbers favour you against <partner>" reads as a comparison and is
+    not one. Nothing here scores a trade as won or lost between two managers;
+    both sides gain in most of the deals worth doing."""
+    v, _ = T.grade(complementary(), ["My RB2"], ["Their WR1"])
+    line = T.headline(v)
+    assert "Your roster gains" in line
+    assert "Rival" not in line and "against" not in line
+
+
+def test_a_gain_inside_the_noise_band_is_not_called_a_win():
+    """The bug William found. Zero was the wrong line, and it made the grader
+    contradict the finder, which refuses to list a deal under the band."""
+    v = T.Verdict(give=[], get=[], partner="Them", my_season=2.0,
+                  their_season=0.0, my_week=0.0, their_week=0.0,
+                  season_moves=[], week_moves=[], bar=17.0)
+    assert v.reading == "wash" and not v.good
+    assert "Too close to call" in T.headline(v)
+    assert "+2 is inside the noise band" in T.headline(v)
+
+
+def test_a_clear_gain_and_a_clear_loss_read_as_such():
+    def at(value):
+        return T.Verdict(give=[], get=[], partner="Them", my_season=value,
+                         their_season=0.0, my_week=0.0, their_week=0.0,
+                         season_moves=[], week_moves=[], bar=17.0)
+
+    assert at(32.0).reading == "gain"
+    assert "gains 32" in T.headline(at(32.0))
+    assert at(-40.0).reading == "loss"
+    assert "loses 40" in T.headline(at(-40.0))
+    # The band is symmetric: a small loss is as unknowable as a small gain.
+    assert at(-9.0).reading == "wash"
 
 
 def test_the_partner_s_side_of_the_cascade_is_reported():

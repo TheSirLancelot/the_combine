@@ -443,7 +443,7 @@ def build_grade(league: str, give: str, get: str,
     """An offer somebody sent, priced. Comma separate either side."""
     from . import discord_out
     from .pipeline.calibration import load as load_cal
-    from .pipeline.trades import claim_note, grade
+    from .pipeline.trades import claim_note, grade, headline
     from .platforms import client_for
 
     cfg = config.get_league(league)
@@ -459,13 +459,10 @@ def build_grade(league: str, give: str, get: str,
     if err:
         return [discord_out.message_embed(err, f"Trade · {cfg.name}")]
 
-    colour = (discord_out.GOOD if verdict.my_season > 0
-              else discord_out.BAD if verdict.my_season < 0
-              else discord_out.INFO)
-    headline = ("The numbers favour you" if verdict.my_season > 0
-                else "The numbers are against you" if verdict.my_season < 0
-                else "The numbers are a wash")
-    e = discord.Embed(title=f"{headline} · {cfg.name}", colour=colour)
+    colour = {"gain": discord_out.GOOD, "loss": discord_out.BAD,
+              "wash": discord_out.INFO}[verdict.reading]
+    e = discord.Embed(title=f"{headline(verdict)} · {verdict.partner}",
+                      colour=colour)
     e.description = discord_out.code("\n".join([
         f"give  {', '.join(p.name for p in verdict.give)}",
         f"get   {', '.join(p.name for p in verdict.get)}",

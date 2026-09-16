@@ -740,6 +740,13 @@ because it has already spoken for one. The trap it exists to catch is claiming a
 dropping your own to fit him, and then trading the new one away, which leaves
 the slot empty.
 
+The headline is about YOUR roster and is not a scoreline. "Your roster gains 32
+points of season projection" says what happens to one roster; it does not say
+you beat the other manager, and in most deals worth doing both sides gain. It
+is judged against the same 17 point noise band everything else uses, so a +2
+reads as "too close to call" rather than as a win. Zero was the wrong line and
+it had the grader declaring victories the finder would have refused to list.
+
 **A man who does not crack this Sunday's lineup says so, and says who blocks
 him.** Silence in the Sunday column reads as if Sunday were not computed. It
 usually was, and the answer is usually a near tie:

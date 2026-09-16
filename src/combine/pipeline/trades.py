@@ -753,15 +753,31 @@ class Verdict:
     claim_known: tuple = ()            # (player, drop) for claims already in
     picked_up: list[str] = ()          # men penciled into the freed spots
     picked_idle: tuple = ()            # of those, the ones who never start
+    bar: float = 0.0                   # the noise band it was judged against
     week_benched: tuple = ()           # (incoming, his week, blocker, his week)
     odds_now: float = 0.0
     odds_after: float = 0.0
 
     @property
+    def reading(self) -> str:
+        """`gain`, `wash` or `loss`, judged against the noise band.
+
+        Zero was the wrong line and it made this contradict the rest of the
+        tool. Everywhere else a season gap has to clear the band before it
+        means anything, and the finder refuses to list a deal that does not.
+        The grader was declaring a +2 a win, which is two points on a roster
+        worth 2,500 and well inside the width where these numbers cannot tell
+        one outcome from another.
+        """
+        if self.my_season > self.bar:
+            return "gain"
+        return "wash" if self.my_season >= -self.bar else "loss"
+
+    @property
     def good(self) -> bool:
-        """Whether the numbers favour me. Not whether to accept: depth,
+        """Whether the numbers clearly favour me. Not whether to accept: depth,
         injuries and what happens to this roster in November are not in it."""
-        return self.my_season > 0
+        return self.reading == "gain"
 
     @property
     def mutual(self) -> bool:
@@ -1068,7 +1084,7 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
         week_moves=_moves(
             best_lineup(my_cands, slot_list, key=_week),
             best_lineup(mine_after, slot_list, key=_week), _week, dp=1),
-        spots=spots, room=room,
+        bar=noise_band(), spots=spots, room=room,
         my_cuts=[c["name"] for c in my_cuts],
         their_cuts=[c["name"] for c in their_cuts],
         claimed=[p.name for p in claiming],
@@ -1103,6 +1119,24 @@ def _grade_odds(client, week: int, before: list[dict], after: list[dict],
 
     return {"odds_now": win_probability(field(before), opponent, dist),
             "odds_after": win_probability(field(after), opponent, dist)}
+
+
+def headline(v: Verdict) -> str:
+    """The one-line answer, said about MY roster and nobody else's.
+
+    The old wording was "the numbers favour you against <partner>", which reads
+    as a comparison and is not one. Nothing here scores a trade as won or lost
+    between two managers; it says what happens to one roster. Both sides can
+    gain and usually the interesting deals do.
+    """
+    if v.reading == "gain":
+        return (f"Your roster gains {v.my_season:.0f} points of season "
+                f"projection.")
+    if v.reading == "loss":
+        return (f"Your roster loses {abs(v.my_season):.0f} points of season "
+                f"projection.")
+    return (f"Too close to call. {v.my_season:+.0f} is inside the noise band, "
+            f"where these numbers cannot tell a gain from a loss.")
 
 
 def claim_note(v: Verdict) -> list[str]:
@@ -1164,10 +1198,8 @@ def render_verdict(v: Verdict, league_name: str) -> str:
             out.append(fill_text(line, initial_indent="  ", subsequent_indent="  "))
         out.append("")
 
-    verdict = ("the numbers favour you" if v.my_season > 0
-               else "the numbers are against you" if v.my_season < 0
-               else "the numbers are a wash")
-    out.append(f"  {verdict.upper()}")
+    out.append(fill_text(headline(v), initial_indent="  ",
+                         subsequent_indent="  "))
     out.append(f"  {'your roster, season':<24}{v.my_season:>+8.0f}")
     out.append(f"  {'their roster, season':<24}{v.their_season:>+8.0f}")
     out.append(f"  {'your lineup this week':<24}{v.my_week:>+8.1f}")

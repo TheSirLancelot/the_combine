@@ -1996,6 +1996,22 @@ pretending there is a penalty. The case that is not free has its own test:
 claiming a quarterback with no room drops your own, then the trade sends the new
 one away, and the slot is empty. That comes out negative, which it should.
 
+**"The numbers favour you against <partner>" was wrong twice.** William asked
+what it meant, which was the right question, because it meant less than it
+sounded like.
+
+It reads as a comparison and is not one. The number is what happens to MY
+roster; the partner appears in it only because he sent the offer. Nothing here
+scores a trade as won or lost between two managers, and in most deals worth
+doing both sides gain. `headline()` now says "Your roster gains 32 points of
+season projection" and names nobody.
+
+And the threshold was zero rather than the noise band, which had the grader
+contradicting the finder. The finder refuses to list a deal whose gain does not
+clear 17 points; the grader was calling a +2 a win, on a roster worth 2,500.
+`Verdict.reading` returns gain, wash or loss against the band, symmetric on
+both sides of zero, and `good` is now "clearly good" rather than "not negative".
+
 **An absence is not an answer.** William read an empty Sunday column as Sunday
 not being taken into account. It was: Jayden Daniels is 19.6 this week against
 Brock Purdy's 19.9, so the weekly optimiser correctly keeps Purdy, while over a

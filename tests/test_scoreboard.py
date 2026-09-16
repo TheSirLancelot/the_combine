@@ -246,3 +246,36 @@ def test_a_stat_line_rides_along_on_the_cell():
     said = WeeklyPlayer(player_id="1", name="a", team="SF", pos="QB", slot="QB",
                         stat_line="15/25, 155 yd")
     assert _pair([said], [])[0].mine.line == "15/25, 155 yd"
+
+
+def test_injured_reserve_is_left_off_the_cast_entirely():
+    """A man on IR cannot be started this week or any week until he comes off,
+    so he has no bearing on a live scoreboard. Worse, pairing him against the
+    other manager's bench by list position sits two players side by side who
+    are not competing for anything."""
+    from combine.platforms import Matchup
+
+    m = Matchup(week=1, home_team="H", away_team="A", home_proj=0.0,
+                away_proj=0.0,
+                home_lineup=[wp("h1", "QB"), wp("h2", "BE"), wp("stash", "IR")],
+                away_lineup=[wp("a1", "QB"), wp("a2", "BE"), wp("hurt", "IR")])
+    starters, bench = _cast(m, flip=False)
+    assert [r.mine.name for r in starters] == ["h1"]
+    assert [r.mine.name for r in bench] == ["h2"]
+    assert [r.theirs.name for r in bench] == ["a2"]
+    assert "IR" not in {r.slot for r in bench}
+
+
+def test_an_ir_slot_does_not_shift_the_bench_pairing():
+    """The failure this really guards: with IR in the list, his bench and mine
+    line up against each other one row out of step from the first stashed
+    player downwards."""
+    from combine.platforms import Matchup
+
+    m = Matchup(week=1, home_team="H", away_team="A", home_proj=0.0,
+                away_proj=0.0,
+                home_lineup=[wp("stash", "IR"), wp("h1", "BE"), wp("h2", "BE")],
+                away_lineup=[wp("a1", "BE"), wp("a2", "BE")])
+    _, bench = _cast(m, flip=False)
+    assert [(r.mine.name, r.theirs.name) for r in bench] == [
+        ("h1", "a1"), ("h2", "a2")]

@@ -218,6 +218,16 @@ def _pair(mine: list[WeeklyPlayer], theirs: list[WeeklyPlayer]) -> list[Row]:
     return rows
 
 
+# Slots holding somebody who is not available to play at all, as opposed to
+# available and not chosen.
+STASH = frozenset({"IR"})
+
+
+def _sittable(p: WeeklyPlayer) -> bool:
+    """On the bench in the sense that matters: not starting, but could have."""
+    return not p.starting and p.slot not in STASH
+
+
 def _cast(m: Matchup, flip: bool) -> tuple[tuple[Row, ...], tuple[Row, ...]]:
     """(starters, bench). `flip` when the away side is the one to show on the
     left, which is the case exactly when the away team is mine."""
@@ -225,8 +235,14 @@ def _cast(m: Matchup, flip: bool) -> tuple[tuple[Row, ...], tuple[Row, ...]]:
     starters = _pair([p for p in a if p.starting], [p for p in b if p.starting])
     # The bench pairs by position in the list, not by slot: every bench player
     # sits in the same slot, so pairing by slot would be pairing by nothing.
-    sit_a = [p for p in a if not p.starting]
-    sit_b = [p for p in b if not p.starting]
+    #
+    # Injured reserve is left out altogether. A man on IR cannot be started
+    # this week or any week until he comes off it, so he has no bearing on a
+    # live scoreboard -- and pairing him against the other manager's bench, by
+    # list position, would sit two players side by side who are not competing
+    # for anything.
+    sit_a = [p for p in a if _sittable(p)]
+    sit_b = [p for p in b if _sittable(p)]
     bench = [Row(slot=(sit_a[i].slot if i < len(sit_a) else sit_b[i].slot),
                  mine=_cell(sit_a[i]) if i < len(sit_a) else None,
                  theirs=_cell(sit_b[i]) if i < len(sit_b) else None)

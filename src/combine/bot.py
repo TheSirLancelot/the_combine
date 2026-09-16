@@ -438,7 +438,8 @@ def build_trades(league: str) -> Report:
     return Report([e], news=True, signature=signature)
 
 
-def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
+def build_grade(league: str, give: str, get: str,
+                pickup: str = "") -> list[discord.Embed]:
     """An offer somebody sent, priced. Comma separate either side."""
     from . import discord_out
     from .pipeline.calibration import load as load_cal
@@ -453,7 +454,8 @@ def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
         return [x.strip() for x in side.split(",") if x.strip()]
 
     verdict, err = grade(client_for(league), names(give), names(get),
-                         cal=load_cal(league), dist=_distribution())
+                         cal=load_cal(league), dist=_distribution(),
+                         fill=names(pickup))
     if err:
         return [discord_out.message_embed(err, f"Trade · {cfg.name}")]
 
@@ -480,9 +482,20 @@ def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
         discord_out.field(e, "What changes over the season",
                           "Nothing. The men coming in do not crack your "
                           "lineup and the men going out were not in it.")
-    if verdict.week_moves:
-        discord_out.field(e, "What changes this Sunday", "\n".join(
-            m.describe() for m in verdict.week_moves))
+    sunday = [m.describe() for m in verdict.week_moves] or ["nothing"]
+    sunday += [
+        f"{name} does not crack it: {his:.1f}"
+        + (f" against {blocker}'s {theirs:.1f}" if blocker else
+           ", no slot he is eligible for")
+        for name, his, blocker, theirs in verdict.week_benched]
+    discord_out.field(e, "What changes this Sunday", "\n".join(sunday))
+    if verdict.picked_up:
+        discord_out.field(
+            e, "Penciled into the freed spots",
+            ", ".join(verdict.picked_up)
+            + (". None of them crack your lineup, so that is cover rather "
+               "than points." if len(verdict.picked_idle)
+               == len(verdict.picked_up) else "."))
     if verdict.their_moves:
         tail = ("Losing a starter usually costs them far less than his "
                 "projection, because the man behind him steps up.")
@@ -1001,12 +1014,13 @@ async def trades(interaction: discord.Interaction, league: str | None = None):
 
 @client.tree.command(description="Price a trade offer somebody sent you")
 @app_commands.describe(league="Which league", give="Who you send, comma separated",
-                       get="Who you receive, comma separated")
+                       get="Who you receive, comma separated",
+                       pickup="Who you would put in the freed spots, off the wire")
 @app_commands.choices(league=LEAGUE_CHOICES)
 @owner_only()
 async def grade(interaction: discord.Interaction, league: str, give: str,
-                get: str):
-    await respond(interaction, build_grade, league, give, get)
+                get: str, pickup: str = ""):
+    await respond(interaction, build_grade, league, give, get, pickup)
 
 
 @client.tree.command(description="Packages that would land one player")

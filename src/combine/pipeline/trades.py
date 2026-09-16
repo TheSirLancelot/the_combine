@@ -64,7 +64,7 @@ bounds choose what to look at. They never become the answer.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from textwrap import fill
+from textwrap import fill as fill_text
 
 from ..platforms import WeeklyPlayer
 from .depth import noise_band
@@ -751,6 +751,9 @@ class Verdict:
     claimed: list[str] = ()            # men I would have to add off the wire first
     claim_cuts: list[str] = ()         # and who that claim would cost me
     claim_known: tuple = ()            # (player, drop) for claims already in
+    picked_up: list[str] = ()          # men penciled into the freed spots
+    picked_idle: tuple = ()            # of those, the ones who never start
+    week_benched: tuple = ()           # (incoming, his week, blocker, his week)
     odds_now: float = 0.0
     odds_after: float = 0.0
 
@@ -850,13 +853,50 @@ def _moves(before: list[dict], after: list[dict], key, dp: int = 0) -> list[Move
     return sorted(out, key=lambda m: (not m.joining, -m.value))
 
 
+def _benched_this_week(cands: list[dict], slot_list: list[str],
+                       incoming: list[WeeklyPlayer]) -> tuple:
+    """Men arriving who do not crack THIS Sunday's lineup, and who blocks them.
+
+    Without this, a trade whose whole point is a quarterback upgrade shows no
+    change in the Sunday column and reads as if Sunday were not computed at
+    all. It usually is computed and the answer is usually a near tie: Jayden
+    Daniels at 19.6 does not displace Brock Purdy at 19.9, even though over a
+    season it is 339 against 311.
+    """
+    starting = {c["espn_id"] for c in best_lineup(cands, slot_list, key=_week)}
+    # Only the slots that actually start. Every player is eligible for BE, so
+    # intersecting raw eligibility made a quarterback compete with a defensive
+    # end and named the wrong blocker.
+    real = set(slot_list)
+    out = []
+    for man in incoming:
+        if man.player_id in starting:
+            continue
+        mine_slots = set(man.eligible_slots) & real
+        rivals = [c for c in cands
+                  if c["espn_id"] in starting
+                  and (mine_slots & (c["eligible"] & real))]
+        blocker = min(rivals, key=_week) if rivals else None
+        here = next((c for c in cands if c["espn_id"] == man.player_id), None)
+        out.append((man.name, _week(here) if here else 0.0,
+                    blocker["name"] if blocker else "",
+                    _week(blocker) if blocker else 0.0))
+    return tuple(out)
+
+
 def grade(client, give: list[str], get: list[str], week: int | None = None,
-          cal=None, dist=None) -> tuple[Verdict | None, str]:
+          cal=None, dist=None, fill: list[str] | None = None
+          ) -> tuple[Verdict | None, str]:
     """Price an offer that already exists. (verdict, complaint).
 
     Any number a side. Everything the finder says about the two axes applies
     unchanged: the season number is where a trade can create value and the
     weekly one is close to zero sum.
+
+    `fill` is who you would pencil into the spots the deal frees, off the wire.
+    Sending two for one leaves a hole, and what goes in it is a real part of
+    whether the deal is good. Nothing here guesses at that: name him or the
+    spot stays empty and the numbers say so.
     """
     from .waivers import pending_adds, roster_room
 
@@ -904,6 +944,16 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
             continue
         getting.append(player)
         partners.add(theirs_index[player.name.lower()][0])
+
+    picking = []
+    for want in fill or []:
+        if free_index is None:
+            free_index = pool(client, wk, season)
+        found_free, free_err = _pick(free_index, want)
+        if found_free is None:
+            problems.append(free_err.replace("either roster", "the wire"))
+        else:
+            picking.append(found_free)
 
     if problems:
         return None, " ".join(problems)
@@ -987,6 +1037,17 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
     my_cuts, mine_after = make_room(
         traded(with_claims, gave, getting),
         len(getting) - len(giving) - left, got)
+
+    # Whoever gets penciled into the freed spots, last, because they only exist
+    # once the deal has happened.
+    if picking:
+        spare = left + len(giving) - len(getting) + len(my_cuts)
+        mine_after = mine_after + [_cand(p, cal, season, incoming=True)
+                                   for p in picking]
+        more, mine_after = make_room(
+            mine_after, len(picking) - spare,
+            got | {p.player_id for p in picking})
+        my_cuts = my_cuts + more
     their_cuts, theirs_after = make_room(traded(their_cands, got, giving),
                                          spots, gave)
 
@@ -1013,6 +1074,13 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
         claimed=[p.name for p in claiming],
         claim_cuts=[c["name"] for c in claim_cuts],
         claim_known=tuple(known),
+        picked_up=[p.name for p in picking],
+        picked_idle=tuple(
+            p.name for p in picking
+            if p.player_id not in {c["espn_id"]
+                                   for c in _assignment(mine_after, slot_list)}),
+        week_benched=_benched_this_week(
+            mine_after, slot_list, [*getting, *picking]),
         **_grade_odds(client, wk, my_cands, mine_after, slot_list, dist),
     ), ""
 
@@ -1046,9 +1114,10 @@ def claim_note(v: Verdict) -> list[str]:
     """
     if not v.claimed:
         return []
-    out = [f"{', '.join(v.claimed)} is not on your roster yet. This assumes "
-           f"you land the claim first and then make the trade, so it is two "
-           f"moves and the first one can fail."]
+    lead = (f"{', '.join(v.claimed)} is not on your roster yet. This assumes "
+            f"you land the claim first and then make the trade, so it is two "
+            f"moves and the first one can fail.")
+    out = [lead]
     for man, drop in v.claim_known:
         out.append(
             f"You already have a claim in for {man}"
@@ -1090,9 +1159,9 @@ def render_verdict(v: Verdict, league_name: str) -> str:
 
     notes = claim_note(v)
     if notes:
-        out.append(fill(notes[0]))
+        out.append(fill_text(notes[0]))
         for line in notes[1:]:
-            out.append(fill(line, initial_indent="  ", subsequent_indent="  "))
+            out.append(fill_text(line, initial_indent="  ", subsequent_indent="  "))
         out.append("")
 
     verdict = ("the numbers favour you" if v.my_season > 0
@@ -1116,10 +1185,18 @@ def render_verdict(v: Verdict, league_name: str) -> str:
         out.append("Nothing changes in your season lineup: the men coming in "
                    "do not crack it\nand the men going out were not in it.\n")
 
-    if v.week_moves:
+    if v.week_moves or v.week_benched:
         out.append("WHAT CHANGES this Sunday")
         for move in v.week_moves:
             out.append(f"  {move.describe()}")
+        if not v.week_moves:
+            out.append("  nothing")
+        for name, his, blocker, theirs in v.week_benched:
+            out.append(fill_text(
+                f"{name} does not crack this Sunday's lineup: {his:.1f} "
+                + (f"against {blocker}'s {theirs:.1f}." if blocker
+                   else "and no slot he is eligible for."),
+                initial_indent="  ", subsequent_indent="  "))
         out.append("")
 
     if v.their_moves:
@@ -1128,6 +1205,21 @@ def render_verdict(v: Verdict, league_name: str) -> str:
             out.append(f"  {move.describe()}")
         out.append("  Losing a starter usually costs them far less than his\n"
                    "  projection, because the man behind him steps up.")
+        out.append("")
+
+    if v.picked_up:
+        said = (f"Penciled into the freed spots: {', '.join(v.picked_up)}. "
+                f"Their value is inside the numbers above, so read the deal "
+                f"and the pickup as one move or neither.")
+        if len(v.picked_idle) == len(v.picked_up):
+            said += (" None of them crack your best-eligible lineup, so the "
+                     "spot is filled and the numbers do not move. That is the "
+                     "usual answer: the best man on the wire rarely beats a "
+                     "starter, and what you are buying is cover.")
+        elif v.picked_idle:
+            said += (f" {', '.join(v.picked_idle)} does not crack it, so he is "
+                     f"cover rather than points.")
+        out.append(fill_text(said))
         out.append("")
 
     if v.spots < 0:
@@ -1412,7 +1504,7 @@ def render_packages(items: list[Package], target: str, league_name: str) -> str:
     if all(p.bench for p in items):
         where = (f"would be your {_nth(items[0].depth_rank)} {got.pos} and "
                  if items[0].depth_rank else "")
-        out.append(fill(
+        out.append(fill_text(
             f"{got.name} {where}does not crack your starting lineup, so none "
             f"of these gain you points on their own. That is not an argument "
             f"against the move, it is the shape of a buy-low: what you are "
@@ -1433,7 +1525,7 @@ def render_packages(items: list[Package], target: str, league_name: str) -> str:
     top = items[0]
     if top.breakeven > 0:
         out.append("")
-        out.append(fill(
+        out.append(fill_text(
             f"The cheapest ask costs you {top.breakeven:.0f} points of season "
             f"projection. For it to pay, {got.name} has to be worth that much "
             f"more over the rest of the year than ESPN currently says. Nothing "
@@ -1442,7 +1534,7 @@ def render_packages(items: list[Package], target: str, league_name: str) -> str:
             f"whether to take it."))
     if top.cover_name and top.cover_points > top.bar:
         out.append("")
-        out.append(fill(
+        out.append(fill_text(
             f"As cover he is worth something already: if {top.cover_name} "
             f"misses time, having {got.name} absorbs "
             f"{top.cover_points:.0f} of the points that absence would "

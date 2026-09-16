@@ -1996,6 +1996,25 @@ pretending there is a penalty. The case that is not free has its own test:
 claiming a quarterback with no room drops your own, then the trade sends the new
 one away, and the slot is empty. That comes out negative, which it should.
 
+**An absence is not an answer.** William read an empty Sunday column as Sunday
+not being taken into account. It was: Jayden Daniels is 19.6 this week against
+Brock Purdy's 19.9, so the weekly optimiser correctly keeps Purdy, while over a
+season it is 339 against 311 and the swap is obvious. `_benched_this_week` now
+names every arriving player who does not crack the lineup and who blocks him.
+
+The first version blocked a quarterback with a defensive end, because every
+player is eligible for the bench and intersecting raw eligibility made everyone
+compete with everyone. The intersection is now taken against the STARTING slots
+only. There is a test for that specific wrong answer.
+
+**`fill` lets you pencil somebody into the spot a deal frees.** Two for one
+leaves a hole and what goes in it is part of whether the deal is good, but
+nothing here guesses who: name him off the wire and he is priced with the trade,
+or the spot stays empty and the numbers reflect an empty spot. He is added last,
+because he only exists once the deal has happened, and `picked_idle` reports
+whoever does not crack the lineup so the output can say "cover, not points"
+rather than implying the numbers moved when they did not.
+
 **A claim already in decides its own drop.** `pending_adds` was built for the
 waiver view and carries the dropped player's name, so when the man being sent
 already has a claim against him, that drop is used and the guess is skipped.

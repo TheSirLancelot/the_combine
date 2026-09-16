@@ -1002,3 +1002,93 @@ def test_the_render_names_the_claim_and_the_drop():
     text = " ".join(T.render_verdict(v, "A League").split())
     assert "already have a claim in for Free QB, dropping My WR" in text
     assert "rather than a guess" in text
+
+
+# --- the Sunday column, and the spot you free -------------------------------
+
+
+def two_axis():
+    """A quarterback upgrade that is a near tie this week and clear over the
+    season. Exactly the shape that made the Sunday column look broken."""
+    mine = [player("My QB", "QB", slot="QB", proj=19.9),
+            player("My RB", "RB", slot="RB", proj=15.0),
+            player("Bench WR", "WR", proj=1.0)]
+    theirs = [player("Their QB", "QB", slot="QB", proj=19.6),
+              player("Their RB", "RB", slot="RB", proj=3.0)]
+    season = {"My QB": 311.0, "My RB": 300.0, "Bench WR": 40.0,
+              "Their QB": 339.0, "Their RB": 60.0}
+    client = Roomy({"Mine": mine, "Rival": theirs}, season, capacity=4)
+    client.roster_slots = lambda: {"QB": 1, "RB": 1}
+    return client
+
+
+def test_a_man_who_does_not_crack_sunday_says_so_and_names_who_blocks_him():
+    """Silence in the Sunday column reads as 'Sunday was not computed'. It
+    usually was, and the answer is usually a near tie."""
+    v, err = T.grade(two_axis(), ["Bench WR"], ["Their QB"])
+    assert not err, err
+    assert v.week_moves == [], "a third of a point does not move the lineup"
+    assert v.week_benched == (("Their QB", 19.6, "My QB", 19.9),)
+    # And the season axis does move, which is the whole point of the deal.
+    assert any(m.name == "Their QB" and m.joining for m in v.season_moves)
+
+
+def test_the_blocker_is_somebody_he_actually_competes_with():
+    """Every player is eligible for the bench, so intersecting raw eligibility
+    once had a quarterback blocked by a defensive end."""
+    mine = [player("My QB", "QB", slot="QB", proj=19.9),
+            player("My DE", "DE", slot="DL", proj=7.1),
+            player("Bench WR", "WR", proj=1.0)]
+    theirs = [player("Their QB", "QB", slot="QB", proj=19.6),
+              player("Their RB", "RB", slot="RB", proj=3.0)]
+    season = {"My QB": 311.0, "My DE": 126.0, "Bench WR": 40.0,
+              "Their QB": 339.0, "Their RB": 60.0}
+    client = Roomy({"Mine": mine, "Rival": theirs}, season, capacity=4)
+    client.roster_slots = lambda: {"QB": 1, "DL": 1}
+    v, _ = T.grade(client, ["Bench WR"], ["Their QB"])
+    assert [name for name, *_ in v.week_benched] == ["Their QB"]
+    assert v.week_benched[0][2] == "My QB", "not the defensive end"
+
+
+def test_nothing_is_penciled_into_a_freed_spot_unless_you_name_him():
+    v, _ = T.grade(with_wire(capacity=5), ["Spare"], ["Their WR"])
+    assert v.picked_up == []
+
+
+def test_a_pickup_you_name_is_priced_with_the_deal():
+    mine = [player("My RB", "RB", slot="RB", proj=15.0),
+            player("My WR", "WR", slot="WR", proj=2.0),
+            player("Spare", "WR", proj=1.0)]
+    theirs = [player("Their WR", "WR", slot="WR", proj=16.0),
+              player("Their RB", "RB", slot="RB", proj=3.0)]
+    season = {"My RB": 300.0, "My WR": 50.0, "Spare": 40.0,
+              "Their WR": 320.0, "Their RB": 60.0}
+
+    def client():
+        out = Roomy({"Mine": mine, "Rival": theirs}, season, capacity=4)
+        out.league.free_agents = lambda size=350: [
+            Pooled("Good FA", "RB", 260.0, proj=12.0)]
+        out.roster_slots = lambda: {"RB": 2, "WR": 1}
+        return out
+
+    plain, _ = T.grade(client(), ["My WR", "Spare"], ["Their WR"])
+    filled, _ = T.grade(client(), ["My WR", "Spare"], ["Their WR"],
+                        fill=["Good FA"])
+    assert filled.picked_up == ["Good FA"]
+    assert filled.my_season > plain.my_season, (
+        "a man who starts at your empty second RB slot is worth points")
+    assert filled.picked_idle == ()
+
+
+def test_a_pickup_who_never_starts_is_called_cover_rather_than_points():
+    client = with_wire(capacity=5, wire=[Pooled("Scrub FA", "WR", 30.0)])
+    v, _ = T.grade(client, ["Spare"], ["Their WR"], fill=["Scrub FA"])
+    assert v.picked_up == ["Scrub FA"]
+    assert v.picked_idle == ("Scrub FA",)
+    text = " ".join(T.render_verdict(v, "A League").split())
+    assert "cover" in text and "numbers do not move" in text
+
+
+def test_a_pickup_who_is_not_on_the_wire_is_refused():
+    v, err = T.grade(with_wire(), ["Spare"], ["Their WR"], fill=["Nobody"])
+    assert v is None and "the wire" in err

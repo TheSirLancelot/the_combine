@@ -1482,6 +1482,11 @@ def _grade_an_offer(league: str):
         give = st.multiselect("You give", list(ours), key="grade_give")
     with right:
         get = st.multiselect("You get", list(theirs), key="grade_get")
+    wire = {k: v for k, v in ours.items() if "free agent" in k}
+    pickup = st.multiselect(
+        "And you would pick up, off the wire", list(wire), key="grade_fill",
+        help="Only matters when the deal frees a spot. Nothing is guessed "
+             "here: name him or the spot stays empty and the numbers say so.")
     if not give or not get:
         st.caption("Pick at least one player each way.")
         return
@@ -1491,7 +1496,8 @@ def _grade_an_offer(league: str):
 
     verdict, err = grade(client_for(league), [ours[k] for k in give],
                          [theirs[k] for k in get], cal=load_cal(league),
-                         dist=outcome_distribution(config.SEASON - 1))
+                         dist=outcome_distribution(config.SEASON - 1),
+                         fill=[wire[k] for k in pickup])
     if err:
         st.warning(err)
         return
@@ -1528,6 +1534,11 @@ def _grade_an_offer(league: str):
                 st.markdown(f"- {m.describe()}")
         else:
             st.caption("Nothing.")
+        for name, his, blocker, theirs_proj in verdict.week_benched:
+            st.caption(
+                f"{name} does not crack this Sunday's lineup: {his:.1f} "
+                + (f"against {blocker}'s {theirs_proj:.1f}." if blocker
+                   else "and no slot he is eligible for."))
 
     if verdict.their_moves:
         with st.expander(f"What changes for {verdict.partner}", expanded=False):
@@ -1540,6 +1551,16 @@ def _grade_an_offer(league: str):
 
     for note in claim_note(verdict):
         st.info(note)
+    if verdict.picked_up:
+        said = (f"Penciled into the freed spots: "
+                f"{', '.join(verdict.picked_up)}. Their value is inside the "
+                f"numbers above, so read the deal and the pickup as one move "
+                f"or neither.")
+        if len(verdict.picked_idle) == len(verdict.picked_up):
+            said += (" None of them crack your best-eligible lineup, so the "
+                     "spot is filled and the numbers do not move. That is the "
+                     "usual answer: what you are buying is cover.")
+        st.caption(said)
     if verdict.my_cuts:
         st.warning(f"You take on {-verdict.spots} more than you send with "
                    f"{verdict.room} spot(s) open, so you would have to cut "

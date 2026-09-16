@@ -740,6 +740,29 @@ because it has already spoken for one. The trap it exists to catch is claiming a
 dropping your own to fit him, and then trading the new one away, which leaves
 the slot empty.
 
+**A man who does not crack this Sunday's lineup says so, and says who blocks
+him.** Silence in the Sunday column reads as if Sunday were not computed. It
+usually was, and the answer is usually a near tie:
+
+```
+WHAT CHANGES this Sunday
+  in  T.J. Edwards (LB) 9.1
+  out Demario Davis (LB) 9.8
+  Jayden Daniels does not crack this Sunday's lineup: 19.6 against
+  Brock Purdy's 19.9.
+```
+
+Three tenths of a point this week, twenty eight over a season. The two axes
+disagree about the same pair all the time, and it is worth saying out loud
+rather than leaving as an absence.
+
+**You can pencil somebody into the spot a deal frees.** Sending two for one
+leaves a hole, and what goes in it is a real part of whether the deal is good.
+Nothing is guessed at: name him off the wire and he is priced with the trade, or
+leave it and the spot stays empty and the numbers say so. If he does not crack
+your lineup either, it says that too, because what you are buying then is cover
+rather than points.
+
 Uneven packages are handled properly rather than waved at. Take on more than you
 send and it names who you would have to cut, chosen on the roster as it would be
 AFTER the trade, since asking beforehand picks a man who is about to become

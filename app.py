@@ -19,7 +19,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from combine import config
+from combine import access, config
 from combine.pipeline.board import build as build_board
 from combine.pipeline.crosswalk import load_ids
 from combine.pipeline.distribution import Distribution
@@ -40,6 +40,16 @@ from combine.pipeline.usage import load as load_usage
 from combine.platforms import client_for
 
 st.set_page_config(page_title="The Combine", page_icon="🏈", layout="wide")
+
+# Before anything else, and before a single ESPN call. This page drives a live
+# ESPN session, so a request that did not come through Cloudflare Access does
+# not get to see any of it. Off until configured, so a laptop checkout runs.
+_ACCESS = access.check(getattr(st.context, "headers", None))
+if not _ACCESS.ok:
+    st.error(f"Not signed in: {_ACCESS.why}.")
+    st.caption("This app is reachable only through Cloudflare Access. Open it "
+               "at its own hostname and sign in with an account on the list.")
+    st.stop()
 
 POOL_SIZE = 250
 
@@ -434,6 +444,10 @@ if not leagues:
 
 with st.sidebar:
     st.title("The Combine")
+    if _ACCESS.email:
+        st.caption(f"signed in as {_ACCESS.email}")
+    elif _ACCESS.off:
+        st.caption("⚠︎ no Access policy checked — do not expose this hostname")
 
     # Draft is dormant outside August, so the in-season views lead.
     mode = st.radio("Mode",

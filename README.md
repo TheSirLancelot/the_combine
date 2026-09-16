@@ -209,8 +209,56 @@ ingress:
 
 **Put a Cloudflare Access policy on that hostname.** The app has no login of its
 own and every page load acts as your ESPN session, so a tunnel without Access is
-a public URL that drives your ESPN account. Email OTP or Google, same as the
-*arr stack.
+a public URL that drives your ESPN account.
+
+### Sign in with Google, for named accounts only
+
+Authentication is at the edge and not in the app, on purpose. A login page
+inside Streamlit only gets to run AFTER the request has already reached a
+process holding live ESPN cookies, a Discord token and a PFF key. Access turns
+strangers away at Cloudflare's own network, before a packet reaches the mini.
+Free for up to 50 users.
+
+1. **Google as a login method.** Zero Trust → Settings → Authentication → Login
+   methods → Add new → Google. It wants a Client ID and secret from a Google
+   Cloud OAuth 2.0 Web application; the authorised redirect URI is
+   `https://<your-team>.cloudflareaccess.com/cdn-cgi/access/callback`. Test it
+   before moving on.
+2. **An application for the hostname.** Access → Applications → Add an
+   application → Self-hosted, domain `combine.example.com`. Under Login methods
+   turn OFF everything except Google, so nobody can fall back to one-time PIN.
+3. **A policy naming the accounts.** Action Allow, and Include → *Emails* →
+   your Gmail address. Add anyone else one address at a time. Use *Emails*
+   rather than *Emails ending in*: a domain rule on `@gmail.com` lets in every
+   Google account there is, which is the mistake this step exists to avoid.
+4. **Session duration.** 24 hours or a week is the trade between convenience and
+   how long a stolen laptop stays signed in. There is no right answer, only a
+   choice.
+
+Then the second lock, in `.env`:
+
+```
+COMBINE_ACCESS_TEAM=yourteam.cloudflareaccess.com
+COMBINE_ACCESS_AUD=<Application Audience tag, from the app's Overview tab>
+COMBINE_ACCESS_EMAILS=you@gmail.com
+```
+
+With those set, the app verifies the signed token Access puts on every request
+it forwards (`Cf-Access-Jwt-Assertion`) and refuses anything without one. That
+matters because the first lock has failure modes that are ordinary rather than
+exotic: the app bound to `0.0.0.0` by mistake, somebody on the LAN hitting port
+8501, an ingress rule pointing at a hostname with no policy on it, a policy
+widened by a tired hand. A forged signature is not on that list. Neither value
+is a secret.
+
+Leave them blank and the check is skipped, so a checkout on a laptop still runs.
+The sidebar says so rather than letting you assume otherwise, and once it is
+working it shows the address you signed in as.
+
+Verify it in this order, because each step can pass while the next one fails:
+open the hostname in a private window and confirm you get a Google prompt; sign
+in and confirm the sidebar shows your address; sign in with a Google account
+that is NOT on the list and confirm Cloudflare refuses it.
 
 Then run it as a launchd agent so it survives reboots and never competes with
 Plex:

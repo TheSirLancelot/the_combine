@@ -2034,6 +2034,50 @@ included. Simulating all twenty against my twelve put my win odds at 13% in a
 matchup ESPN had me favoured in. Filtering to `p.starting` put it at 57%, which
 matches a hand check of the two projected totals.
 
+## Authentication is at the edge, and the app checks the edge's work
+
+`access.py` plus a gate at the top of `app.py`, added 2026-09-16, ahead of
+putting the app on a tunnel.
+
+**No login inside Streamlit, and that is the whole design.** A login page in the
+app only gets to run after the request has reached a Python process holding live
+ESPN cookies, a Discord token and a PFF key. Cloudflare Access refuses strangers
+at Cloudflare's own network. Google is the identity provider and the policy
+names exact addresses, using Include → Emails rather than Emails-ending-in:
+a domain rule on `@gmail.com` admits every Google account in existence.
+
+**The module is the second lock, not the first.** Access signs every request it
+forwards with `Cf-Access-Jwt-Assertion`; `check()` verifies it against the
+team's JWKS and the application's AUD tag. The point is the failure modes of the
+first lock, which are ordinary rather than exotic: bound to `0.0.0.0` by
+mistake, reached from the LAN on 8501, an ingress rule aimed at a hostname with
+no policy, a policy widened by a tired hand. Forging an RS256 signature is not
+on that list.
+
+Four decisions worth keeping:
+
+**Off until configured.** A laptop checkout has to run, so an unset team domain
+or AUD skips the check. It is not silent about it: the sidebar carries a warning
+whenever the gate is off, because "I assumed it was protected" is the failure
+this is guarding against.
+
+**Half configured counts as off.** A team domain with no AUD would happily
+verify a token issued for any other application on the same Cloudflare team.
+Both or neither.
+
+**Fails closed, and every uncertainty is a closure.** No header, a bad
+signature, the wrong audience, an address off the list: all stop the page. The
+blanket `except Exception` around the decode is deliberate and the one place in
+this repo where catching everything is the point.
+
+**The app keeps its own copy of the allowlist.** `COMBINE_ACCESS_EMAILS` is the
+Access policy written down somewhere Cloudflare cannot edit, so widening the
+policy by accident does not widen the app. Empty means trust the policy, which
+is the reasonable default for one user.
+
+Neither `COMBINE_ACCESS_TEAM` nor `COMBINE_ACCESS_AUD` is a secret; they
+identify, they do not authorise.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

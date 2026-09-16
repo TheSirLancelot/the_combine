@@ -1,0 +1,35 @@
+{% import "_macros.html" as m %}
+{% if err %}<div class="note bad">{{ err }}</div>
+{% elif not items %}
+  <div class="note info">Nothing you could send for {{ who }} gains you more
+    than the noise band without clearly costing his owner.</div>
+{% else %}
+{% set top = items[0] %}
+{% if items|selectattr("bench")|list|length == items|length %}
+<div class="note info">{{ top.get.name }} does not crack your starting lineup,
+  so none of these gain you points on their own. That is the shape of a
+  buy-low: this prices the bet rather than making it.</div>
+{% endif %}
+<div class="card">
+  {% for p in items %}
+  <div class="row">
+    <div class="slot">{{ loop.index }}</div>
+    <div class="who">
+      <div class="name">{{ p.names }}</div>
+      <div class="meta">them {{ "%+.0f"|format(p.their_season) }} ·
+        week {{ "%+.1f"|format(p.my_week) }} ·
+        <span class="pill {{ 'good' if not p.stretch else 'warn' }}">{{ 'solid' if not p.stretch else 'stretch' }}</span></div>
+    </div>
+    <div class="figure"><div class="v">{{ m.signed(p.my_season, 0) }}</div>
+      <div class="band">season</div></div>
+  </div>
+  {% endfor %}
+</div>
+<p class="foot">Cheapest ask first. Every rung down costs you more and is worth
+  more to him.</p>
+{% if top.breakeven > 0 %}
+<div class="note warn">The cheapest ask costs {{ "%.0f"|format(top.breakeven) }}
+  points of season projection. For it to pay, {{ top.get.name }} has to be worth
+  that much more over the rest of the year than ESPN says.</div>
+{% endif %}
+{% endif %}

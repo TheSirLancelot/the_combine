@@ -25,17 +25,28 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENTS="$HOME/Library/LaunchAgents"
 WANT=("com.thecombine.bot")
 BIND="127.0.0.1"
+# Which front end serves 8501. Only one can, so this is the switch.
+FRONT="streamlit"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --with-app) WANT+=("com.thecombine.app") ;;
     --bind) BIND="${2:?--bind needs an address}"; shift ;;
     --bind=*) BIND="${1#*=}" ;;
+    --web) FRONT="web" ;;
+    --streamlit) FRONT="streamlit" ;;
     --uninstall) UNINSTALL=1 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
 done
+
+if [[ "$FRONT" == "web" ]]; then
+  RUN="run python scripts/webserve.py --host \$BIND_ADDR --port 8501"
+else
+  RUN="run streamlit run app.py --server.address \$BIND_ADDR --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false"
+fi
+RUN="${RUN//\$BIND_ADDR/$BIND}"
 
 if [[ -n "${UNINSTALL:-}" ]]; then
   for label in com.thecombine.bot com.thecombine.app; do
@@ -67,7 +78,7 @@ mkdir -p "$AGENTS"
 echo "repo: $REPO"
 echo "uv:   $UV"
 if [[ " ${WANT[*]} " == *com.thecombine.app* ]]; then
-  echo "app:  http://$BIND:8501"
+  echo "app:  http://$BIND:8501 ($FRONT)"
   if [[ "$BIND" != "127.0.0.1" && "$BIND" != "localhost" ]]; then
     echo "      NOTE: the app has no login. anything that can reach $BIND:8501"
     echo "      can read your rosters and make ESPN requests as you."
@@ -88,7 +99,8 @@ for label in "${WANT[@]}"; do
 
   sed -e "s|&lt;REPO&gt;|$REPO|g" -e "s|<REPO>|$REPO|g" \
       -e "s|&lt;UV&gt;|$UV|g"     -e "s|<UV>|$UV|g" \
-      -e "s|&lt;BIND&gt;|$BIND|g" -e "s|<BIND>|$BIND|g" "$src" > "$dest"
+      -e "s|&lt;BIND&gt;|$BIND|g" -e "s|<BIND>|$BIND|g" \
+      -e "s|&lt;RUN&gt;|$RUN|g" -e "s|<RUN>|$RUN|g" "$src" > "$dest"
 
   # Validate before loading. A malformed plist fails at load with a message
   # that does not say which key is wrong, and a bad substitution is silent.
@@ -96,7 +108,7 @@ for label in "${WANT[@]}"; do
     echo "generated plist is not valid: $dest" >&2
     exit 1
   fi
-  if grep -q "<REPO>\|<UV>\|<BIND>\|&lt;REPO&gt;\|&lt;UV&gt;\|&lt;BIND&gt;" "$dest"; then
+  if grep -q "<REPO>\|<UV>\|<BIND>\|<RUN>\|&lt;REPO&gt;\|&lt;UV&gt;\|&lt;BIND&gt;\|&lt;RUN&gt;" "$dest"; then
     echo "substitution missed a placeholder in $dest" >&2
     exit 1
   fi

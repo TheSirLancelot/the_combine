@@ -1,0 +1,30 @@
+<h1>Scores</h1>
+<p class="lede">Every league at once, which is what a Sunday afternoon wants.</p>
+
+{% if not data.games %}<p class="empty">No matchups to show.</p>{% endif %}
+
+<div class="stack">
+{% for g in data.games %}
+{% set ahead = g.my_score >= g.their_score %}
+<div class="scoreline {{ 'lead-good' if ahead else 'lead-bad' }}">
+  <div class="side">
+    <div class="team">{{ g.me }}</div>
+    <div class="big num">{{ "%.1f"|format(g.my_score) }}</div>
+    <div class="proj num">proj {{ "%.1f"|format(g.my_proj) }} · {{ g.yet_to_play }} to play</div>
+  </div>
+  <div class="vs">{{ g.league }}<br>wk {{ g.week }}</div>
+  <div class="side right">
+    <div class="team">{{ g.them }}</div>
+    <div class="big num" style="color:var(--text)">{{ "%.1f"|format(g.their_score) }}</div>
+    <div class="proj num">proj {{ "%.1f"|format(g.their_proj) }} · {{ g.their_yet_to_play }} to play</div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+{% for x in data.missing %}
+<div class="note" style="margin-top:12px"><strong>{{ x.league }}</strong> is not
+  on the scoreboard. {{ x.why }}</div>
+{% endfor %}
+
+<p class="foot">read at {{ data.at }} · <a href="/refresh">refresh</a></p>

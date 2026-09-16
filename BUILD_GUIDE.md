@@ -2213,6 +2213,48 @@ having only while it matches the commands that exist, and the way that stops
 being true is somebody adding a command and forgetting this file. The suite
 asserts the catalogue and the command tree agree in both directions.
 
+## The web front end
+
+`src/combine/web/`, started 2026-09-16 on branch `new-web`. The ask was a better
+looking app that works on a phone, on 8501 so the tunnel is untouched.
+
+**Starlette, Jinja and hand-written CSS, with no build step.** All three are
+already installed as Streamlit's own dependencies, so the Mac mini gains
+nothing new to keep updated and launchd still runs one Python process. No npm,
+no CDN, nothing that can be unavailable at 8am on a Sunday.
+
+**Every page renders server side and the navigation upgrades itself.** A URL is
+a URL and works with JavaScript off. The click handler then fetches the same URL
+with an `X-Partial` header, gets the main region back and swaps it in, which is
+one small response per tab instead of a reload. Any failure falls through to an
+ordinary navigation, which is why there is no error handling in that path beyond
+letting the browser do its job. A test asserts a partial is a fragment: a whole
+document swapped into `<main>` nests a second `<html>`, which browsers paper
+over and nobody notices until something subtle breaks.
+
+**The gate is middleware, so it runs before routing.** A test proves it: the
+handler is replaced with one that raises, and an unauthenticated request must
+still get a 403 rather than the assertion. If the gate ever moved below routing,
+a page would build its data, hit ESPN, and only then be thrown away.
+
+**Nothing in `web/` computes anything.** `data.py` is calls into the pipeline
+with a cache in front, flattened to plain dicts, because a template that knows
+how a dataclass is spelled breaks when the dataclass moves. The trade sentences
+come from `headline()` and `claim_note()`, the same two functions Discord calls.
+
+**The cache is a dict with a clock.** `cache_data` is the same idea plus a lot of
+machinery for reruns that do not exist here. The lock is held around the
+dictionary and never around the build, because holding it across a fifty second
+trade search would queue every other request behind it, which on a phone reads
+as the app being broken.
+
+Two layout bugs worth remembering, both found by screenshotting the rendered
+pages rather than by reading the CSS. Auto grid placement put the projection
+underneath the player instead of beside him once the role line became its own
+grid child, so every child is now placed explicitly. And the waiver reasoning
+was a second list of bare player names under the table; it is now the row
+itself, which opens.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

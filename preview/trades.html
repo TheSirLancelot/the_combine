@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>The Combine</title>
+<style>/* The Combine — one stylesheet, no framework.
+ *
+ * Mobile is the case that matters: this is read on a phone, on a Sunday, in a
+ * hurry. So the layout is built for a narrow column first and widened later,
+ * the tab bar sits at the bottom where a thumb is, and the numbers are the
+ * loudest thing on the page because the numbers are the point.
+ */
+
+:root {
+  color-scheme: dark light;
+
+  --bg: #0b0d10;
+  --surface: #14171c;
+  --surface-2: #1b1f26;
+  --line: #262b34;
+  --line-soft: #1e232b;
+  --text: #e8ecf1;
+  --muted: #9aa4b2;
+  --faint: #6b7686;
+
+  --accent: #5ee6a8;
+  --accent-ink: #07130d;
+  --good: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --info: #60a5fa;
+
+  --r-sm: 8px;
+  --r: 14px;
+  --r-lg: 20px;
+
+  --pad: 16px;
+  --gap: 12px;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px -12px rgb(0 0 0 / .6);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f1f3f6;
+    --line: #e2e6ec;
+    --line-soft: #eceff3;
+    --text: #12161c;
+    --muted: #5b6470;
+    --faint: #8b95a3;
+    --accent: #0f9d62;
+    --accent-ink: #ffffff;
+    --good: #16a34a;
+    --warn: #b45309;
+    --bad: #dc2626;
+    --info: #2563eb;
+    --shadow: 0 1px 2px rgb(16 24 40 / .06), 0 8px 24px -16px rgb(16 24 40 / .2);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(68px + env(safe-area-inset-bottom));
+}
+
+a { color: inherit; text-decoration: none; }
+
+.num, td.num, .big { font-variant-numeric: tabular-nums; }
+
+/* --- top bar ------------------------------------------------------------ */
+
+header.top {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid var(--line-soft);
+  padding: max(10px, env(safe-area-inset-top)) var(--pad) 10px;
+}
+
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 650; letter-spacing: -.01em;
+}
+.brand .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 12px var(--accent);
+}
+.brand small { color: var(--faint); font-weight: 400; margin-left: auto;
+               font-size: 12px; }
+
+.chips { display: flex; gap: 6px; margin-top: 10px; overflow-x: auto;
+         scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto; padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--muted); font-size: 13px; font-weight: 500;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.chip[aria-current="true"] {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--accent-ink); font-weight: 600;
+}
+
+/* --- layout ------------------------------------------------------------- */
+
+main { padding: var(--pad); max-width: 980px; margin: 0 auto; }
+main.swap { animation: rise .16s ease-out; }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { main.swap { animation: none; } }
+
+h1 { font-size: 22px; letter-spacing: -.02em; margin: 2px 0 2px; }
+h2 { font-size: 15px; letter-spacing: .02em; text-transform: uppercase;
+     color: var(--faint); margin: 26px 0 10px; font-weight: 600; }
+p.lede { color: var(--muted); margin: 0 0 18px; font-size: 14.5px; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 14px; box-shadow: var(--shadow);
+}
+.card + .card { margin-top: var(--gap); }
+.stack > * + * { margin-top: var(--gap); }
+
+.grid { display: grid; gap: var(--gap); }
+@media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+
+/* --- the matchup header ------------------------------------------------- */
+
+.scoreline {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 10px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 16px; box-shadow: var(--shadow);
+}
+.scoreline .side { min-width: 0; }
+.scoreline .side.right { text-align: right; }
+.scoreline .team { color: var(--muted); font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scoreline .big { font-size: 30px; font-weight: 680; letter-spacing: -.03em;
+                  line-height: 1.1; }
+.scoreline .vs { color: var(--faint); font-size: 12px; font-weight: 600; }
+.scoreline .proj { color: var(--faint); font-size: 12px; }
+.lead-good .big { color: var(--good); }
+.lead-bad .big { color: var(--bad); }
+
+/* --- player rows -------------------------------------------------------- */
+
+.row {
+  display: grid; grid-template-columns: 34px 1fr auto; gap: 4px 10px;
+  align-items: center; padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+/* Placed explicitly rather than left to auto-flow. On a phone the role line
+   tucks under the name and the number stays on the first line beside it; auto
+   placement put the number underneath instead, which looked like a bug because
+   it was one. On a wide screen the role becomes its own column, which is what
+   stops a desktop row being a name at one edge and a number at the other with
+   nothing in between. */
+.row > .slot   { grid-column: 1; grid-row: 1; }
+.row > .who    { grid-column: 2; grid-row: 1; }
+.row > .figure { grid-column: 3; grid-row: 1; }
+.row > .role   { grid-column: 2 / 4; grid-row: 2; margin: 0; }
+.row > .role:empty { display: none; }
+.row:last-child { border-bottom: 0; }
+.slot {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  color: var(--faint); text-align: center; padding: 3px 0;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2);
+}
+.who { min-width: 0; }
+.who .name { font-weight: 560; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who .meta { color: var(--faint); font-size: 12.5px; margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.figure { text-align: right; }
+.figure .v { font-size: 19px; font-weight: 640; letter-spacing: -.02em; }
+.figure .band { color: var(--faint); font-size: 11.5px; }
+
+.pill {
+  display: inline-block; padding: 1px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; letter-spacing: .02em;
+  border: 1px solid currentColor;
+}
+.pill.bad { color: var(--bad); }
+.pill.warn { color: var(--warn); }
+.pill.info { color: var(--info); }
+.pill.good { color: var(--good); }
+
+.role { color: var(--faint); font-family: var(--mono); font-size: 11px;
+        min-width: 0; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; }
+
+/* A row that opens. The reasoning belongs with the row it explains, not in a
+   second list of bare names underneath. */
+details.rowd { border: 0; border-radius: 0; padding: 0; background: none;
+               border-bottom: 1px solid var(--line-soft); }
+details.rowd:last-child { border-bottom: 0; }
+details.rowd > summary { padding: 0; }
+details.rowd > summary::after { content: ""; }
+details.rowd > summary .row { border-bottom: 0; }
+details.rowd > summary::marker { content: ""; }
+details.rowd .why { color: var(--muted); font: 12px/1.6 var(--mono);
+                    white-space: pre-wrap; padding: 0 0 12px 44px; margin: 0; }
+details.rowd[open] > summary .name::after { content: " ▾"; color: var(--faint); }
+details.rowd:not([open]) > summary .name::after { content: " ▸"; color: var(--faint); }
+
+/* --- callouts ----------------------------------------------------------- */
+
+.note {
+  border-left: 3px solid var(--line); padding: 10px 12px; border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--surface); color: var(--muted); font-size: 14px;
+}
+.note.good { border-color: var(--good); }
+.note.warn { border-color: var(--warn); }
+.note.bad { border-color: var(--bad); }
+.note.info { border-color: var(--info); }
+.note strong { color: var(--text); font-weight: 600; }
+
+.empty { color: var(--faint); text-align: center; padding: 28px 12px;
+         font-size: 14.5px; }
+
+/* --- tables (desktop) --------------------------------------------------- */
+
+.table-wrap { overflow-x: auto; margin: 0 -14px; padding: 0 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th {
+  text-align: left; color: var(--faint); font-weight: 600; font-size: 11px;
+  letter-spacing: .05em; text-transform: uppercase; padding: 0 10px 8px 0;
+  white-space: nowrap;
+}
+td { padding: 9px 10px 9px 0; border-top: 1px solid var(--line-soft);
+     white-space: nowrap; }
+td.num, th.num { text-align: right; }
+td.wide { white-space: normal; min-width: 220px; color: var(--muted);
+          font-size: 13px; }
+.pos { color: var(--good); }
+.neg { color: var(--bad); }
+
+/* --- bottom tab bar ----------------------------------------------------- */
+
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+  border-top: 1px solid var(--line-soft);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+nav.tabs a {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 2px; color: var(--faint); font-size: 10.5px; font-weight: 600;
+  border-radius: var(--r-sm); transition: color .15s;
+}
+nav.tabs a[aria-current="page"] { color: var(--accent); }
+nav.tabs svg { width: 21px; height: 21px; stroke: currentColor; fill: none;
+               stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (min-width: 900px) {
+  .row { grid-template-columns: 42px minmax(160px, 1fr) minmax(0, 1.4fr) 96px; }
+  .row > .role   { grid-column: 3; grid-row: 1; }
+  .row > .figure { grid-column: 4; grid-row: 1; }
+  .card { padding: 14px 18px; }
+
+  body { padding-bottom: 0; }
+  nav.tabs {
+    position: static; display: flex; justify-content: flex-start; gap: 4px;
+    border: 0; background: none; backdrop-filter: none; padding: 8px 0 0;
+  }
+  nav.tabs a { flex-direction: row; gap: 7px; font-size: 13.5px;
+               padding: 7px 12px; }
+  nav.tabs a[aria-current="page"] { background: var(--surface);
+                                    border: 1px solid var(--line); }
+  nav.tabs svg { width: 16px; height: 16px; }
+  header.top { padding-bottom: 0; }
+}
+
+/* --- forms -------------------------------------------------------------- */
+
+form.tool { display: grid; gap: 10px; }
+label { font-size: 12px; color: var(--faint); font-weight: 600;
+        letter-spacing: .03em; text-transform: uppercase; }
+select, input[type=text], input[type=number], button {
+  font: inherit; font-size: 15px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 10px 12px; width: 100%;
+}
+select[multiple] { min-height: 132px; }
+button.go {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  font-weight: 650; cursor: pointer;
+}
+button.ghost { background: var(--surface); cursor: pointer; }
+.two-up { display: grid; gap: 10px; }
+@media (min-width: 640px) { .two-up { grid-template-columns: 1fr 1fr; } }
+
+details { border: 1px solid var(--line); border-radius: var(--r);
+          background: var(--surface); padding: 0 14px; }
+details + details { margin-top: var(--gap); }
+summary { cursor: pointer; padding: 13px 0; font-weight: 570; font-size: 14.5px;
+          list-style: none; display: flex; align-items: center; gap: 8px; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "＋"; margin-left: auto; color: var(--faint); }
+details[open] summary::after { content: "－"; }
+details[open] > :last-child { padding-bottom: 14px; }
+
+.busy { opacity: .55; pointer-events: none; transition: opacity .1s; }
+
+.foot { color: var(--faint); font-size: 12px; text-align: center;
+        padding: 22px 0 8px; }
+
+
+/* Last, so it beats the generic details rules above rather than racing them. */
+details.rowd > summary::after,
+details.rowd[open] > summary::after { content: ""; }
+</style>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🏈</text></svg>">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="dot" aria-hidden="true"></span>
+    <span>The Combine</span>
+    <small>⚠︎ open</small>
+  </div>
+
+  
+  <div class="chips" role="tablist" aria-label="League">
+    
+    <a class="chip" data-nav data-league="rcl"
+       aria-current="true"
+       href="/trades?league=rcl">rcl</a>
+    
+    <a class="chip" data-nav data-league="dmwd"
+       aria-current="false"
+       href="/trades?league=dmwd">dmwd</a>
+    
+    <a class="chip" data-nav data-league="work"
+       aria-current="false"
+       href="/trades?league=work">work</a>
+    
+  </div>
+  
+
+  <nav class="tabs">
+    
+    <a data-nav href="/week?league=rcl"
+       aria-current="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18M3 10h18M3 16h18"/></svg>
+      <span>Week</span>
+    </a>
+    
+    <a data-nav href="/waivers?league=rcl"
+       aria-current="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M5 10l7-7 7 7"/></svg>
+      <span>Wire</span>
+    </a>
+    
+    <a data-nav href="/trades?league=rcl"
+       aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h14l-4-4M17 17H3l4 4"/></svg>
+      <span>Trades</span>
+    </a>
+    
+    <a data-nav href="/scores?league=rcl"
+       aria-current="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20V7"/></svg>
+      <span>Scores</span>
+    </a>
+    
+    <a data-nav href="/card?league=rcl"
+       aria-current="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg>
+      <span>Record</span>
+    </a>
+    
+  </nav>
+</header>
+
+<main><h1>Trades</h1>
+<p class="lede">Ranked on the season axis, because the weekly one is close to
+  zero sum: the points a trade moves into your lineup come out of theirs.</p>
+
+<h2>Grade an offer</h2>
+<div class="card">
+  <form class="tool" data-inline="#grade-out" method="post" action="/trades/grade">
+    <input type="hidden" name="league" value="rcl">
+    <div class="two-up">
+      <div><label for="g-give">You give</label>
+        <select id="g-give" name="give" multiple size="8">
+          <option value="Brock Purdy">Brock Purdy · QB</option><option value="Christian Elliss">Christian Elliss · LB</option><option value="DeVonta Smith">DeVonta Smith · WR</option><option value="Demario Davis">Demario Davis · LB</option><option value="Drake Thomas">Drake Thomas · LB</option><option value="Jahmyr Gibbs">Jahmyr Gibbs · RB</option><option value="Jalen Pitre">Jalen Pitre · CB</option><option value="Jordan Addison">Jordan Addison · WR</option><option value="Kyren Williams">Kyren Williams · RB</option><option value="Luther Burden III">Luther Burden III · WR</option><option value="Myles Garrett">Myles Garrett · DE</option><option value="Rhamondre Stevenson">Rhamondre Stevenson · RB</option><option value="Rico Dowdle">Rico Dowdle · RB</option><option value="Sam LaPorta">Sam LaPorta · TE</option><option value="T.J. Edwards">T.J. Edwards · LB</option><option value="T.J. Watt">T.J. Watt · DE</option><option value="Travis Hunter">Travis Hunter · WR</option><option value="Tyrique Stevenson Sr.">Tyrique Stevenson Sr. · CB</option><option value="Xavier Worthy">Xavier Worthy · WR</option>
+        </select></div>
+      <div><label for="g-get">You get</label>
+        <select id="g-get" name="get" multiple size="8">
+          <option value="Ashton Jeanty">Ashton Jeanty · RB · Big Dak Energy</option><option value="Blake Cashman">Blake Cashman · LB · Big Dak Energy</option><option value="Cedric Gray">Cedric Gray · LB · Big Dak Energy</option><option value="Chase Brown">Chase Brown · RB · Big Dak Energy</option><option value="Colston Loveland">Colston Loveland · TE · Big Dak Energy</option><option value="Dak Prescott">Dak Prescott · QB · Big Dak Energy</option><option value="De&#39;Von Achane">De&#39;Von Achane · RB · Big Dak Energy</option><option value="Deebo Samuel Sr.">Deebo Samuel Sr. · WR · Big Dak Energy</option><option value="Devin Bush">Devin Bush · LB · Big Dak Energy</option><option value="Jaxon Smith-Njigba">Jaxon Smith-Njigba · WR · Big Dak Energy</option><option value="Quay Walker">Quay Walker · LB · Big Dak Energy</option><option value="Quentin Johnston">Quentin Johnston · WR · Big Dak Energy</option><option value="T.J. Hockenson">T.J. Hockenson · TE · Big Dak Energy</option><option value="Talanoa Hufanga">Talanoa Hufanga · S · Big Dak Energy</option><option value="Tetairoa McMillan">Tetairoa McMillan · WR · Big Dak Energy</option><option value="Tyler Shough">Tyler Shough · QB · Big Dak Energy</option><option value="Will Anderson Jr.">Will Anderson Jr. · DE · Big Dak Energy</option><option value="Woody Marks">Woody Marks · RB · Big Dak Energy</option><option value="Andrew Van Ginkel">Andrew Van Ginkel · DE · Colorado Hooligans</option><option value="Azeez Al-Shaair">Azeez Al-Shaair · LB · Colorado Hooligans</option><option value="Brock Bowers">Brock Bowers · TE · Colorado Hooligans</option><option value="Caleb Williams">Caleb Williams · QB · Colorado Hooligans</option><option value="Cam Skattebo">Cam Skattebo · RB · Colorado Hooligans</option><option value="Courtland Sutton">Courtland Sutton · WR · Colorado Hooligans</option><option value="Davante Adams">Davante Adams · WR · Colorado Hooligans</option><option value="Drake London">Drake London · WR · Colorado Hooligans</option><option value="Edgerrin Cooper">Edgerrin Cooper · LB · Colorado Hooligans</option><option value="J.K. Dobbins">J.K. Dobbins · RB · Colorado Hooligans</option><option value="Juwan Johnson">Juwan Johnson · TE · Colorado Hooligans</option><option value="KC Concepcion">KC Concepcion · WR · Colorado Hooligans</option><option value="Kam Curl">Kam Curl · S · Colorado Hooligans</option><option value="Marvin Harrison Jr.">Marvin Harrison Jr. · WR · Colorado Hooligans</option><option value="Omarion Hampton">Omarion Hampton · RB · Colorado Hooligans</option><option value="Patrick Mahomes">Patrick Mahomes · QB · Colorado Hooligans</option><option value="Patrick Queen">Patrick Queen · LB · Colorado Hooligans</option><option value="Saquon Barkley">Saquon Barkley · RB · Colorado Hooligans</option><option value="Tank Bigsby">Tank Bigsby · RB · Colorado Hooligans</option><option value="Aaron Donald">Aaron Donald · DT · Cooper D Kupps</option><option value="Budda Baker">Budda Baker · S · Cooper D Kupps</option><option value="C.J. Stroud">C.J. Stroud · QB · Cooper D Kupps</option><option value="Chris Olave">Chris Olave · WR · Cooper D Kupps</option><option value="Chris Rodriguez Jr.">Chris Rodriguez Jr. · RB · Cooper D Kupps</option><option value="Devin Lloyd">Devin Lloyd · LB · Cooper D Kupps</option><option value="Harold Fannin Jr.">Harold Fannin Jr. · TE · Cooper D Kupps</option><option value="Ja&#39;Marr Chase">Ja&#39;Marr Chase · WR · Cooper D Kupps</option><option value="Jack Campbell">Jack Campbell · LB · Cooper D Kupps</option><option value="Jadarian Price">Jadarian Price · RB · Cooper D Kupps</option><option value="Jayden Reed">Jayden Reed · WR · Cooper D Kupps</option><option value="Jaylen Warren">Jaylen Warren · RB · Cooper D Kupps</option><option value="Jonah Coleman">Jonah Coleman · RB · Cooper D Kupps</option><option value="Justin Herbert">Justin Herbert · QB · Cooper D Kupps</option><option value="Nico Collins">Nico Collins · WR · Cooper D Kupps</option><option value="Nik Bonitto">Nik Bonitto · DE · Cooper D Kupps</option><option value="RJ Harvey">RJ Harvey · RB · Cooper D Kupps</option><option value="Sonny Styles">Sonny Styles · LB · Cooper D Kupps</option><option value="Aidan Hutchinson">Aidan Hutchinson · DE · J. train comin UR way</option><option value="Alec Pierce">Alec Pierce · WR · J. train comin UR way</option><option value="Carson Schwesinger">Carson Schwesinger · LB · J. train comin UR way</option><option value="De&#39;Zhaun Stribling">De&#39;Zhaun Stribling · WR · J. train comin UR way</option><option value="DeMarvion Overshown">DeMarvion Overshown · LB · J. train comin UR way</option><option value="Garrett Wilson">Garrett Wilson · WR · J. train comin UR way</option><option value="Jacob Rodriguez">Jacob Rodriguez · LB · J. train comin UR way</option><option value="Jameson Williams">Jameson Williams · WR · J. train comin UR way</option><option value="Javonte Williams">Javonte Williams · RB · J. train comin UR way</option><option value="Jonathan Taylor">Jonathan Taylor · RB · J. train comin UR way</option><option value="Jordan Battle">Jordan Battle · S · J. train comin UR way</option><option value="Jordyn Brooks">Jordyn Brooks · LB · J. train comin UR way</option><option value="Josh Allen">Josh Allen · QB · J. train comin UR way</option><option value="Kenyon Sadiq">Kenyon Sadiq · TE · J. train comin UR way</option><option value="Kyle Pitts Sr.">Kyle Pitts Sr. · TE · J. train comin UR way</option><option value="Mike Washington Jr.">Mike Washington Jr. · RB · J. train comin UR way</option><option value="Parker Washington">Parker Washington · WR · J. train comin UR way</option><option value="Rachaad White">Rachaad White · RB · J. train comin UR way</option><option value="Arvell Reese">Arvell Reese · LB · Jaxons Dart&#39;s</option><option value="Bo Nix">Bo Nix · QB · Jaxons Dart&#39;s</option><option value="CeeDee Lamb">CeeDee Lamb · WR · Jaxons Dart&#39;s</option><option value="DeMarcus Lawrence">DeMarcus Lawrence · DE · Jaxons Dart&#39;s</option><option value="Derrick Henry">Derrick Henry · RB · Jaxons Dart&#39;s</option><option value="Ernest Jones IV">Ernest Jones IV · LB · Jaxons Dart&#39;s</option><option value="Hunter Henry">Hunter Henry · TE · Jaxons Dart&#39;s</option><option value="Jaxson Dart">Jaxson Dart · QB · Jaxons Dart&#39;s</option><option value="Kamari Lassiter">Kamari Lassiter · CB · Jaxons Dart&#39;s</option><option value="Makai Lemon">Makai Lemon · WR · Jaxons Dart&#39;s</option><option value="Maxx Crosby">Maxx Crosby · DE · Jaxons Dart&#39;s</option><option value="Mike Gesicki">Mike Gesicki · TE · Jaxons Dart&#39;s</option><option value="Nick Bolton">Nick Bolton · LB · Jaxons Dart&#39;s</option><option value="Quinshon Judkins">Quinshon Judkins · RB · Jaxons Dart&#39;s</option><option value="Stefon Diggs">Stefon Diggs · WR · Jaxons Dart&#39;s</option><option value="Travis Etienne Jr.">Travis Etienne Jr. · RB · Jaxons Dart&#39;s</option><option value="Travis Kelce">Travis Kelce · TE · Jaxons Dart&#39;s</option><option value="Tykee Smith">Tykee Smith · S · Jaxons Dart&#39;s</option><option value="Alex Singleton">Alex Singleton · LB · Let Them Griddy and Cook</option><option value="Blake Corum">Blake Corum · RB · Let Them Griddy and Cook</option><option value="Bucky Irving">Bucky Irving · RB · Let Them Griddy and Cook</option><option value="Christian Watson">Christian Watson · WR · Let Them Griddy and Cook</option><option value="Divine Deablo">Divine Deablo · LB · Let Them Griddy and Cook</option><option value="James Cook III">James Cook III · RB · Let Them Griddy and Cook</option><option value="Jaylen Waddle">Jaylen Waddle · WR · Let Them Griddy and Cook</option><option value="Jonathon Brooks">Jonathon Brooks · RB · Let Them Griddy and Cook</option><option value="Jordan Love">Jordan Love · QB · Let Them Griddy and Cook</option><option value="Justin Jefferson">Justin Jefferson · WR · Let Them Griddy and Cook</option><option value="Kaden Elliss">Kaden Elliss · LB · Let Them Griddy and Cook</option><option value="Kaelon Black">Kaelon Black · RB · Let Them Griddy and Cook</option><option value="Nick Bosa">Nick Bosa · DE · Let Them Griddy and Cook</option><option value="Nick Cross">Nick Cross · S · Let Them Griddy and Cook</option><option value="Rashee Rice">Rashee Rice · WR · Let Them Griddy and Cook</option><option value="TreVeyon Henderson">TreVeyon Henderson · RB · Let Them Griddy and Cook</option><option value="Tremaine Edmunds">Tremaine Edmunds · LB · Let Them Griddy and Cook</option><option value="Tucker Kraft">Tucker Kraft · TE · Let Them Griddy and Cook</option><option value="Alvin Kamara">Alvin Kamara · RB · Nacua Matata</option><option value="Baker Mayfield">Baker Mayfield · QB · Nacua Matata</option><option value="Bhayshul Tuten">Bhayshul Tuten · RB · Nacua Matata</option><option value="Breece Hall">Breece Hall · RB · Nacua Matata</option><option value="Brian Thomas Jr.">Brian Thomas Jr. · WR · Nacua Matata</option><option value="DK Metcalf">DK Metcalf · WR · Nacua Matata</option><option value="Dalton Kincaid">Dalton Kincaid · TE · Nacua Matata</option><option value="Derwin James Jr.">Derwin James Jr. · S · Nacua Matata</option><option value="Isaiah Likely">Isaiah Likely · TE · Nacua Matata</option><option value="Jalen Hurts">Jalen Hurts · QB · Nacua Matata</option><option value="Jared Verse">Jared Verse · DE · Nacua Matata</option><option value="Jeremiyah Love">Jeremiyah Love · RB · Nacua Matata</option><option value="Mack Wilson Sr.">Mack Wilson Sr. · LB · Nacua Matata</option><option value="Nakobe Dean">Nakobe Dean · LB · Nacua Matata</option><option value="Nick Emmanwori">Nick Emmanwori · CB · Nacua Matata</option><option value="Puka Nacua">Puka Nacua · WR · Nacua Matata</option><option value="Trey Hendrickson">Trey Hendrickson · DE · Nacua Matata</option><option value="Zay Flowers">Zay Flowers · WR · Nacua Matata</option><option value="A.J. Brown">A.J. Brown · WR · Nevermind....</option><option value="Amon-Ra St. Brown">Amon-Ra St. Brown · WR · Nevermind....</option><option value="Barrett Carter">Barrett Carter · LB · Nevermind....</option><option value="D&#39;Andre Swift">D&#39;Andre Swift · RB · Nevermind....</option><option value="Dallas Goedert">Dallas Goedert · TE · Nevermind....</option><option value="Dallas Turner">Dallas Turner · DE · Nevermind....</option><option value="David Montgomery">David Montgomery · RB · Nevermind....</option><option value="Demetrius Knight Jr.">Demetrius Knight Jr. · LB · Nevermind....</option><option value="Devaughn Vele">Devaughn Vele · WR · Nevermind....</option><option value="Drake Maye">Drake Maye · QB · Nevermind....</option><option value="Foyesade Oluokun">Foyesade Oluokun · LB · Nevermind....</option><option value="Fred Warner">Fred Warner · LB · Nevermind....</option><option value="George Kittle">George Kittle · TE · Nevermind....</option><option value="Jordan Mason">Jordan Mason · RB · Nevermind....</option><option value="Jordyn Tyson">Jordyn Tyson · WR · Nevermind....</option><option value="Kyle Hamilton">Kyle Hamilton · S · Nevermind....</option><option value="Kyle Monangai">Kyle Monangai · RB · Nevermind....</option><option value="Matthew Golden">Matthew Golden · WR · Nevermind....</option><option value="Micah Parsons">Micah Parsons · DE · Nevermind....</option><option value="Michael Wilson">Michael Wilson · WR · Nevermind....</option><option value="Tyler Allgeier">Tyler Allgeier · RB · Nevermind....</option><option value="Aaron Jones Sr.">Aaron Jones Sr. · RB · Random Picks</option><option value="Byron Young">Byron Young · DE · Random Picks</option><option value="Christian McCaffrey">Christian McCaffrey · RB · Random Picks</option><option value="DJ Moore">DJ Moore · WR · Random Picks</option><option value="Emeka Egbuka">Emeka Egbuka · WR · Random Picks</option><option value="Jake Ferguson">Jake Ferguson · TE · Random Picks</option><option value="Jamien Sherwood">Jamien Sherwood · LB · Random Picks</option><option value="Jared Goff">Jared Goff · QB · Random Picks</option><option value="Jeremy Chinn">Jeremy Chinn · S · Random Picks</option><option value="Kenneth Walker III">Kenneth Walker III · RB · Random Picks</option><option value="Mark Andrews">Mark Andrews · TE · Random Picks</option><option value="Mike Evans">Mike Evans · WR · Random Picks</option><option value="Nate Landman">Nate Landman · LB · Random Picks</option><option value="Robert Spillane">Robert Spillane · LB · Random Picks</option><option value="Rome Odunze">Rome Odunze · WR · Random Picks</option><option value="Romeo Doubs">Romeo Doubs · WR · Random Picks</option><option value="Tre&#39;von Moehrig">Tre&#39;von Moehrig · S · Random Picks</option><option value="Trevor Lawrence">Trevor Lawrence · QB · Random Picks</option><option value="Bijan Robinson">Bijan Robinson · RB · Rylanknowsball</option><option value="Brian Branch">Brian Branch · S · Rylanknowsball</option><option value="Brian Burns">Brian Burns · DE · Rylanknowsball</option><option value="Carnell Tate">Carnell Tate · WR · Rylanknowsball</option><option value="Chris Godwin Jr.">Chris Godwin Jr. · WR · Rylanknowsball</option><option value="Daiyan Henley">Daiyan Henley · LB · Rylanknowsball</option><option value="Devon Witherspoon">Devon Witherspoon · CB · Rylanknowsball</option><option value="George Pickens">George Pickens · WR · Rylanknowsball</option><option value="Jacory Croskey-Merritt">Jacory Croskey-Merritt · RB · Rylanknowsball</option><option value="Joe Burrow">Joe Burrow · QB · Rylanknowsball</option><option value="Ladd McConkey">Ladd McConkey · WR · Rylanknowsball</option><option value="MarShawn Lloyd">MarShawn Lloyd · RB · Rylanknowsball</option><option value="Payton Wilson">Payton Wilson · LB · Rylanknowsball</option><option value="Roquan Smith">Roquan Smith · LB · Rylanknowsball</option><option value="Terrel Bernard">Terrel Bernard · LB · Rylanknowsball</option><option value="Tyler Warren">Tyler Warren · TE · Rylanknowsball</option><option value="Tyrel Dodson">Tyrel Dodson · LB · Rylanknowsball</option><option value="Wan&#39;Dale Robinson">Wan&#39;Dale Robinson · WR · Rylanknowsball</option><option value="Zach Charbonnet">Zach Charbonnet · RB · Rylanknowsball</option><option value="Zack Baun">Zack Baun · LB · Rylanknowsball</option><option value="Chris Brooks">Chris Brooks · RB · Super Lamario 64</option><option value="Chuba Hubbard">Chuba Hubbard · RB · Super Lamario 64</option><option value="Eric Wilson">Eric Wilson · LB · Super Lamario 64</option><option value="Jakobi Meyers">Jakobi Meyers · WR · Super Lamario 64</option><option value="Jalen Coker">Jalen Coker · WR · Super Lamario 64</option><option value="Jayden Daniels">Jayden Daniels · QB · Super Lamario 64</option><option value="Jeffery Simmons">Jeffery Simmons · DT · Super Lamario 64</option><option value="Josh Jacobs">Josh Jacobs · RB · Super Lamario 64</option><option value="Josiah Trotter">Josiah Trotter · LB · Super Lamario 64</option><option value="Julian Love">Julian Love · S · Super Lamario 64</option><option value="Lamar Jackson">Lamar Jackson · QB · Super Lamario 64</option><option value="Malik Nabers">Malik Nabers · WR · Super Lamario 64</option><option value="Michael Pittman Jr.">Michael Pittman Jr. · WR · Super Lamario 64</option><option value="Quentin Lake">Quentin Lake · CB · Super Lamario 64</option><option value="Tee Higgins">Tee Higgins · WR · Super Lamario 64</option><option value="Terry McLaurin">Terry McLaurin · WR · Super Lamario 64</option><option value="Tony Pollard">Tony Pollard · RB · Super Lamario 64</option><option value="Trey McBride">Trey McBride · TE · Super Lamario 64</option>
+        </select></div>
+    </div>
+    <div><label for="g-fill">And you would pick up</label>
+      <select id="g-fill" name="fill" multiple size="4">
+        <option value="A&#39;Shawn Robinson">A&#39;Shawn Robinson · DT</option><option value="A.J. Haulcy">A.J. Haulcy · S</option><option value="A.J. Terrell Jr.">A.J. Terrell Jr. · CB</option><option value="AJ Barner">AJ Barner · TE</option><option value="Aaron Rodgers">Aaron Rodgers · QB</option><option value="Abdul Carter">Abdul Carter · DE</option><option value="Adam Butler">Adam Butler · DT</option><option value="Adonai Mitchell">Adonai Mitchell · WR</option><option value="Akeem Davis-Gaither">Akeem Davis-Gaither · LB</option><option value="Akheem Mesidor">Akheem Mesidor · DE</option><option value="Alex Anzalone">Alex Anzalone · LB</option><option value="Alex Highsmith">Alex Highsmith · DE</option><option value="Alohi Gilman">Alohi Gilman · S</option><option value="Alontae Taylor">Alontae Taylor · CB</option><option value="Amani Hooker">Amani Hooker · S</option><option value="Andrew Mukuba">Andrew Mukuba · S</option><option value="Andrew Wingard">Andrew Wingard · S</option><option value="Anthony Hill Jr.">Anthony Hill Jr. · LB</option><option value="Antoine Winfield Jr.">Antoine Winfield Jr. · S</option><option value="Antonio Williams">Antonio Williams · WR</option><option value="Austin Booker">Austin Booker · DE</option><option value="B.J. Hill">B.J. Hill · DT</option><option value="Benjamin Morrison">Benjamin Morrison · CB</option><option value="Bobby Okereke">Bobby Okereke · LB</option><option value="Bobby Wagner">Bobby Wagner · LB</option><option value="Boye Mafe">Boye Mafe · DE</option><option value="Bradley Chubb">Bradley Chubb · DE</option><option value="Braelon Allen">Braelon Allen · RB</option><option value="Brandon Aiyuk">Brandon Aiyuk · WR</option><option value="Brandon Jones">Brandon Jones · S</option><option value="Brandon Stephens">Brandon Stephens · CB</option><option value="Brashard Smith">Brashard Smith · RB</option><option value="Brenton Strange">Brenton Strange · TE</option><option value="Brian Robinson Jr.">Brian Robinson Jr. · RB</option><option value="Bryan Cook">Bryan Cook · S</option><option value="Bryce Young">Bryce Young · QB</option><option value="Byron Murphy II">Byron Murphy II · DT</option><option value="Byron Murphy Jr.">Byron Murphy Jr. · CB</option><option value="C.J. Gardner-Johnson">C.J. Gardner-Johnson · S</option><option value="CJ Allen">CJ Allen · LB</option><option value="Cade Otton">Cade Otton · TE</option><option value="Calais Campbell">Calais Campbell · DT</option><option value="Caleb Douglas">Caleb Douglas · WR</option><option value="Caleb Downs">Caleb Downs · S</option><option value="Calen Bullock">Calen Bullock · S</option><option value="Calijah Kancey">Calijah Kancey · DT</option><option value="Calvin Ridley">Calvin Ridley · WR</option><option value="Cam Bynum">Cam Bynum · S</option><option value="Cam Lewis">Cam Lewis · S</option><option value="Cam Ward">Cam Ward · QB</option><option value="Cameron Heyward">Cameron Heyward · DT</option><option value="Carl Granderson">Carl Granderson · DE</option><option value="Carlton Davis III">Carlton Davis III · CB</option><option value="Carson Beck">Carson Beck · QB</option><option value="Carson Wentz">Carson Wentz · QB</option><option value="Chamarri Conner">Chamarri Conner · S</option><option value="Chase Young">Chase Young · DE</option><option value="Chig Okonkwo">Chig Okonkwo · TE</option><option value="Chimere Dike">Chimere Dike · WR</option><option value="Chop Robinson">Chop Robinson · DE</option><option value="Chris Bell">Chris Bell · WR</option><option value="Chris Johnson">Chris Johnson · CB</option><option value="Chris Jones">Chris Jones · DT</option><option value="Christian Benford">Christian Benford · CB</option><option value="Christian Gonzalez">Christian Gonzalez · CB</option><option value="Christian Harris">Christian Harris · LB</option><option value="Christian Kirk">Christian Kirk · WR</option><option value="Chuck Clark">Chuck Clark · S</option><option value="Cody Barton">Cody Barton · LB</option><option value="Cody Simon">Cody Simon · LB</option><option value="Colby Parkinson">Colby Parkinson · TE</option><option value="Cole Bishop">Cole Bishop · S</option><option value="Cole Kmet">Cole Kmet · TE</option><option value="Cooper DeJean">Cooper DeJean · CB</option><option value="Cooper Kupp">Cooper Kupp · WR</option><option value="Craig Woodson">Craig Woodson · S</option><option value="Cyrus Allen">Cyrus Allen · WR</option><option value="D.J. Reed">D.J. Reed · CB</option><option value="DJ Turner II">DJ Turner II · CB</option><option value="DJ Wonnum">DJ Wonnum · DE</option><option value="DaRon Bland">DaRon Bland · CB</option><option value="Dadrion Taylor-Demerson">Dadrion Taylor-Demerson · S</option><option value="Dalton Schultz">Dalton Schultz · TE</option><option value="Dane Belton">Dane Belton · S</option><option value="Daniel Jones">Daniel Jones · QB</option><option value="Danielle Hunter">Danielle Hunter · DE</option><option value="Dante Trader Jr.">Dante Trader Jr. · S</option><option value="Darnell Mooney">Darnell Mooney · WR</option><option value="Darnell Washington">Darnell Washington · TE</option><option value="Daron Payne">Daron Payne · DT</option><option value="Darren Waller">Darren Waller · TE</option><option value="David Bailey">David Bailey · DE</option><option value="David Njoku">David Njoku · TE</option><option value="Dawson Knox">Dawson Knox · TE</option><option value="Dax Hill">Dax Hill · CB</option><option value="DeForest Buckner">DeForest Buckner · DT</option><option value="DeMario Douglas">DeMario Douglas · WR</option><option value="DeShon Elliott">DeShon Elliott · S</option><option value="Dee Winters">Dee Winters · LB</option><option value="Demarcus Robinson">Demarcus Robinson · WR</option><option value="Demond Claiborne">Demond Claiborne · RB</option><option value="Denzel Boston">Denzel Boston · WR</option><option value="Denzel Perryman">Denzel Perryman · LB</option><option value="Denzel Ward">Denzel Ward · CB</option><option value="Deommodore Lenoir">Deommodore Lenoir · CB</option><option value="Deone Walker">Deone Walker · DT</option><option value="Deonte Banks">Deonte Banks · CB</option><option value="Derek Stingley Jr.">Derek Stingley Jr. · CB</option><option value="Derrick Barnes">Derrick Barnes · LB</option><option value="Derrick Brown">Derrick Brown · DT</option><option value="Deshaun Watson">Deshaun Watson · QB</option><option value="Devin Singletary">Devin Singletary · RB</option><option value="Devin White">Devin White · LB</option><option value="Devonte Wyatt">Devonte Wyatt · DT</option><option value="Dexter Lawrence II">Dexter Lawrence II · DT</option><option value="Dillon Thieneman">Dillon Thieneman · S</option><option value="Donovan Ezeiruaku">Donovan Ezeiruaku · DE</option><option value="Dontayvion Wicks">Dontayvion Wicks · WR</option><option value="Dorance Armstrong">Dorance Armstrong · DE</option><option value="Dorian Williams">Dorian Williams · LB</option><option value="Dre Greenlaw">Dre Greenlaw · LB</option><option value="Drew Lock">Drew Lock · QB</option><option value="Dru Phillips">Dru Phillips · CB</option><option value="Drue Tranquill">Drue Tranquill · LB</option><option value="Dylan Sampson">Dylan Sampson · RB</option><option value="Ed Oliver">Ed Oliver · DT</option><option value="Emari Demercado">Emari Demercado · RB</option><option value="Emmett Johnson">Emmett Johnson · RB</option><option value="Eric Murray">Eric Murray · S</option><option value="Evan Engram">Evan Engram · TE</option><option value="Evan Williams">Evan Williams · S</option><option value="Fernando Mendoza">Fernando Mendoza · QB</option><option value="Frankie Luvu">Frankie Luvu · LB</option><option value="Geno Smith">Geno Smith · QB</option><option value="George Holani">George Holani · RB</option><option value="George Karlaftis">George Karlaftis · DE</option><option value="Germie Bernard">Germie Bernard · WR</option><option value="Grady Jarrett">Grady Jarrett · DT</option><option value="Grant Delpit">Grant Delpit · S</option><option value="Greg Dulcich">Greg Dulcich · TE</option><option value="Greg Rousseau">Greg Rousseau · DE</option><option value="Gunnar Helm">Gunnar Helm · TE</option><option value="Harold Landry III">Harold Landry III · DE</option><option value="Harrison Smith">Harrison Smith · S</option><option value="Henry To&#39;oTo&#39;o">Henry To&#39;oTo&#39;o · LB</option><option value="Isaac TeSlaa">Isaac TeSlaa · WR</option><option value="Isaiah Davis">Isaiah Davis · RB</option><option value="Isaiah Rodgers">Isaiah Rodgers · CB</option><option value="Isiah Pacheco">Isiah Pacheco · RB</option><option value="J.J. McCarthy">J.J. McCarthy · QB</option><option value="Ja&#39;Kobi Lane">Ja&#39;Kobi Lane · WR</option><option value="Jack Bech">Jack Bech · WR</option><option value="Jack Gibbens">Jack Gibbens · LB</option><option value="Jacob Saylors">Jacob Saylors · RB</option><option value="Jacoby Brissett">Jacoby Brissett · QB</option><option value="Jadeveon Clowney">Jadeveon Clowney · DE</option><option value="Jaelan Phillips">Jaelan Phillips · DE</option><option value="Jahan Dotson">Jahan Dotson · WR</option><option value="Jaishawn Barham">Jaishawn Barham · LB</option><option value="Jake Tonges">Jake Tonges · TE</option><option value="Jalen Carter">Jalen Carter · DT</option><option value="Jalen McMillan">Jalen McMillan · WR</option><option value="Jalen Nailor">Jalen Nailor · WR</option><option value="Jalen Ramsey">Jalen Ramsey · CB</option><option value="Jalen Redmond">Jalen Redmond · DT</option><option value="Jalen Thompson">Jalen Thompson · S</option><option value="Jalen Tolbert">Jalen Tolbert · WR</option><option value="Jalyx Hunt">Jalyx Hunt · DE</option><option value="Jamel Dean">Jamel Dean · CB</option><option value="James Conner">James Conner · RB</option><option value="James Pearce Jr.">James Pearce Jr. · DE</option><option value="Jaquan Brisker">Jaquan Brisker · S</option><option value="Jauan Jennings">Jauan Jennings · WR</option><option value="Javon Bullard">Javon Bullard · CB</option><option value="Javon Hargrave">Javon Hargrave · DT</option><option value="Jaycee Horn">Jaycee Horn · CB</option><option value="Jayden Higgins">Jayden Higgins · WR</option><option value="Jaylen Watson">Jaylen Watson · CB</option><option value="Jaylen Wright">Jaylen Wright · RB</option><option value="Jaylin Noel">Jaylin Noel · WR</option><option value="Jeremy Reaves">Jeremy Reaves · S</option><option value="Jermaine Johnson II">Jermaine Johnson II · DE</option><option value="Jerry Jeudy">Jerry Jeudy · WR</option><option value="Jessie Bates III">Jessie Bates III · S</option><option value="Jevon Holland">Jevon Holland · S</option><option value="Ji&#39;Ayir Brown">Ji&#39;Ayir Brown · S</option><option value="Jihaad Campbell">Jihaad Campbell · LB</option><option value="Joey Porter Jr.">Joey Porter Jr. · CB</option><option value="Jonah Laulu">Jonah Laulu · DT</option><option value="Jonas Sanker">Jonas Sanker · S</option><option value="Jonathan Allen">Jonathan Allen · DT</option><option value="Jonathan Greenard">Jonathan Greenard · DE</option><option value="Jonathon Cooper">Jonathon Cooper · DE</option><option value="Jordan Davis">Jordan Davis · DT</option><option value="Jordan James">Jordan James · RB</option><option value="Josh Blackwell">Josh Blackwell · CB</option><option value="Josh Downs">Josh Downs · WR</option><option value="Josh Hines-Allen">Josh Hines-Allen · DE</option><option value="Josh Jobe">Josh Jobe · CB</option><option value="Josh Sweat">Josh Sweat · DE</option><option value="Joshua Metellus">Joshua Metellus · S</option><option value="Justice Hill">Justice Hill · RB</option><option value="Justin Reid">Justin Reid · S</option><option value="Justin Strnad">Justin Strnad · LB</option><option value="KaVontae Turpin">KaVontae Turpin · WR</option><option value="Kaleb Johnson">Kaleb Johnson · RB</option><option value="Kalif Raymond">Kalif Raymond · WR</option><option value="Kamren Kinchens">Kamren Kinchens · S</option><option value="Kayshon Boutte">Kayshon Boutte · WR</option><option value="Kaytron Allen">Kaytron Allen · RB</option><option value="Kayvon Thibodeaux">Kayvon Thibodeaux · DE</option><option value="Keaton Mitchell">Keaton Mitchell · RB</option><option value="Keenan Allen">Keenan Allen · WR</option><option value="Keisean Nixon">Keisean Nixon · CB</option><option value="Kendre Miller">Kendre Miller · RB</option><option value="Kendrick Bourne">Kendrick Bourne · WR</option><option value="Kenny Gainwell">Kenny Gainwell · RB</option><option value="Keon Coleman">Keon Coleman · WR</option><option value="Kerby Joseph">Kerby Joseph · S</option><option value="Kevin Byard">Kevin Byard · S</option><option value="Kevin Winston Jr.">Kevin Winston Jr. · S</option><option value="Khalil Mack">Khalil Mack · DE</option><option value="Khalil Shakir">Khalil Shakir · WR</option><option value="Kimani Vidal">Kimani Vidal · RB</option><option value="Kirk Cousins">Kirk Cousins · QB</option><option value="Kobie Turner">Kobie Turner · DT</option><option value="Kool-Aid McKinstry">Kool-Aid McKinstry · CB</option><option value="Kwity Paye">Kwity Paye · DE</option><option value="Kyler Gordon">Kyler Gordon · CB</option><option value="Kyler Murray">Kyler Murray · QB</option><option value="L&#39;Jarius Sneed">L&#39;Jarius Sneed · CB</option><option value="Laiatu Latu">Laiatu Latu · DE</option><option value="Leonard Williams">Leonard Williams · DT</option><option value="Lukas Van Ness">Lukas Van Ness · DE</option><option value="Mack Hollins">Mack Hollins · WR</option><option value="Malachi Fields">Malachi Fields · WR</option><option value="Malachi Lawrence">Malachi Lawrence · DE</option><option value="Malaki Starks">Malaki Starks · S</option><option value="Malcolm Roach">Malcolm Roach · DT</option><option value="Malik Davis">Malik Davis · RB</option><option value="Malik Mustapha">Malik Mustapha · S</option><option value="Malik Washington">Malik Washington · WR</option><option value="Malik Willis">Malik Willis · QB</option><option value="Mansoor Delane">Mansoor Delane · CB</option><option value="Marcus Jones">Marcus Jones · CB</option><option value="Marlon Humphrey">Marlon Humphrey · CB</option><option value="Marques Sigle">Marques Sigle · S</option><option value="Marvin Mims Jr.">Marvin Mims Jr. · WR</option><option value="Mason Graham">Mason Graham · DT</option><option value="Matthew Stafford">Matthew Stafford · QB</option><option value="Michael Mayer">Michael Mayer · TE</option><option value="Michael Penix Jr.">Michael Penix Jr. · QB</option><option value="Mike Jackson">Mike Jackson · CB</option><option value="Mike Sainristil">Mike Sainristil · CB</option><option value="Milton Williams">Milton Williams · DT</option><option value="Minkah Fitzpatrick">Minkah Fitzpatrick · S</option><option value="Montez Sweat">Montez Sweat · DE</option><option value="Myles Murphy">Myles Murphy · DE</option><option value="Nahshon Wright">Nahshon Wright · CB</option><option value="Najee Harris">Najee Harris · RB</option><option value="Nate Wiggins">Nate Wiggins · CB</option><option value="Nathan Shepherd">Nathan Shepherd · DT</option><option value="Nehemiah Pritchett">Nehemiah Pritchett · CB</option><option value="Nicholas Singleton">Nicholas Singleton · RB</option><option value="Nick Herbig">Nick Herbig · DE</option><option value="Nick Scott">Nick Scott · S</option><option value="Nnamdi Madubuike">Nnamdi Madubuike · DT</option><option value="Nolan Smith Jr.">Nolan Smith Jr. · DE</option><option value="Odafe Oweh">Odafe Oweh · DE</option><option value="Odell Beckham Jr.">Odell Beckham Jr. · WR</option><option value="Ollie Gordon II">Ollie Gordon II · RB</option><option value="Omar Cooper Jr.">Omar Cooper Jr. · WR</option><option value="Omar Speights">Omar Speights · LB</option><option value="Oronde Gadsden">Oronde Gadsden · TE</option><option value="Osa Odighizuwa">Osa Odighizuwa · DT</option><option value="Pat Bryant">Pat Bryant · WR</option><option value="Pat Freiermuth">Pat Freiermuth · TE</option><option value="Pat Surtain II">Pat Surtain II · CB</option><option value="Paulson Adebo">Paulson Adebo · CB</option><option value="Pete Werner">Pete Werner · LB</option><option value="Quincy Williams">Quincy Williams · LB</option><option value="Quinnen Williams">Quinnen Williams · DT</option><option value="Quinyon Mitchell">Quinyon Mitchell · CB</option><option value="Rashan Gary">Rashan Gary · DE</option><option value="Rashid Shaheed">Rashid Shaheed · WR</option><option value="Rashod Bateman">Rashod Bateman · WR</option><option value="Rasul Douglas">Rasul Douglas · CB</option><option value="Ray Davis">Ray Davis · RB</option><option value="Reed Blankenship">Reed Blankenship · S</option><option value="Renardo Green">Renardo Green · CB</option><option value="Ricky Pearsall">Ricky Pearsall · WR</option><option value="Riley Moss">Riley Moss · CB</option><option value="Ronnie Hickman">Ronnie Hickman · S</option><option value="Rueben Bain Jr.">Rueben Bain Jr. · DE</option><option value="Ryan Flournoy">Ryan Flournoy · WR</option><option value="Sam Darnold">Sam Darnold · QB</option><option value="Samaje Perine">Samaje Perine · RB</option><option value="Sauce Gardner">Sauce Gardner · CB</option><option value="Sean Tucker">Sean Tucker · RB</option><option value="Seth McGowan">Seth McGowan · RB</option><option value="Shedeur Sanders">Shedeur Sanders · QB</option><option value="SirVocea Dennis">SirVocea Dennis · LB</option><option value="T&#39;Vondre Sweat">T&#39;Vondre Sweat · DT</option><option value="Tank Dell">Tank Dell · WR</option><option value="Tarheeb Still">Tarheeb Still · CB</option><option value="Taron Johnson">Taron Johnson · CB</option><option value="Teair Tart">Teair Tart · DT</option><option value="Ted Hurst III">Ted Hurst III · WR</option><option value="Teddye Buchanan">Teddye Buchanan · LB</option><option value="Terrance Ferguson">Terrance Ferguson · TE</option><option value="Tershawn Wharton">Tershawn Wharton · DT</option><option value="Tommy Togiai">Tommy Togiai · DT</option><option value="Tory Horton">Tory Horton · WR</option><option value="Travis Jones">Travis Jones · DT</option><option value="Travon Walker">Travon Walker · DE</option><option value="Tre Tucker">Tre Tucker · WR</option><option value="Tre&#39; Harris">Tre&#39; Harris · WR</option><option value="Trent McDuffie">Trent McDuffie · CB</option><option value="Treydan Stukes">Treydan Stukes · S</option><option value="Troy Franklin">Troy Franklin · WR</option><option value="Tua Tagovailoa">Tua Tagovailoa · QB</option><option value="Tuli Tuipulotu">Tuli Tuipulotu · DE</option><option value="Ty Johnson">Ty Johnson · RB</option><option value="Tyjae Spears">Tyjae Spears · RB</option><option value="Tyler Nubin">Tyler Nubin · S</option><option value="Tyquan Thornton">Tyquan Thornton · WR</option><option value="Tyreek Hill">Tyreek Hill · WR</option><option value="Tyrone Tracy Jr.">Tyrone Tracy Jr. · RB</option><option value="Tyson Campbell">Tyson Campbell · CB</option><option value="Uchenna Nwosu">Uchenna Nwosu · DE</option><option value="Upton Stout">Upton Stout · CB</option><option value="Ventrell Miller">Ventrell Miller · LB</option><option value="Vita Vea">Vita Vea · DT</option><option value="Von Miller">Von Miller · DE</option><option value="Walter Nolen III">Walter Nolen III · DT</option><option value="Will Johnson">Will Johnson · CB</option><option value="Will McDonald IV">Will McDonald IV · DE</option><option value="Will Shipley">Will Shipley · RB</option><option value="Xavier Hutchinson">Xavier Hutchinson · WR</option><option value="Xavier Legette">Xavier Legette · WR</option><option value="Xavier McKinney">Xavier McKinney · S</option><option value="Xavier Watts">Xavier Watts · S</option><option value="Yaya Diaby">Yaya Diaby · DE</option><option value="Zach Allen">Zach Allen · DT</option><option value="Zach Harrison">Zach Harrison · DT</option><option value="Zach Sieler">Zach Sieler · DT</option><option value="Zachariah Branch">Zachariah Branch · WR</option><option value="Zaire Franklin">Zaire Franklin · LB</option><option value="Zavion Thomas">Zavion Thomas · WR</option><option value="Zyon McCollum">Zyon McCollum · CB</option>
+      </select></div>
+    <button class="go" type="submit">Price it</button>
+  </form>
+</div>
+<div id="grade-out" class="stack" style="margin-top:12px"></div>
+
+<h2>Go after someone</h2>
+<div class="card">
+  <form class="tool" data-inline="#target-out" method="post" action="/trades/target">
+    <input type="hidden" name="league" value="rcl">
+    <label for="t-who">Who do you want</label>
+    <select id="t-who" name="player">
+      <option value="Ashton Jeanty">Ashton Jeanty · RB · Big Dak Energy</option><option value="Blake Cashman">Blake Cashman · LB · Big Dak Energy</option><option value="Cedric Gray">Cedric Gray · LB · Big Dak Energy</option><option value="Chase Brown">Chase Brown · RB · Big Dak Energy</option><option value="Colston Loveland">Colston Loveland · TE · Big Dak Energy</option><option value="Dak Prescott">Dak Prescott · QB · Big Dak Energy</option><option value="De&#39;Von Achane">De&#39;Von Achane · RB · Big Dak Energy</option><option value="Deebo Samuel Sr.">Deebo Samuel Sr. · WR · Big Dak Energy</option><option value="Devin Bush">Devin Bush · LB · Big Dak Energy</option><option value="Jaxon Smith-Njigba">Jaxon Smith-Njigba · WR · Big Dak Energy</option><option value="Quay Walker">Quay Walker · LB · Big Dak Energy</option><option value="Quentin Johnston">Quentin Johnston · WR · Big Dak Energy</option><option value="T.J. Hockenson">T.J. Hockenson · TE · Big Dak Energy</option><option value="Talanoa Hufanga">Talanoa Hufanga · S · Big Dak Energy</option><option value="Tetairoa McMillan">Tetairoa McMillan · WR · Big Dak Energy</option><option value="Tyler Shough">Tyler Shough · QB · Big Dak Energy</option><option value="Will Anderson Jr.">Will Anderson Jr. · DE · Big Dak Energy</option><option value="Woody Marks">Woody Marks · RB · Big Dak Energy</option><option value="Andrew Van Ginkel">Andrew Van Ginkel · DE · Colorado Hooligans</option><option value="Azeez Al-Shaair">Azeez Al-Shaair · LB · Colorado Hooligans</option><option value="Brock Bowers">Brock Bowers · TE · Colorado Hooligans</option><option value="Caleb Williams">Caleb Williams · QB · Colorado Hooligans</option><option value="Cam Skattebo">Cam Skattebo · RB · Colorado Hooligans</option><option value="Courtland Sutton">Courtland Sutton · WR · Colorado Hooligans</option><option value="Davante Adams">Davante Adams · WR · Colorado Hooligans</option><option value="Drake London">Drake London · WR · Colorado Hooligans</option><option value="Edgerrin Cooper">Edgerrin Cooper · LB · Colorado Hooligans</option><option value="J.K. Dobbins">J.K. Dobbins · RB · Colorado Hooligans</option><option value="Juwan Johnson">Juwan Johnson · TE · Colorado Hooligans</option><option value="KC Concepcion">KC Concepcion · WR · Colorado Hooligans</option><option value="Kam Curl">Kam Curl · S · Colorado Hooligans</option><option value="Marvin Harrison Jr.">Marvin Harrison Jr. · WR · Colorado Hooligans</option><option value="Omarion Hampton">Omarion Hampton · RB · Colorado Hooligans</option><option value="Patrick Mahomes">Patrick Mahomes · QB · Colorado Hooligans</option><option value="Patrick Queen">Patrick Queen · LB · Colorado Hooligans</option><option value="Saquon Barkley">Saquon Barkley · RB · Colorado Hooligans</option><option value="Tank Bigsby">Tank Bigsby · RB · Colorado Hooligans</option><option value="Aaron Donald">Aaron Donald · DT · Cooper D Kupps</option><option value="Budda Baker">Budda Baker · S · Cooper D Kupps</option><option value="C.J. Stroud">C.J. Stroud · QB · Cooper D Kupps</option><option value="Chris Olave">Chris Olave · WR · Cooper D Kupps</option><option value="Chris Rodriguez Jr.">Chris Rodriguez Jr. · RB · Cooper D Kupps</option><option value="Devin Lloyd">Devin Lloyd · LB · Cooper D Kupps</option><option value="Harold Fannin Jr.">Harold Fannin Jr. · TE · Cooper D Kupps</option><option value="Ja&#39;Marr Chase">Ja&#39;Marr Chase · WR · Cooper D Kupps</option><option value="Jack Campbell">Jack Campbell · LB · Cooper D Kupps</option><option value="Jadarian Price">Jadarian Price · RB · Cooper D Kupps</option><option value="Jayden Reed">Jayden Reed · WR · Cooper D Kupps</option><option value="Jaylen Warren">Jaylen Warren · RB · Cooper D Kupps</option><option value="Jonah Coleman">Jonah Coleman · RB · Cooper D Kupps</option><option value="Justin Herbert">Justin Herbert · QB · Cooper D Kupps</option><option value="Nico Collins">Nico Collins · WR · Cooper D Kupps</option><option value="Nik Bonitto">Nik Bonitto · DE · Cooper D Kupps</option><option value="RJ Harvey">RJ Harvey · RB · Cooper D Kupps</option><option value="Sonny Styles">Sonny Styles · LB · Cooper D Kupps</option><option value="Aidan Hutchinson">Aidan Hutchinson · DE · J. train comin UR way</option><option value="Alec Pierce">Alec Pierce · WR · J. train comin UR way</option><option value="Carson Schwesinger">Carson Schwesinger · LB · J. train comin UR way</option><option value="De&#39;Zhaun Stribling">De&#39;Zhaun Stribling · WR · J. train comin UR way</option><option value="DeMarvion Overshown">DeMarvion Overshown · LB · J. train comin UR way</option><option value="Garrett Wilson">Garrett Wilson · WR · J. train comin UR way</option><option value="Jacob Rodriguez">Jacob Rodriguez · LB · J. train comin UR way</option><option value="Jameson Williams">Jameson Williams · WR · J. train comin UR way</option><option value="Javonte Williams">Javonte Williams · RB · J. train comin UR way</option><option value="Jonathan Taylor">Jonathan Taylor · RB · J. train comin UR way</option><option value="Jordan Battle">Jordan Battle · S · J. train comin UR way</option><option value="Jordyn Brooks">Jordyn Brooks · LB · J. train comin UR way</option><option value="Josh Allen">Josh Allen · QB · J. train comin UR way</option><option value="Kenyon Sadiq">Kenyon Sadiq · TE · J. train comin UR way</option><option value="Kyle Pitts Sr.">Kyle Pitts Sr. · TE · J. train comin UR way</option><option value="Mike Washington Jr.">Mike Washington Jr. · RB · J. train comin UR way</option><option value="Parker Washington">Parker Washington · WR · J. train comin UR way</option><option value="Rachaad White">Rachaad White · RB · J. train comin UR way</option><option value="Arvell Reese">Arvell Reese · LB · Jaxons Dart&#39;s</option><option value="Bo Nix">Bo Nix · QB · Jaxons Dart&#39;s</option><option value="CeeDee Lamb">CeeDee Lamb · WR · Jaxons Dart&#39;s</option><option value="DeMarcus Lawrence">DeMarcus Lawrence · DE · Jaxons Dart&#39;s</option><option value="Derrick Henry">Derrick Henry · RB · Jaxons Dart&#39;s</option><option value="Ernest Jones IV">Ernest Jones IV · LB · Jaxons Dart&#39;s</option><option value="Hunter Henry">Hunter Henry · TE · Jaxons Dart&#39;s</option><option value="Jaxson Dart">Jaxson Dart · QB · Jaxons Dart&#39;s</option><option value="Kamari Lassiter">Kamari Lassiter · CB · Jaxons Dart&#39;s</option><option value="Makai Lemon">Makai Lemon · WR · Jaxons Dart&#39;s</option><option value="Maxx Crosby">Maxx Crosby · DE · Jaxons Dart&#39;s</option><option value="Mike Gesicki">Mike Gesicki · TE · Jaxons Dart&#39;s</option><option value="Nick Bolton">Nick Bolton · LB · Jaxons Dart&#39;s</option><option value="Quinshon Judkins">Quinshon Judkins · RB · Jaxons Dart&#39;s</option><option value="Stefon Diggs">Stefon Diggs · WR · Jaxons Dart&#39;s</option><option value="Travis Etienne Jr.">Travis Etienne Jr. · RB · Jaxons Dart&#39;s</option><option value="Travis Kelce">Travis Kelce · TE · Jaxons Dart&#39;s</option><option value="Tykee Smith">Tykee Smith · S · Jaxons Dart&#39;s</option><option value="Alex Singleton">Alex Singleton · LB · Let Them Griddy and Cook</option><option value="Blake Corum">Blake Corum · RB · Let Them Griddy and Cook</option><option value="Bucky Irving">Bucky Irving · RB · Let Them Griddy and Cook</option><option value="Christian Watson">Christian Watson · WR · Let Them Griddy and Cook</option><option value="Divine Deablo">Divine Deablo · LB · Let Them Griddy and Cook</option><option value="James Cook III">James Cook III · RB · Let Them Griddy and Cook</option><option value="Jaylen Waddle">Jaylen Waddle · WR · Let Them Griddy and Cook</option><option value="Jonathon Brooks">Jonathon Brooks · RB · Let Them Griddy and Cook</option><option value="Jordan Love">Jordan Love · QB · Let Them Griddy and Cook</option><option value="Justin Jefferson">Justin Jefferson · WR · Let Them Griddy and Cook</option><option value="Kaden Elliss">Kaden Elliss · LB · Let Them Griddy and Cook</option><option value="Kaelon Black">Kaelon Black · RB · Let Them Griddy and Cook</option><option value="Nick Bosa">Nick Bosa · DE · Let Them Griddy and Cook</option><option value="Nick Cross">Nick Cross · S · Let Them Griddy and Cook</option><option value="Rashee Rice">Rashee Rice · WR · Let Them Griddy and Cook</option><option value="TreVeyon Henderson">TreVeyon Henderson · RB · Let Them Griddy and Cook</option><option value="Tremaine Edmunds">Tremaine Edmunds · LB · Let Them Griddy and Cook</option><option value="Tucker Kraft">Tucker Kraft · TE · Let Them Griddy and Cook</option><option value="Alvin Kamara">Alvin Kamara · RB · Nacua Matata</option><option value="Baker Mayfield">Baker Mayfield · QB · Nacua Matata</option><option value="Bhayshul Tuten">Bhayshul Tuten · RB · Nacua Matata</option><option value="Breece Hall">Breece Hall · RB · Nacua Matata</option><option value="Brian Thomas Jr.">Brian Thomas Jr. · WR · Nacua Matata</option><option value="DK Metcalf">DK Metcalf · WR · Nacua Matata</option><option value="Dalton Kincaid">Dalton Kincaid · TE · Nacua Matata</option><option value="Derwin James Jr.">Derwin James Jr. · S · Nacua Matata</option><option value="Isaiah Likely">Isaiah Likely · TE · Nacua Matata</option><option value="Jalen Hurts">Jalen Hurts · QB · Nacua Matata</option><option value="Jared Verse">Jared Verse · DE · Nacua Matata</option><option value="Jeremiyah Love">Jeremiyah Love · RB · Nacua Matata</option><option value="Mack Wilson Sr.">Mack Wilson Sr. · LB · Nacua Matata</option><option value="Nakobe Dean">Nakobe Dean · LB · Nacua Matata</option><option value="Nick Emmanwori">Nick Emmanwori · CB · Nacua Matata</option><option value="Puka Nacua">Puka Nacua · WR · Nacua Matata</option><option value="Trey Hendrickson">Trey Hendrickson · DE · Nacua Matata</option><option value="Zay Flowers">Zay Flowers · WR · Nacua Matata</option><option value="A.J. Brown">A.J. Brown · WR · Nevermind....</option><option value="Amon-Ra St. Brown">Amon-Ra St. Brown · WR · Nevermind....</option><option value="Barrett Carter">Barrett Carter · LB · Nevermind....</option><option value="D&#39;Andre Swift">D&#39;Andre Swift · RB · Nevermind....</option><option value="Dallas Goedert">Dallas Goedert · TE · Nevermind....</option><option value="Dallas Turner">Dallas Turner · DE · Nevermind....</option><option value="David Montgomery">David Montgomery · RB · Nevermind....</option><option value="Demetrius Knight Jr.">Demetrius Knight Jr. · LB · Nevermind....</option><option value="Devaughn Vele">Devaughn Vele · WR · Nevermind....</option><option value="Drake Maye">Drake Maye · QB · Nevermind....</option><option value="Foyesade Oluokun">Foyesade Oluokun · LB · Nevermind....</option><option value="Fred Warner">Fred Warner · LB · Nevermind....</option><option value="George Kittle">George Kittle · TE · Nevermind....</option><option value="Jordan Mason">Jordan Mason · RB · Nevermind....</option><option value="Jordyn Tyson">Jordyn Tyson · WR · Nevermind....</option><option value="Kyle Hamilton">Kyle Hamilton · S · Nevermind....</option><option value="Kyle Monangai">Kyle Monangai · RB · Nevermind....</option><option value="Matthew Golden">Matthew Golden · WR · Nevermind....</option><option value="Micah Parsons">Micah Parsons · DE · Nevermind....</option><option value="Michael Wilson">Michael Wilson · WR · Nevermind....</option><option value="Tyler Allgeier">Tyler Allgeier · RB · Nevermind....</option><option value="Aaron Jones Sr.">Aaron Jones Sr. · RB · Random Picks</option><option value="Byron Young">Byron Young · DE · Random Picks</option><option value="Christian McCaffrey">Christian McCaffrey · RB · Random Picks</option><option value="DJ Moore">DJ Moore · WR · Random Picks</option><option value="Emeka Egbuka">Emeka Egbuka · WR · Random Picks</option><option value="Jake Ferguson">Jake Ferguson · TE · Random Picks</option><option value="Jamien Sherwood">Jamien Sherwood · LB · Random Picks</option><option value="Jared Goff">Jared Goff · QB · Random Picks</option><option value="Jeremy Chinn">Jeremy Chinn · S · Random Picks</option><option value="Kenneth Walker III">Kenneth Walker III · RB · Random Picks</option><option value="Mark Andrews">Mark Andrews · TE · Random Picks</option><option value="Mike Evans">Mike Evans · WR · Random Picks</option><option value="Nate Landman">Nate Landman · LB · Random Picks</option><option value="Robert Spillane">Robert Spillane · LB · Random Picks</option><option value="Rome Odunze">Rome Odunze · WR · Random Picks</option><option value="Romeo Doubs">Romeo Doubs · WR · Random Picks</option><option value="Tre&#39;von Moehrig">Tre&#39;von Moehrig · S · Random Picks</option><option value="Trevor Lawrence">Trevor Lawrence · QB · Random Picks</option><option value="Bijan Robinson">Bijan Robinson · RB · Rylanknowsball</option><option value="Brian Branch">Brian Branch · S · Rylanknowsball</option><option value="Brian Burns">Brian Burns · DE · Rylanknowsball</option><option value="Carnell Tate">Carnell Tate · WR · Rylanknowsball</option><option value="Chris Godwin Jr.">Chris Godwin Jr. · WR · Rylanknowsball</option><option value="Daiyan Henley">Daiyan Henley · LB · Rylanknowsball</option><option value="Devon Witherspoon">Devon Witherspoon · CB · Rylanknowsball</option><option value="George Pickens">George Pickens · WR · Rylanknowsball</option><option value="Jacory Croskey-Merritt">Jacory Croskey-Merritt · RB · Rylanknowsball</option><option value="Joe Burrow">Joe Burrow · QB · Rylanknowsball</option><option value="Ladd McConkey">Ladd McConkey · WR · Rylanknowsball</option><option value="MarShawn Lloyd">MarShawn Lloyd · RB · Rylanknowsball</option><option value="Payton Wilson">Payton Wilson · LB · Rylanknowsball</option><option value="Roquan Smith">Roquan Smith · LB · Rylanknowsball</option><option value="Terrel Bernard">Terrel Bernard · LB · Rylanknowsball</option><option value="Tyler Warren">Tyler Warren · TE · Rylanknowsball</option><option value="Tyrel Dodson">Tyrel Dodson · LB · Rylanknowsball</option><option value="Wan&#39;Dale Robinson">Wan&#39;Dale Robinson · WR · Rylanknowsball</option><option value="Zach Charbonnet">Zach Charbonnet · RB · Rylanknowsball</option><option value="Zack Baun">Zack Baun · LB · Rylanknowsball</option><option value="Chris Brooks">Chris Brooks · RB · Super Lamario 64</option><option value="Chuba Hubbard">Chuba Hubbard · RB · Super Lamario 64</option><option value="Eric Wilson">Eric Wilson · LB · Super Lamario 64</option><option value="Jakobi Meyers">Jakobi Meyers · WR · Super Lamario 64</option><option value="Jalen Coker">Jalen Coker · WR · Super Lamario 64</option><option value="Jayden Daniels">Jayden Daniels · QB · Super Lamario 64</option><option value="Jeffery Simmons">Jeffery Simmons · DT · Super Lamario 64</option><option value="Josh Jacobs">Josh Jacobs · RB · Super Lamario 64</option><option value="Josiah Trotter">Josiah Trotter · LB · Super Lamario 64</option><option value="Julian Love">Julian Love · S · Super Lamario 64</option><option value="Lamar Jackson">Lamar Jackson · QB · Super Lamario 64</option><option value="Malik Nabers">Malik Nabers · WR · Super Lamario 64</option><option value="Michael Pittman Jr.">Michael Pittman Jr. · WR · Super Lamario 64</option><option value="Quentin Lake">Quentin Lake · CB · Super Lamario 64</option><option value="Tee Higgins">Tee Higgins · WR · Super Lamario 64</option><option value="Terry McLaurin">Terry McLaurin · WR · Super Lamario 64</option><option value="Tony Pollard">Tony Pollard · RB · Super Lamario 64</option><option value="Trey McBride">Trey McBride · TE · Super Lamario 64</option>
+    </select>
+    <button class="go" type="submit">What would he cost</button>
+  </form>
+</div>
+<div id="target-out" class="stack" style="margin-top:12px"></div>
+
+<h2>Target a team</h2>
+<div class="card">
+  <form class="tool" data-inline="#raid-out" method="post" action="/trades/raid">
+    <input type="hidden" name="league" value="rcl">
+    <div class="two-up">
+      <div><label for="r-team">Whose roster</label>
+        <select id="r-team" name="team">
+          <option value="Big Dak Energy">Big Dak Energy</option><option value="Colorado Hooligans">Colorado Hooligans</option><option value="Cooper D Kupps">Cooper D Kupps</option><option value="J. train comin UR way">J. train comin UR way</option><option value="Jaxons Dart&#39;s">Jaxons Dart&#39;s</option><option value="Let Them Griddy and Cook">Let Them Griddy and Cook</option><option value="Nacua Matata">Nacua Matata</option><option value="Nevermind....">Nevermind....</option><option value="Random Picks">Random Picks</option><option value="Rylanknowsball">Rylanknowsball</option><option value="Super Lamario 64">Super Lamario 64</option>
+        </select></div>
+      <div><label for="r-reach">How much to ask for</label>
+        <select id="r-reach" name="reach">
+          <option value="1">They have to gain too</option>
+          <option value="2" selected>Push a bit</option>
+          <option value="3">Ask for the moon</option>
+        </select></div>
+    </div>
+    <button class="go" type="submit">Go through their roster</button>
+  </form>
+</div>
+<div id="raid-out" class="stack" style="margin-top:12px"></div>
+
+<h2>Every deal in the league</h2>
+<div class="card">
+  <p class="lede" style="margin:0 0 10px">Searching every pair of rosters takes
+    up to a minute. The three tools above do not, so it waits to be asked.</p>
+  <form class="tool" data-inline="#find-out" method="post" action="/trades/find">
+    <input type="hidden" name="league" value="rcl">
+    <button class="go" type="submit">Find trades</button>
+  </form>
+</div>
+<div id="find-out" class="stack" style="margin-top:12px"></div></main>
+
+
+</body>
+</html>

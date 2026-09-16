@@ -1,0 +1,78 @@
+{% import "_macros.html" as m %}
+{% if unavailable %}
+  <h1>{{ unavailable }}</h1>
+  <p class="empty">Hand-entered, so there is no live lineup. The Yahoo API will
+    provide one once it is approved.</p>
+{% else %}
+{% set d = data %}
+{% set ahead = d.my_proj >= d.their_proj %}
+
+<h1>Week {{ d.week }}</h1>
+<p class="lede">Projections are ESPN's. Everything around them describes the
+  spread, measured on what comparable players actually did.</p>
+
+<div class="scoreline {{ 'lead-good' if ahead else 'lead-bad' }}">
+  <div class="side">
+    <div class="team">{{ d.me }}</div>
+    <div class="big num">{{ "%.1f"|format(d.my_score or d.my_proj) }}</div>
+    <div class="proj num">proj {{ "%.1f"|format(d.my_proj) }}</div>
+  </div>
+  <div class="vs">VS</div>
+  <div class="side right">
+    <div class="team">{{ d.them }}</div>
+    <div class="big num" style="color:var(--text)">{{ "%.1f"|format(d.their_score or d.their_proj) }}</div>
+    <div class="proj num">proj {{ "%.1f"|format(d.their_proj) }}</div>
+  </div>
+</div>
+
+{% if d.problems %}
+<h2>Cannot play</h2>
+<div class="stack">
+  {% for p in d.problems %}
+  <div class="note bad"><strong>{{ p.name }}</strong> ({{ p.pos }}) is in your
+    {{ p.slot }} slot and {{ "on bye" if p.bye else p.status }}.</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if d.calls %}
+<h2>Start / sit</h2>
+<div class="stack">
+  {% for c in d.calls %}
+  <div class="note warn"><strong>{{ c.bench }}</strong> over {{ c.starter }},
+    by {{ "%.1f"|format(c.edge) }}. Needed {{ "%.1f"|format(c.needed) }} to be
+    worth saying.</div>
+  {% endfor %}
+</div>
+{% elif not d.problems %}
+<h2>Start / sit</h2>
+<div class="note good">Nothing to change. Silence here is the answer, not a
+  missing one.</div>
+{% endif %}
+
+{% if d.optimal["in"] %}
+<div class="note info" style="margin-top:12px">Rearranging the slots is worth
+  {{ "%.1f"|format(d.optimal.gain) }}: start {{ d.optimal["in"]|join(", ") }},
+  bench {{ d.optimal["out"]|join(", ") }}.</div>
+{% endif %}
+
+<h2>Starters</h2>
+<div class="card">{% for p in d.starters %}{{ m.player(p) }}{% endfor %}</div>
+
+<h2>Bench</h2>
+<div class="card">{% for p in d.bench %}{{ m.player(p) }}{% endfor %}</div>
+
+{% if d.near %}
+<h2>Close, but not enough</h2>
+<div class="stack">
+  {% for n in d.near %}<div class="note">{{ n.why }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{% if d.pff_err %}
+<div class="note warn" style="margin-top:14px">PFF usage unavailable
+  ({{ d.pff_err }}). The lineup is unaffected; the role lines are missing.</div>
+{% endif %}
+
+<p class="foot">read at {{ d.at }} · <a href="/refresh" data-nav={{ "" }}>refresh</a></p>
+{% endif %}

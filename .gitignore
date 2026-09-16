@@ -18,3 +18,4 @@ probe_*_output.txt
 # holds the client secret and refresh token in a pickle.
 .yahoofantasy
 *.yahoofantasy
+preview/            # rendered snapshots for eyeballing the design

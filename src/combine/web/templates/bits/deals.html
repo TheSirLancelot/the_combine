@@ -1,0 +1,23 @@
+{% import "_macros.html" as m %}
+{% if not deals %}
+  <div class="note info">Nothing{% if team %} with {{ team }}{% endif %} gains
+    you more than the noise band without clearly costing the other side.</div>
+{% else %}
+<div class="card">
+  {% for d in deals %}
+  <div class="row">
+    <div class="slot">{{ d.ask[:3]|upper }}</div>
+    <div class="who">
+      <div class="name">{{ d.give.name }} → {{ d.get.name }}</div>
+      <div class="meta">{{ d.partner }} · them {{ "%+.0f"|format(d.their_season) }}
+        · week {{ "%+.1f"|format(d.my_week) }}</div>
+      {% if d.why_they_might() %}<div class="role">{{ d.why_they_might() }}</div>{% endif %}
+    </div>
+    <div class="figure"><div class="v">{{ m.signed(d.my_season, 0) }}</div>
+      <div class="band">season</div></div>
+  </div>
+  {% endfor %}
+</div>
+<p class="foot">solid: the numbers say he gains too. stretch: inside the noise
+  band. longshot: the numbers say he loses.</p>
+{% endif %}

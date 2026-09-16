@@ -1,0 +1,71 @@
+<h1>Trades</h1>
+<p class="lede">Ranked on the season axis, because the weekly one is close to
+  zero sum: the points a trade moves into your lineup come out of theirs.</p>
+
+<h2>Grade an offer</h2>
+<div class="card">
+  <form class="tool" data-inline="#grade-out" method="post" action="/trades/grade">
+    <input type="hidden" name="league" value="{{ league }}">
+    <div class="two-up">
+      <div><label for="g-give">You give</label>
+        <select id="g-give" name="give" multiple size="8">
+          {% for o in mine %}<option value="{{ o.name }}">{{ o.label }}</option>{% endfor %}
+        </select></div>
+      <div><label for="g-get">You get</label>
+        <select id="g-get" name="get" multiple size="8">
+          {% for o in theirs %}<option value="{{ o.name }}">{{ o.label }}</option>{% endfor %}
+        </select></div>
+    </div>
+    <div><label for="g-fill">And you would pick up</label>
+      <select id="g-fill" name="fill" multiple size="4">
+        {% for o in wire %}<option value="{{ o.name }}">{{ o.label }}</option>{% endfor %}
+      </select></div>
+    <button class="go" type="submit">Price it</button>
+  </form>
+</div>
+<div id="grade-out" class="stack" style="margin-top:12px"></div>
+
+<h2>Go after someone</h2>
+<div class="card">
+  <form class="tool" data-inline="#target-out" method="post" action="/trades/target">
+    <input type="hidden" name="league" value="{{ league }}">
+    <label for="t-who">Who do you want</label>
+    <select id="t-who" name="player">
+      {% for o in theirs %}<option value="{{ o.name }}">{{ o.label }}</option>{% endfor %}
+    </select>
+    <button class="go" type="submit">What would he cost</button>
+  </form>
+</div>
+<div id="target-out" class="stack" style="margin-top:12px"></div>
+
+<h2>Target a team</h2>
+<div class="card">
+  <form class="tool" data-inline="#raid-out" method="post" action="/trades/raid">
+    <input type="hidden" name="league" value="{{ league }}">
+    <div class="two-up">
+      <div><label for="r-team">Whose roster</label>
+        <select id="r-team" name="team">
+          {% for t in teams %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select></div>
+      <div><label for="r-reach">How much to ask for</label>
+        <select id="r-reach" name="reach">
+          <option value="1">They have to gain too</option>
+          <option value="2" selected>Push a bit</option>
+          <option value="3">Ask for the moon</option>
+        </select></div>
+    </div>
+    <button class="go" type="submit">Go through their roster</button>
+  </form>
+</div>
+<div id="raid-out" class="stack" style="margin-top:12px"></div>
+
+<h2>Every deal in the league</h2>
+<div class="card">
+  <p class="lede" style="margin:0 0 10px">Searching every pair of rosters takes
+    up to a minute. The three tools above do not, so it waits to be asked.</p>
+  <form class="tool" data-inline="#find-out" method="post" action="/trades/find">
+    <input type="hidden" name="league" value="{{ league }}">
+    <button class="go" type="submit">Find trades</button>
+  </form>
+</div>
+<div id="find-out" class="stack" style="margin-top:12px"></div>

@@ -445,6 +445,20 @@ that has one answer. When one does repeat, it says so: rows are alternatives,
 not a package. Each is priced against your roster as it stands today, so doing
 two of them is not worth the sum of the two.
 
+Every deal comes with what it does to THEIR lineup, because the partner's number
+is the one that looks wrong:
+
+```
+WHY IT WORKS FOR THEM
+  Lamar Jackson → Super Lamario 64: they start Jayden Daniels 339,
+  Demario Davis 176; out comes Lamar Jackson 343, Josiah Trotter 117
+```
+
+He is not losing 343 points of quarterback. He carries Jackson at 343 and
+Daniels at 339 in a one-quarterback league, so Daniels steps in and the trade
+costs him four, while the linebacker coming back replaces a 117 point starter
+and gains him 59. Same cascade your own side is priced on, read from their end.
+
 Each partner comes with where they are thin and where they carry somebody who
 never starts. That is the whole of the opponent model, and it is deliberate:
 league-wide activity this season is 24 events in RCL and 7 in DMWD, none of

@@ -1859,6 +1859,29 @@ Among men who cost the assignment nothing, the cut goes to the LOWEST season
 projection, which keeps the best insurance. That is why a surplus Brock Purdy at
 311 survives and a bench corner at 139 does not.
 
+### Their side of the cascade, said out loud
+
+Added 2026-09-16, straight after William asked how Super Lamario 64 gains 56
+points by losing his starting quarterback. He does not. He carries Lamar Jackson
+at 343 AND Jayden Daniels at 339 in a one quarterback league, so Daniels steps
+straight in and sending Jackson costs him four points rather than 343. The
+linebacker coming back replaces a 117 point starter, which is worth 59. Fifty
+nine minus four is the 56.
+
+That is the second number in two days that took a probe to explain, and the rule
+from the first one applies: it belongs in the output. `Deal.why_they_might()`
+and `Verdict.their_moves` now print their assignment diff the same way ours is
+printed, in the CLI, the Discord field and an app expander.
+
+Worth noticing that both questions had the same shape. The first was "why is
+losing a starting linebacker free to me", the second "why is losing a starting
+quarterback nearly free to him". Same cascade, read from two ends. A lineup
+total is not a sum of player values, and any view that shows the total without
+the diff will keep generating this question.
+
+Cost is two assignments per shown deal in `_finish`, which also prices the
+weekly column, so roughly 16 extra solves on a list of eight.
+
 ### odds.py
 
 Win probability by resampling residuals from the distribution work, per starter,

@@ -380,3 +380,41 @@ def test_the_verdict_render_leads_with_the_answer():
     assert "THE NUMBERS FAVOUR YOU" in text
     assert "WHAT CHANGES" in text
     assert "does not tell you to accept it" in text
+
+
+def test_the_partner_s_side_of_the_cascade_is_reported():
+    """William's question: how does losing their starting quarterback gain them
+    56 points. Because the man behind him is worth nearly as much, so the loss
+    is the difference and not the projection. A number that needs a probe to
+    explain belongs in the output."""
+    mine = [player("My LB", "LB", slot="LB", proj=9.0),
+            player("My QB", "QB", slot="QB", proj=18.0)]
+    theirs = [player("Their QB1", "QB", slot="QB", proj=21.0),
+              player("Their QB2", "QB", proj=20.0),
+              player("Their LB", "LB", slot="LB", proj=4.0)]
+    season = {"My LB": 200.0, "My QB": 280.0,
+              "Their QB1": 343.0, "Their QB2": 339.0, "Their LB": 117.0}
+    client = Client({"Mine": mine, "Rival": theirs}, season)
+    client.roster_slots = lambda: {"QB": 1, "LB": 1}
+
+    v, err = T.grade(client, ["My LB"], ["Their QB1"])
+    assert not err
+    joining = {m.name: m.value for m in v.their_moves if m.joining}
+    leaving = {m.name: m.value for m in v.their_moves if not m.joining}
+    assert joining == {"Their QB2": 339.0, "My LB": 200.0}
+    assert leaving == {"Their QB1": 343.0, "Their LB": 117.0}
+    # Four points of quarterback lost, eighty three of linebacker gained.
+    assert v.their_season == 79.0
+
+
+def test_why_they_might_reads_as_a_sentence_or_says_nothing():
+    d = deal("A", "B")
+    assert d.why_they_might() == ""        # nothing computed for this one
+    with_moves = T.Deal(
+        give=player("A", "RB"), get=player("B", "QB"), partner="Them",
+        my_season=30.0, their_season=56.0, my_week=0.0, their_week=0.0,
+        their_moves=(T.Move("Backup QB", "QB", 339.0, True),
+                     T.Move("Star QB", "QB", 343.0, False)))
+    text = with_moves.why_they_might()
+    assert "they start Backup QB 339" in text
+    assert "out comes Star QB 343" in text

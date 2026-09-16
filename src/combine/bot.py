@@ -422,6 +422,9 @@ def build_trades(league: str) -> Report:
                              else "") if x]
         if shape:
             note += f" {d.partner} is {', '.join(shape)}."
+        why = d.why_they_might()
+        if why:
+            note += f"\nFor them: {why}."
         discord_out.field(e, f"{d.give.name} → {d.get.name} ({d.partner})", note)
     e.set_footer(text=(alternatives_note(deals).replace("\n", " ")
                        + " Whole rosters started best-eligible, before against "
@@ -477,6 +480,11 @@ def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
     if verdict.week_moves:
         discord_out.field(e, "What changes this Sunday", "\n".join(
             m.describe() for m in verdict.week_moves))
+    if verdict.their_moves:
+        discord_out.field(e, f"What changes for {verdict.partner}", "\n".join(
+            [m.describe() for m in verdict.their_moves]
+            + ["Losing a starter usually costs them far less than his "
+               "projection, because the man behind him steps up."]))
     if verdict.odds_after:
         discord_out.field(e, "Your odds this week",
                           f"{verdict.odds_now * 100:.0f}% → "

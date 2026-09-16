@@ -96,6 +96,7 @@ class Deal:
     partner_thin: str = ""        # weakest position they still start
     partner_deep: str = ""        # where they carry someone who never starts
     bar: float = 0.0              # the noise band this was judged against
+    their_moves: tuple = ()       # what changes in THEIR season lineup
     odds_now: float = 0.0         # P(I win this week) as things stand
     odds_after: float = 0.0
 
@@ -122,6 +123,23 @@ class Deal:
     def describe(self) -> str:
         return (f"give {self.give.name} ({self.give.pos}), "
                 f"get {self.get.name} ({self.get.pos}) from {self.partner}")
+
+    def why_they_might(self) -> str:
+        """What the deal does to THEIR lineup, which is the only honest answer
+        to "how does losing their starter gain them 56 points".
+
+        It usually does not cost them what it looks like. Super Lamario 64
+        carries Lamar Jackson at 343 and Jayden Daniels at 339 in a one
+        quarterback league, so sending Jackson costs him four points, not 343,
+        and the linebacker coming back replaces a 117 point starter.
+        """
+        if not self.their_moves:
+            return ""
+        ins = ", ".join(f"{m.name} {m.value:.0f}"
+                        for m in self.their_moves if m.joining)
+        outs = ", ".join(f"{m.name} {m.value:.0f}"
+                         for m in self.their_moves if not m.joining)
+        return f"they start {ins or 'nobody new'}; out comes {outs or 'nobody'}"
 
 
 def rosters(client, week: int) -> tuple[list[WeeklyPlayer],
@@ -356,7 +374,7 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
     # Daniels and Pitre for Daniels are both +28 to me, and +60 against +47 to
     # him.
     deals.sort(key=lambda d: (-d.my_season, -d.their_season))
-    best = _weekly(mine, others, slot_list, cal, season, _distinct(deals, limit))
+    best = _finish(mine, others, slot_list, cal, season, _distinct(deals, limit))
     return _with_odds(client, wk, mine, slot_list, cal, season, best, dist) \
         if dist else best
 
@@ -389,12 +407,13 @@ def _distinct(deals: list[Deal], limit: int) -> list[Deal]:
     return out
 
 
-def _weekly(mine, others, slot_list, cal, season, deals: list[Deal]) -> list[Deal]:
-    """This Sunday's cost or gain, for the deals actually shown.
+def _finish(mine, others, slot_list, cal, season, deals: list[Deal]) -> list[Deal]:
+    """This Sunday's cost or gain, and their side of the cascade, for the deals
+    actually shown.
 
-    Late on purpose. It is not the ranking axis, it is four assignments a pair,
-    and pricing it for every pair the bounds let through was most of the runtime
-    for a column that decides nothing.
+    Late on purpose. Neither is the ranking axis, both are assignments per pair,
+    and computing them for every pair the bounds let through was most of the
+    runtime for columns that decide nothing.
     """
     from dataclasses import replace
 
@@ -419,7 +438,10 @@ def _weekly(mine, others, slot_list, cal, season, deals: list[Deal]) -> list[Dea
             d,
             my_week=_value(mine_after, slot_list, _week) - my_base,
             their_week=(_value(theirs_after, slot_list, _week)
-                        - their_base[d.partner])))
+                        - their_base[d.partner]),
+            their_moves=tuple(_moves(
+                _assignment(their_cands[d.partner], slot_list),
+                _assignment(theirs_after, slot_list), _season))))
     return out
 
 
@@ -550,6 +572,19 @@ def render(deals: list[Deal], league_name: str) -> str:
         out.append("")
         for team, note in shapes.items():
             out.append(f"  {team}: {note}")
+
+    why = [(d, d.why_they_might()) for d in deals]
+    if any(text for _d, text in why):
+        out.append("")
+        out.append("WHY IT WORKS FOR THEM")
+        for d, text in why:
+            if text:
+                out.append(f"  {d.get.name} → {d.partner}: {text}")
+        out.append("")
+        out.append("Losing a starter usually costs them far less than his "
+                   "projection, because the\nman behind him steps up. That is "
+                   "the same cascade your own side is priced\non, read from "
+                   "their end.")
     out.append(ASK_NOTE.lstrip("\n"))
     out.append("")
     out.append(alternatives_note(deals))
@@ -594,6 +629,7 @@ class Verdict:
     their_week: float
     season_moves: list[Move]           # what changes in my season assignment
     week_moves: list[Move]             # what changes in my lineup this Sunday
+    their_moves: list[Move] = ()       # and what changes in theirs
     spots: int = 0                     # roster spots freed (+) or needed (-)
     room: int = 0                      # spots I have open right now
     my_cuts: list[str] = ()            # who I would have to cut to fit them in
@@ -762,6 +798,8 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
                     - _value(their_cands, slot_list, _week)),
         season_moves=_moves(my_chosen, _assignment(mine_after, slot_list),
                             _season),
+        their_moves=_moves(_assignment(their_cands, slot_list),
+                           _assignment(theirs_after, slot_list), _season),
         week_moves=_moves(
             best_lineup(my_cands, slot_list, key=_week),
             best_lineup(mine_after, slot_list, key=_week), _week, dp=1),
@@ -837,6 +875,14 @@ def render_verdict(v: Verdict, league_name: str) -> str:
         out.append("WHAT CHANGES this Sunday")
         for move in v.week_moves:
             out.append(f"  {move.describe()}")
+        out.append("")
+
+    if v.their_moves:
+        out.append(f"WHAT CHANGES for {v.partner}, over the season")
+        for move in v.their_moves:
+            out.append(f"  {move.describe()}")
+        out.append("  Losing a starter usually costs them far less than his\n"
+                   "  projection, because the man behind him steps up.")
         out.append("")
 
     if v.spots < 0:

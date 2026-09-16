@@ -1297,6 +1297,15 @@ def _grade_an_offer(league: str, deals):
         else:
             st.caption("Nothing.")
 
+    if verdict.their_moves:
+        with st.expander(f"What changes for {verdict.partner}", expanded=False):
+            for m in verdict.their_moves:
+                st.markdown(f"- {m.describe()}")
+            st.caption("Losing a starter usually costs them far less than his "
+                       "projection, because the man behind him steps up. That "
+                       "is why giving up a quarterback can be nearly free to a "
+                       "manager carrying two of them.")
+
     if verdict.my_cuts:
         st.warning(f"You take on {-verdict.spots} more than you send with "
                    f"{verdict.room} spot(s) open, so you would have to cut "
@@ -1385,6 +1394,18 @@ def trades_page():
         })
 
     from combine.pipeline.trades import alternatives_note
+
+    why = [(d, d.why_they_might()) for d in deals]
+    if any(text for _d, text in why):
+        with st.expander("Why these work for the other side", expanded=False):
+            st.caption(
+                "Losing a starter usually costs a manager far less than the "
+                "man's projection, because whoever is behind him steps up. "
+                "Same cascade your own side is priced on, read from their end.")
+            for d, text in why:
+                if text:
+                    st.markdown(f"- **{d.get.name} → {d.partner}**: {text}")
+
     st.caption(alternatives_note(deals).replace("\n", " "))
 
     _grade_an_offer(league, deals)

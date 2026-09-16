@@ -419,3 +419,62 @@ def test_a_search_that_fails_reaches_the_person(client, monkeypatch):
     body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
     assert "ESPN timed out" in body
     assert "data-job=" not in body
+
+
+class FakePlayer:
+    def __init__(self, name, pos="RB", team="SF", projected=12.0):
+        self.name, self.pos, self.team, self.projected = name, pos, team, projected
+
+
+class FakeMove:
+    def __init__(self, name, pos, value, joining):
+        self.name, self.pos, self.value, self.joining = name, pos, value, joining
+
+
+class FakeDeal:
+    give = FakePlayer("Demario Davis", "LB", "NYJ")
+    get = FakePlayer("Malik Nabers", "WR", "NYG")
+    partner = "Super Lamario 64"
+    my_season, their_season, my_week, their_week = 36.0, 8.0, 1.2, 0.7
+    partner_thin, partner_deep, bar = "LB", "QB", 17.0
+    odds_now, odds_after = 0.57, 0.58
+    their_moves = (FakeMove("Josh Jacobs", "RB", 159.0, True),
+                   FakeMove("Josiah Trotter", "LB", 117.0, False))
+    ask = "stretch"
+
+    def why_they_might(self):
+        return "they start Josh Jacobs 159; out comes Josiah Trotter 117"
+
+
+def test_a_deal_opens_into_its_reasoning(client, monkeypatch):
+    """The line explaining the deal was being cut off mid-sentence, which is
+    the worst of the three options: it reads as the whole answer while being
+    half of one. It gets a panel instead."""
+    monkeypatch.setattr(data, "find_trades", lambda league: [FakeDeal()])
+    body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
+    assert '<details class="deal">' in body
+    # the summary keeps what was on screen
+    assert "Demario Davis → Malik Nabers" in body
+    # and the panel carries the rest, whole
+    assert "Josiah Trotter" in body and "117" in body
+    assert "is thinnest at LB" in body
+
+
+def test_the_badge_is_spelled_out_against_the_number_it_came_from(client,
+                                                                 monkeypatch):
+    """'STR' with a legend at the bottom of the page is a code to look up. The
+    panel says what it means and which figure decided it."""
+    monkeypatch.setattr(data, "find_trades", lambda league: [FakeDeal()])
+    body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
+    assert "17 point band" in body
+    assert "cannot\n          tell a gain from a loss" in body
+
+
+def test_the_summary_no_longer_carries_the_truncated_reasoning(client,
+                                                              monkeypatch):
+    """It moved inside. Leaving it in both places is how a row ends up three
+    lines tall and still cut off."""
+    monkeypatch.setattr(data, "find_trades", lambda league: [FakeDeal()])
+    body = finish(client, client.post("/trades/find", data={"league": "rcl"}))
+    summary = body.split("</summary>")[0]
+    assert "out comes" not in summary

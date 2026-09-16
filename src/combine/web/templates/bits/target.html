@@ -12,24 +12,93 @@
 {% endif %}
 <div class="card">
   {% for p in items %}
-  <div class="row">
-    <div class="slot">{{ loop.index }}</div>
-    <div class="who">
-      <div class="name">{{ p.names }}</div>
-      <div class="meta">them {{ "%+.0f"|format(p.their_season) }} ·
-        week {{ "%+.1f"|format(p.my_week) }} ·
-        <span class="pill {{ 'good' if not p.stretch else 'warn' }}">{{ 'solid' if not p.stretch else 'stretch' }}</span></div>
+  <details class="deal">
+    <summary>
+      <div class="row">
+        <div class="slot">{{ loop.index }}</div>
+        <div class="who">
+          <div class="name">{{ p.names }}</div>
+          <div class="meta">them {{ "%+.0f"|format(p.their_season) }} ·
+            week {{ "%+.1f"|format(p.my_week) }} ·
+            <span class="pill {{ 'good' if not p.stretch else 'warn' }}">{{ 'solid' if not p.stretch else 'stretch' }}</span></div>
+        </div>
+        <div class="figure"><div class="v">{{ m.signed(p.my_season, 0) }}</div>
+          <div class="band">season</div></div>
+        <div class="chev" aria-hidden="true">›</div>
+      </div>
+    </summary>
+
+    <div class="why">
+      <div class="swap">
+        <div class="leg out">
+          <div class="cap">You send</div>
+          {% for g in p.give %}
+          <div class="nm">{{ g.name }}</div>
+          <div class="sub">{{ g.pos }}{% if g.team %} · {{ g.team }}{% endif %}
+            · {{ "%.1f"|format(g.projected) }} this week</div>
+          {% endfor %}
+        </div>
+        <div class="leg in">
+          <div class="cap">You get</div>
+          <div class="nm">{{ p.get.name }}</div>
+          <div class="sub">{{ p.get.pos }}{% if p.get.team %} · {{ p.get.team }}{% endif %}
+            · {{ "%.1f"|format(p.get.projected) }} this week</div>
+        </div>
+      </div>
+
+      <div class="figures">
+        <div><span class="k">You, season</span><span class="v">{{ m.signed(p.my_season, 0) }}</span></div>
+        <div><span class="k">Them, season</span><span class="v">{{ m.signed(p.their_season, 0) }}</span></div>
+        <div><span class="k">You, this week</span><span class="v">{{ m.signed(p.my_week, 1) }}</span></div>
+        <div><span class="k">Them, this week</span><span class="v">{{ m.signed(p.their_week, 1) }}</span></div>
+      </div>
+
+      <p class="note {{ 'info' if p.stretch else 'good' }}">
+        {% if p.stretch %}His side lands inside the {{ "%.0f"|format(p.bar) }}
+          point band, where these numbers cannot tell a gain from a loss. Worth
+          asking, not worth expecting.
+        {% else %}The numbers say {{ p.partner }} gains too:
+          {{ "%+.0f"|format(p.their_season) }} clears the
+          {{ "%.0f"|format(p.bar) }} point band.{% endif %}
+      </p>
+
+      {% if p.breakeven > 0 %}
+      <p class="note warn">This costs you {{ "%.0f"|format(p.breakeven) }}
+        points of season projection. For it to pay, {{ p.get.name }} has to be
+        worth that much more over the rest of the year than ESPN says. ESPN's
+        number is the only view of him this system has, so it cannot tell you he
+        is undervalued — only how undervalued he would have to be.</p>
+      {% endif %}
+
+      {# The handcuff arithmetic. Not a forecast: nothing here knows how likely
+         an injury is, only what having him would be worth if one happened. #}
+      {% if p.bench %}
+      <p class="note">He would not start today{% if p.depth_rank %}, sitting
+        {{ p.depth_rank }} deep at {{ p.get.pos }} on your roster{% endif %}.
+        {% if p.cover_name %}If {{ p.cover_name }} missed time, having him would
+        absorb {{ "%.0f"|format(p.cover_points) }} points of what that absence
+        would otherwise cost you. That is what this buys. How likely the absence
+        is, nothing here knows.{% endif %}</p>
+      {% endif %}
+
+      {% if p.their_moves %}
+      <div class="cap">What it does to their lineup</div>
+      <ul class="moves">
+        {% for mv in p.their_moves %}
+        <li class="{{ 'in' if mv.joining else 'out' }}">
+          <span class="dir">{{ 'starts' if mv.joining else 'out' }}</span>
+          <span class="nm">{{ mv.name }}</span>
+          <span class="pos">{{ mv.pos }}</span>
+          <span class="val">{{ "%.0f"|format(mv.value) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="foot left">Season points for the seat, not for the man.</p>
+      {% endif %}
     </div>
-    <div class="figure"><div class="v">{{ m.signed(p.my_season, 0) }}</div>
-      <div class="band">season</div></div>
-  </div>
+  </details>
   {% endfor %}
 </div>
-<p class="foot">Cheapest ask first. Every rung down costs you more and is worth
-  more to him.</p>
-{% if top.breakeven > 0 %}
-<div class="note warn">The cheapest ask costs {{ "%.0f"|format(top.breakeven) }}
-  points of season projection. For it to pay, {{ top.get.name }} has to be worth
-  that much more over the rest of the year than ESPN says.</div>
-{% endif %}
+<p class="foot">Cheapest ask first. Tap one for the reasoning. Every rung down
+  costs you more and is worth more to him.</p>
 {% endif %}

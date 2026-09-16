@@ -1770,6 +1770,17 @@ prediction trap in a trade coat. What IS arithmetic is the shape of a roster, so
 `_shape` reports where a partner is thinnest and where he carries somebody who
 never starts. What a manager wants is visible in what he is forced to field.
 
+**In the daily check, in its own try.** Added the same day. A trade finder
+answers a question you would not know to ask, so it posts with the lineup and
+the wire rather than waiting for `/trades`. Two things that took care. It is
+wrapped separately from the other two builders, because it reads every roster in
+the league and is both the slowest thing in the check and the likeliest to fail,
+and a failure there must not swallow a lineup problem already in hand. And its
+signature is which players are on each side with the numbers left out, the same
+rule the other builders follow: a deal worth +32 today and +29 tomorrow is the
+same deal, and digesting the numbers would repost it every morning until
+somebody acted on it.
+
 ### odds.py
 
 Win probability by resampling residuals from the distribution work, per starter,

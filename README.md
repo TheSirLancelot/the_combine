@@ -115,6 +115,13 @@ of six mornings running. ESPN nudges projections through the day, and matching o
 the rendered text would have made every morning look like fresh news. State lives
 in `data/last_post.json`; delete it to make the next check post again.
 
+The morning post carries three things: the lineup, the wire, and any trade that
+improves both rosters. Trades are there rather than on demand because the useful
+moment for a trade finder is the day somebody's roster goes lopsided, which is a
+day you have no reason to go and look. It is also the slowest thing in the check
+and the likeliest to fail, so it runs in its own attempt: if it falls over, the
+lineup problem you already had still goes out.
+
 Output is embeds: the coloured left bar, a title, columns for the numbers, a
 footer for the caveats. The colour is severity rather than decoration. Green
 means nothing to do, blue means here is your information, amber means a decision

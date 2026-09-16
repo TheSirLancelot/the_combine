@@ -378,21 +378,27 @@ def build_depth_all() -> list[discord.Embed]:
     return out
 
 
-def build_trades(league: str) -> list[discord.Embed]:
+def build_trades(league: str) -> Report:
+    """A Report rather than embeds, because the daily check posts this too.
+
+    The signature is which players are on each side and nothing else. A deal
+    worth +32 today and +29 tomorrow is the same deal, and digesting the
+    numbers would repost it every morning until somebody acted.
+    """
     from . import discord_out
     from .pipeline.trades import for_league
 
     cfg = config.get_league(league)
     if cfg.platform != "espn":
-        return [discord_out.message_embed(
-            "Needs the API to read every roster.", cfg.name)]
+        return Report([discord_out.message_embed(
+            "Needs the API to read every roster.", cfg.name)])
     deals = for_league(league)
     if not deals:
-        return [discord_out.message_embed(
+        return Report([discord_out.message_embed(
             "No one-for-one improves both rosters by more than the noise band. "
             "That needs two rosters whose surpluses fit each other's holes, "
             "and most pairs do not.",
-            f"Trades · {cfg.name}", colour=discord_out.INFO)]
+            f"Trades · {cfg.name}", colour=discord_out.INFO)])
 
     e = discord.Embed(title=f"Trades · {cfg.name}", colour=discord_out.GOOD)
     table = [f"{'GIVE':<14}{'GET':<14}{'ME':>5}{'THEM':>6}"]
@@ -418,7 +424,9 @@ def build_trades(league: str) -> list[discord.Embed]:
                       "after. The weekly axis is near zero sum, so the season "
                       "one is the ranking. Both sides gaining is not the same "
                       "as them saying yes.")
-    return [e]
+    signature = tuple(f"trade:{d.give.player_id}>{d.get.player_id}"
+                      for d in deals)
+    return Report([e], news=True, signature=signature)
 
 
 def build_trades_all() -> list[discord.Embed]:
@@ -427,7 +435,7 @@ def build_trades_all() -> list[discord.Embed]:
         if cfg.platform != "espn":
             continue
         try:
-            out += build_trades(slug)
+            out += build_trades(slug).embeds
         except Exception as exc:
             log.exception("trades failed for %s", slug)
             out.append(failure_embed(slug, exc))
@@ -750,7 +758,8 @@ async def depth(interaction: discord.Interaction, league: str | None = None):
 @owner_only()
 async def trades(interaction: discord.Interaction, league: str | None = None):
     await respond(interaction,
-                  build_trades_all if league is None else build_trades,
+                  build_trades_all if league is None
+                  else (lambda lg: build_trades(lg).embeds),
                   *((), (league,))[league is not None])
 
 
@@ -908,7 +917,8 @@ async def daily_check(bot: discord.Client):
     Silence is the feature, and running daily raises the bar for what silence
     means. A correct lineup produces nothing, and so does a report that already
     went out: a starter who is out for the season is news once, not every
-    morning until Sunday.
+    morning until Sunday. The same rule carries the trade list, which usually
+    stands unchanged for days and should be said once.
     """
     channel = bot.get_channel(CHANNEL_ID)
     if channel is None:
@@ -929,7 +939,22 @@ async def daily_check(bot: discord.Client):
             log.exception("weekly check failed for %s", slug)
             await channel.send(embed=failure_embed(f"{slug} check", exc))
             continue
-        if not (startsit.news or wire.news):
+
+        # Trades get their own try. It reads every roster in the league and
+        # solves a few thousand assignments, so it is both the slowest thing
+        # here and the likeliest to fail, and a failure in it must not swallow
+        # a lineup problem that is already in hand.
+        #
+        # It is in the daily post rather than on demand because the useful
+        # moment for a trade finder is the day somebody's roster goes
+        # lopsided, which is a day you would have no reason to go and look.
+        try:
+            deals = await asyncio.to_thread(build_trades, slug)
+        except Exception:
+            log.exception("trades failed for %s", slug)
+            deals = Report([])
+
+        if not (startsit.news or wire.news or deals.news):
             log.info("%s: nothing worth posting", slug)
             continue
         week = current_week()
@@ -940,6 +965,9 @@ async def daily_check(bot: discord.Client):
         if wire.news:
             parts += wire.embeds
             signature += wire.signature
+        if deals.news:
+            parts += deals.embeds
+            signature += deals.signature
         if already_said(slug, week, signature):
             log.info("%s: same report as last time, staying quiet", slug)
             continue

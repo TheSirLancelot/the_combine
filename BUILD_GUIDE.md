@@ -1853,6 +1853,25 @@ rule the other builders follow: a deal worth +32 today and +29 tomorrow is the
 same deal, and digesting the numbers would repost it every morning until
 somebody acted on it.
 
+### The Trades tab does not search until asked
+
+Added 2026-09-16. Three tools share the tab and one of them is fifty seconds in
+RCL, which made the other two unreachable: arriving to grade an offer meant
+waiting for a search nobody asked for. The finder is now behind a button, and
+the target and grade tools render immediately.
+
+**The progress bar forced the cache off `cache_data`.** A cached function may
+not touch a Streamlit element, and the whole point of the callback is to move a
+bar while the search runs, so the two are mutually exclusive. `load_trades`
+keeps its own entry in session state keyed on league, refresh nonce and code
+version, which is the same invalidation `cache_data` was giving it.
+
+`find()` takes a `progress(done, total, team)` callback: once with `team=None`
+before anything is read, once per partner, once with `team=""` at the end. The
+app makes the bar on the FIRST callback rather than before the call, so a rerun
+served from session state never shows one. A bar that appears at nought percent
+and immediately vanishes is worse than no bar.
+
 ### Going after somebody
 
 `packages()` and `render_packages()`, added 2026-09-16. The third question and

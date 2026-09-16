@@ -329,9 +329,18 @@ def league_shape(profiles: dict[str, tuple[dict, dict]], band: float
 
 def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
          shortlist: int = SHORTLIST, band: float | None = None,
-         dist=None) -> list[Deal]:
+         dist=None, progress=None) -> list[Deal]:
     """One-for-ones where both rosters gain more than the noise band over a
-    season, best first by my own gain."""
+    season, best first by my own gain.
+
+    `progress(done, total, team)` is called for a caller that wants to show how
+    far along this is: once with `team=None` before anything is read, once per
+    partner as it is priced, and once with `team=""` at the end. It runs for the
+    best part of a minute in a twelve team IDP league, and a spinner that says
+    nothing for fifty seconds is indistinguishable from a hang.
+    """
+    if progress:
+        progress(0, 1, None)
     wk = int(week or client.week)
     bar = noise_band() if band is None else band
     slots = client.roster_slots()
@@ -367,7 +376,10 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
     by_id = {p.player_id: p for p in mine}
 
     deals: list[Deal] = []
-    for team, roster in others.items():
+    total = len(others)
+    for done, (team, roster) in enumerate(others.items()):
+        if progress:
+            progress(done, total, team)
         players = [p for p in roster if season.get(p.player_id, 0.0) > 0]
         if not players:
             continue
@@ -430,6 +442,9 @@ def find(client, week: int | None = None, cal=None, limit: int = LIMIT,
                 my_season=my_season, their_season=their_season,
                 my_week=0.0, their_week=0.0,
                 partner_thin=thin, partner_deep=deep, bar=bar))
+
+    if progress:
+        progress(total, total, "")
 
     # My gain first, then theirs. Among deals worth the same to me, the one
     # worth more to the partner is the one likelier to be accepted, and leaving
@@ -544,7 +559,7 @@ def _with_odds(client, week: int, mine: list[WeeklyPlayer],
     return out
 
 
-def for_league(league: str, limit: int = LIMIT) -> list[Deal]:
+def for_league(league: str, limit: int = LIMIT, progress=None) -> list[Deal]:
     """The whole question for one league, so three callers cannot drift."""
     from .. import config, db
     from ..platforms import client_for
@@ -559,7 +574,7 @@ def for_league(league: str, limit: int = LIMIT) -> list[Deal]:
     except Exception:
         dist = None      # no history yet: the deals still price, the odds do not
     return find(client_for(league), None, load_cal(league), limit=limit,
-                dist=dist)
+                dist=dist, progress=progress)
 
 
 ASK_NOTE = (

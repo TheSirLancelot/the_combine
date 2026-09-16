@@ -1225,6 +1225,46 @@ def load_trade_names(league: str, week: int, _nonce: int, _version: str):
     return dict(sorted(ours.items())), dict(sorted(theirs.items()))
 
 
+def _find_trades(league: str):
+    """(deals, read-at) once the search has been asked for, (None, "") before.
+
+    Behind a button on purpose. The search reads every roster in the league and
+    solves a few thousand assignments, which is around fifty seconds in RCL,
+    and the two tools below it answer in a second or two. Running it on arrival
+    made the whole tab unusable for anyone who came here to grade an offer.
+    """
+    key = f"trades_found_{league}"
+    ready = st.session_state.get(key, False)
+    if not ready:
+        st.info(
+            "Searching every pair of rosters in the league takes up to a "
+            "minute. The two tools below it do not, so it waits to be asked.")
+        if not st.button("Find trades", type="primary", key=f"find_{league}"):
+            return None, ""
+        st.session_state[key] = True
+
+    # The bar is made on the first callback, not before it. A rerun that comes
+    # back from session state never calls back at all, and a bar that appears
+    # at nought percent and vanishes is worse than no bar.
+    shown = {}
+
+    def tick(done: int, total: int, team):
+        if "bar" not in shown:
+            shown["bar"] = st.progress(0.0, text="reading every roster...")
+        if team is None:
+            return
+        shown["bar"].progress(
+            done / max(1, total),
+            text=(f"pricing against {team} ({done + 1} of {total})..."
+                  if team else "ranking what came back..."))
+
+    try:
+        return load_trades(league, st.session_state.nonce, _code_version(), tick)
+    finally:
+        if "bar" in shown:
+            shown["bar"].empty()
+
+
 def _go_after_someone(league: str):
     """Pick a man, get the ways to land him, cheapest ask first.
 
@@ -1293,7 +1333,7 @@ def load_packages(league: str, player: str, _nonce: int, _version: str):
                     dist=outcome_distribution(config.SEASON - 1))
 
 
-def _grade_an_offer(league: str, deals):
+def _grade_an_offer(league: str):
     """Price an offer that already exists, which is the other half of this tab.
 
     The finder answers "what deal is out there". This answers "is the one in my
@@ -1389,17 +1429,33 @@ def _grade_an_offer(league: str, deals):
                "right about either man are all outside it.")
 
 
-@st.cache_data(ttl=600, show_spinner="pricing every one-for-one in the league...")
-def load_trades(league: str, _nonce: int, _version: str):
-    """Ten minutes. This solves a few thousand lineup assignments across every
-    roster in the league, so it is the slowest thing the app does, and the
-    answer only moves when somebody makes a move."""
-    from combine.pipeline.trades import for_league
+TRADES_TTL = 600
 
-    stamp = datetime.now().astimezone().strftime("%H:%M %Z")
+
+def load_trades(league: str, nonce: int, version: str, progress=None):
+    """(deals, read-at), cached in session state rather than with `cache_data`.
+
+    It has to be session state. A cached function may not touch a Streamlit
+    element, and the whole point of the callback is to move a progress bar
+    while the search runs, so the two are mutually exclusive. Keying on the
+    refresh nonce and the code version gives the same invalidation `cache_data`
+    was providing.
+    """
+    key = ("trades", league, nonce, version)
+    hit = st.session_state.get(key)
+    now = datetime.now().astimezone()
+    if hit and (now - hit[2]).total_seconds() < TRADES_TTL:
+        return hit[0], hit[1]
+
+    stamp = now.strftime("%H:%M %Z")
     if config.get_league(league).platform != "espn":
         return [], stamp
-    return for_league(league), stamp
+
+    from combine.pipeline.trades import for_league
+
+    deals = for_league(league, progress=progress)
+    st.session_state[key] = (deals, stamp, now)
+    return deals, stamp
 
 
 def trades_page():
@@ -1421,13 +1477,19 @@ def trades_page():
         st.info(f"{cfg.name} needs the API to read every roster.")
         return
 
-    deals, at = load_trades(league, st.session_state.nonce, _code_version())
+    deals, at = _find_trades(league)
+    if deals is None:
+        _go_after_someone(league)
+        _grade_an_offer(league)
+        return
     if not deals:
         st.info("No one-for-one gains you more than the noise band without "
                 "clearly costing the other side. That is a normal answer: it "
                 "needs two rosters whose surpluses fit each other's holes, and "
                 "most pairs do not.")
         freshness(at)
+        _go_after_someone(league)
+        _grade_an_offer(league)
         return
 
     st.dataframe(pd.DataFrame([{
@@ -1477,7 +1539,7 @@ def trades_page():
     st.caption(alternatives_note(deals).replace("\n", " "))
 
     _go_after_someone(league)
-    _grade_an_offer(league, deals)
+    _grade_an_offer(league)
 
     with st.expander("What these numbers are, and are not", expanded=False):
         st.markdown(

@@ -604,3 +604,21 @@ def test_render_leads_with_the_cheapest_ask():
     assert "going after Their QB1" in text
     assert "Cheapest ask first" in text
     assert items[0].names in text
+
+
+def test_the_search_reports_progress_as_it_goes():
+    """Fifty seconds of silence is indistinguishable from a hang, so the caller
+    gets told which partner is being priced."""
+    seen = []
+    T.find(complementary(), band=10.0,
+           progress=lambda done, total, team: seen.append((done, total, team)))
+    assert seen[0][2] is None, "one call before anything is read"
+    assert seen[-1][2] == "", "and one when it is finished"
+    partners = [team for _d, _t, team in seen if team]
+    assert partners == ["Rival"]
+    assert seen[-1][0] == seen[-1][1], "the last call is a full bar"
+
+
+def test_progress_is_optional():
+    assert T.find(complementary(), band=10.0) == T.find(
+        complementary(), band=10.0, progress=None)

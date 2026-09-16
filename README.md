@@ -485,6 +485,13 @@ holes, and most pairs do not: DMWD finds nothing at all, RCL finds a manager
 sitting on two elite quarterbacks in a one-quarterback league who needs
 linebackers.
 
+In the app the search sits behind a **Find trades** button, with a progress bar
+naming each partner as it is priced. It reads every roster in the league and is
+about fifty seconds in RCL, while the two tools below it answer in a second or
+two, so running it on arrival made the tab unusable for anyone who came to grade
+an offer. Once it has run, the result is held for ten minutes and a rerun is
+instant.
+
 Trades ride along with the 08:30 morning post, because the useful moment for a
 trade finder is the day somebody's roster goes lopsided, which is a day you have
 no reason to go and look. Same dedupe as everything else there: a deal that

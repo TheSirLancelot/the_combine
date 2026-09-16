@@ -10,6 +10,11 @@
 #   ./scripts/install_agents.sh                        # the Discord bot only
 #   ./scripts/install_agents.sh --with-app             # and the Streamlit app
 #   ./scripts/install_agents.sh --with-app --bind 0.0.0.0   # reachable on the LAN
+#   ./scripts/install_agents.sh --with-app --web            # the new web front end
+#
+# Both front ends share the label com.thecombine.app, so --web stops Streamlit
+# as part of the swap: one label, one process, one port. Any run of this script
+# also reloads the bot, which is in WANT unconditionally.
 #   ./scripts/install_agents.sh --uninstall
 #
 # The app has NO login of its own and every page load acts as your ESPN session,
@@ -47,6 +52,21 @@ else
   RUN="run streamlit run app.py --server.address \$BIND_ADDR --server.port 8501 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false"
 fi
 RUN="${RUN//\$BIND_ADDR/$BIND}"
+
+# The command is baked into the plist, and the file it names lives on whichever
+# branch is checked out. Install --web from a branch without it, or check out a
+# branch without it afterwards, and launchd sits in a KeepAlive restart loop
+# failing silently. Catch it here, where there is somebody to read the message.
+if [[ "$FRONT" == "web" && ! -f "$REPO/scripts/webserve.py" ]]; then
+  echo "--web needs scripts/webserve.py, which is not on this branch." >&2
+  echo "  you are on: $(git -C "$REPO" branch --show-current 2>/dev/null || echo '?')" >&2
+  echo "  check out the branch that has it, or install without --web." >&2
+  exit 2
+fi
+if [[ "$FRONT" == "streamlit" && ! -f "$REPO/app.py" ]]; then
+  echo "app.py is not on this branch, so there is no Streamlit app to run." >&2
+  exit 2
+fi
 
 if [[ -n "${UNINSTALL:-}" ]]; then
   for label in com.thecombine.bot com.thecombine.app; do

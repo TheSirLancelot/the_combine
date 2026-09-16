@@ -212,8 +212,16 @@ uv run python scripts/webserve.py --port 8501     # or --host 0.0.0.0
 ./scripts/install_agents.sh --with-app            # back to Streamlit
 ```
 
-Only one process can hold 8501, so that flag is a switch rather than a second
-agent, and the tunnel never knows the difference.
+Both share the launchd label `com.thecombine.app`, so the switch stops the other
+one as part of the swap: one label, one process, one port, and the tunnel never
+knows the difference. Expect a few seconds of downtime in the middle, and note
+that any run of the installer also reloads the Discord bot.
+
+The command is baked into the plist and the file it names lives on whichever
+branch is checked out, so switch the front end back before switching branches.
+Otherwise launchd keeps trying to run a script that is not there and, with
+`KeepAlive` on, loops silently. The installer refuses up front if the file it
+would name is missing, which is the case somebody actually hits.
 
 Nothing there computes anything. Every number still comes from
 `combine.pipeline`, and the sentences a trade needs are the same

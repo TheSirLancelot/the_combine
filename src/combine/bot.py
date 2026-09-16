@@ -378,6 +378,62 @@ def build_depth_all() -> list[discord.Embed]:
     return out
 
 
+def build_trades(league: str) -> list[discord.Embed]:
+    from . import discord_out
+    from .pipeline.trades import for_league
+
+    cfg = config.get_league(league)
+    if cfg.platform != "espn":
+        return [discord_out.message_embed(
+            "Needs the API to read every roster.", cfg.name)]
+    deals = for_league(league)
+    if not deals:
+        return [discord_out.message_embed(
+            "No one-for-one improves both rosters by more than the noise band. "
+            "That needs two rosters whose surpluses fit each other's holes, "
+            "and most pairs do not.",
+            f"Trades · {cfg.name}", colour=discord_out.INFO)]
+
+    e = discord.Embed(title=f"Trades · {cfg.name}", colour=discord_out.GOOD)
+    table = [f"{'GIVE':<14}{'GET':<14}{'ME':>5}{'THEM':>6}"]
+    for d in deals:
+        table.append(f"{discord_out.short_name(d.give.name, 13):<14}"
+                     f"{discord_out.short_name(d.get.name, 13):<14}"
+                     f"{d.my_season:>+5.0f}{d.their_season:>+6.0f}")
+    e.description = discord_out.code("\n".join(table))[:discord_out.DESC]
+    for d in deals:
+        note = (f"{d.my_season:+.0f} season for you, {d.their_season:+.0f} for "
+                f"them, {d.my_week:+.1f} to your lineup this week.")
+        if d.odds_after:
+            note += (f" Win odds {d.odds_now * 100:.0f}% → "
+                     f"{d.odds_after * 100:.0f}%.")
+        shape = [x for x in (f"thinnest at {d.partner_thin}" if d.partner_thin
+                             else "",
+                             f"spare {d.partner_deep}s" if d.partner_deep
+                             else "") if x]
+        if shape:
+            note += f" {d.partner} is {', '.join(shape)}."
+        discord_out.field(e, f"{d.give.name} → {d.get.name} ({d.partner})", note)
+    e.set_footer(text="Whole rosters started best-eligible, before against "
+                      "after. The weekly axis is near zero sum, so the season "
+                      "one is the ranking. Both sides gaining is not the same "
+                      "as them saying yes.")
+    return [e]
+
+
+def build_trades_all() -> list[discord.Embed]:
+    out: list[discord.Embed] = []
+    for slug, cfg in config.leagues().items():
+        if cfg.platform != "espn":
+            continue
+        try:
+            out += build_trades(slug)
+        except Exception as exc:
+            log.exception("trades failed for %s", slug)
+            out.append(failure_embed(slug, exc))
+    return out
+
+
 def build_lookahead(league: str) -> list[discord.Embed]:
     from . import discord_out
     from .pipeline.lookahead import look
@@ -685,6 +741,16 @@ async def waivers(interaction: discord.Interaction, league: str | None = None,
 async def depth(interaction: discord.Interaction, league: str | None = None):
     await respond(interaction,
                   build_depth_all if league is None else build_depth,
+                  *((), (league,))[league is not None])
+
+
+@client.tree.command(description="One-for-ones that improve both rosters")
+@app_commands.describe(league="Which league, blank for all of them")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def trades(interaction: discord.Interaction, league: str | None = None):
+    await respond(interaction,
+                  build_trades_all if league is None else build_trades,
                   *((), (league,))[league is not None])
 
 

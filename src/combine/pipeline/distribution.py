@@ -102,19 +102,39 @@ class Distribution:
     def empty(self) -> bool:
         return self._d.empty
 
-    def for_player(self, family: str, proj: float) -> Band | None:
-        if proj <= 0:
-            return None
+    def _rows(self, family: str, proj: float):
+        """(comparable rows, what they are) or (None, ""). The fallback ladder
+        lives here so `for_player` and `residuals` cannot answer from different
+        cells for the same player."""
         band = band_of(proj)
         cell = self._d[(self._d["family"] == family) & (self._d["band"] == band)]
         if len(cell) >= MIN_CELL:
-            return _cell(cell, proj, f"{family} {band}")
+            return cell, f"{family} {band}"
         fam = self._d[self._d["family"] == family]
         if len(fam) >= MIN_CELL:
-            return _cell(fam, proj, f"{family}, all projections (thin cell)")
+            return fam, f"{family}, all projections (thin cell)"
         if len(self._d) >= MIN_CELL:
-            return _cell(self._d, proj, "all players (very thin)")
-        return None
+            return self._d, "all players (very thin)"
+        return None, ""
+
+    def for_player(self, family: str, proj: float) -> Band | None:
+        if proj <= 0:
+            return None
+        rows, basis = self._rows(family, proj)
+        return None if rows is None else _cell(rows, proj, basis)
+
+    def residuals(self, family: str, proj: float):
+        """The raw residuals of comparable players, for resampling.
+
+        `for_player` summarises; this hands back the sample itself, so a
+        simulation draws real weeks that happened rather than points off a
+        curve nobody fitted. Empty when there is nothing comparable, which the
+        caller has to read as "no spread known" rather than "no spread".
+        """
+        if proj <= 0:
+            return []
+        rows, _basis = self._rows(family, proj)
+        return [] if rows is None else rows["residual"].to_numpy()
 
     def table(self) -> pd.DataFrame:
         """The whole grid, for eyeballing and for the README."""

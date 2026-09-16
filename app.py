@@ -437,8 +437,8 @@ with st.sidebar:
 
     # Draft is dormant outside August, so the in-season views lead.
     mode = st.radio("Mode",
-                    ["Week", "Waivers", "Compare", "Scores", "Scorecard",
-                     "Draft"],
+                    ["Week", "Waivers", "Compare", "Trades", "Scores",
+                     "Scorecard", "Draft"],
                     horizontal=True)
 
     league = st.radio("League", list(leagues),
@@ -1206,6 +1206,96 @@ def outcome_band(player) -> str:
             f"boom {band.boom * 100:.0f}% · bust {band.bust * 100:.0f}%")
 
 
+@st.cache_data(ttl=600, show_spinner="pricing every one-for-one in the league...")
+def load_trades(league: str, _nonce: int, _version: str):
+    """Ten minutes. This solves a few thousand lineup assignments across every
+    roster in the league, so it is the slowest thing the app does, and the
+    answer only moves when somebody makes a move."""
+    from combine.pipeline.trades import for_league
+
+    stamp = datetime.now().astimezone().strftime("%H:%M %Z")
+    if config.get_league(league).platform != "espn":
+        return [], stamp
+    return for_league(league), stamp
+
+
+def trades_page():
+    """Deals where both rosters gain, on its own tab.
+
+    Slow enough to deserve one: it reads every roster in the league and solves
+    a few thousand assignments, which is not something to run behind another
+    page that is being looked at for something else.
+    """
+    st.subheader("Trades")
+    st.caption(
+        "One-for-ones where both rosters improve, ranked on the season axis. "
+        "The weekly axis is close to zero sum, because the points a trade "
+        "moves into your starting lineup come out of theirs, so it is shown "
+        "and not optimised. Read-only, like everything else: go and propose it "
+        "yourself.")
+
+    if cfg.platform != "espn":
+        st.info(f"{cfg.name} needs the API to read every roster.")
+        return
+
+    deals, at = load_trades(league, st.session_state.nonce, _code_version())
+    if not deals:
+        st.info("No one-for-one improves both rosters by more than the noise "
+                "band. That is a normal answer: it needs two rosters whose "
+                "surpluses fit each other's holes, and most pairs do not.")
+        freshness(at)
+        return
+
+    st.dataframe(pd.DataFrame([{
+        "Give": d.give.name, "Get": d.get.name, "From": d.partner,
+        "You / season": d.my_season, "Them / season": d.their_season,
+        "You / week": d.my_week,
+        "Win odds": (f"{d.odds_now * 100:.0f}% → {d.odds_after * 100:.0f}%"
+                     if d.odds_after else "--"),
+        "They are": ", ".join(n for n in (
+            f"thinnest at {d.partner_thin}" if d.partner_thin else "",
+            f"carrying spare {d.partner_deep}s" if d.partner_deep else "")
+            if n) or "--",
+    } for d in deals]), hide_index=True, use_container_width=True,
+        column_config={
+            "You / season": st.column_config.NumberColumn(
+                "You / season", format="%+.0f",
+                help="Your whole roster started best-eligible, after minus "
+                     "before"),
+            "Them / season": st.column_config.NumberColumn(
+                "Them / season", format="%+.0f",
+                help="The same number from their side"),
+            "You / week": st.column_config.NumberColumn(
+                "You / week", format="%+.1f",
+                help="Your starting lineup this Sunday. Expect this to be "
+                     "small or negative: the weekly axis is near zero sum."),
+        })
+
+    with st.expander("What these numbers are, and are not", expanded=False):
+        st.markdown(
+            "**Season** is each whole roster started best-eligible, before "
+            "against after. A fourth back who never cracks a lineup is "
+            "correctly worth nothing to the side holding him, and can be worth "
+            "real points to the side that would start him. That is the only "
+            "axis where a trade creates value for both teams.\n\n"
+            "**Week** is this Sunday's starting lineup. Measured over 999 "
+            "priced pairs the two sides' weekly gains summed to a median of "
+            "-0.6, so expect one side to be negative. It is here so a deal "
+            "that quietly costs you the week is visible.\n\n"
+            "**Win odds** are this week's matchup, resampled from what "
+            "comparable players actually did rather than off a fitted curve. "
+            "Draws are independent and real weeks are not, so it reads a "
+            "little more confident than it should.\n\n"
+            "Season totals include games already played, so read the gain and "
+            "not the totals. The assignment assumes you always start your best "
+            "man: no byes, no injuries, and no price on the depth you give up, "
+            "which is a real cost none of these numbers carry.\n\n"
+            "Both sides gaining is not the same as them saying yes. Nothing "
+            "here models what a manager wants, and nobody in either league has "
+            "made a trade this season.")
+    freshness(at)
+
+
 def scores_page():
     try:
         data = load_scores(int(week_no), st.session_state.nonce, _code_version())
@@ -1256,6 +1346,8 @@ elif mode == "Waivers":
     waivers_page()
 elif mode == "Compare":
     compare_page()
+elif mode == "Trades":
+    trades_page()
 elif mode == "Scores":
     scores_page()
 elif mode == "Scorecard":

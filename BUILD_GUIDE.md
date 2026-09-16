@@ -727,8 +727,8 @@ hostname, no ingress rule, no Access policy whose correctness matters and no
 inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
-Commands are `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
-`/glossary`, `/health`, `/clear`, locked to
+Commands are `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
+`/compare`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`, `/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
 
@@ -1220,11 +1220,20 @@ never be the reason a Sunday lineup check fails to arrive.
 
 ## Stretch goals
 
-**Trade evaluation.** Rest-of-season value both ways, with the same two-column
-honesty the waiver view uses. Deferred because it is a value-projection problem,
-which is the class of idea that has failed twice here, and because it involves a
-negotiation the tool cannot see. Revisit once the scorecard has enough live data
-to say whether this system's season projections are worth trusting at all.
+**Trade evaluation. Built 2026-09-16, see "Trades, and the axis they actually
+live on".** The worry recorded here was that it is a value-projection problem.
+It turned out not to be: pricing a trade is the same assignment the lineup code
+already solves, run on both rosters with the season projection as the key, so
+nothing is projected that ESPN has not already published. The negotiation half
+of the worry stands and was not solved. Nothing models what a manager wants, and
+the tool says so in its own output.
+
+**Multi-player packages.** Two for one is where consolidation trades live, and
+the roster spot freed by giving two and getting one is real value the current
+one-for-one search cannot see. Not built. The search space goes from about 4,400
+pairs to roughly 35,000 triples a league, so it needs the bounds extended to
+sets before it is tractable, and one-for-one found so little in DMWD that it is
+worth knowing whether two-for-one finds more before building for it.
 
 ## The IR stash
 
@@ -1677,6 +1686,90 @@ The pickers list every rostered player and free agent with who holds him, 572
 entries in RCL. That index reads every box score in the league plus a 400 player
 pool, so it is cached at `ttl=300`: far too slow to rebuild on each selectbox
 change.
+
+## Trades, and the axis they actually live on
+
+`pipeline/trades.py` and `pipeline/odds.py`, added 2026-09-16. William asked for
+a trade assistant: a finder, a simulator measuring win odds, an opponent
+preference model, and a negotiation workspace. Playoff and championship odds
+were dropped by agreement (they need a weekly projection for every remaining
+week and ESPN publishes none), and draft picks were dropped because neither
+league trades them.
+
+**The first version ranked on the weekly lineup axis and found nothing, and
+that turned out to be the finding.** Priced 999 one-for-ones in DMWD with the
+band off: the two sides' weekly gains summed to a mean of -1.7, a median of
+-0.6, and a best of +2.1, and exactly two pairs had both sides positive, by four
+tenths of a point. It is conservation. The points a trade moves into my starting
+lineup come out of theirs. `waivers.py` is positive sum because the pool is
+free; a trade is not, and no amount of search finds a deal on an axis that has
+none.
+
+**So the ranking axis is `best_lineup` keyed on the season projection.** What a
+roster is worth started best-eligible over a year. That is where the surplus
+lives: a fourth back is worth zero to the man who cannot start him and real
+points to the man who would. Same exact assignment, same slot eligibility,
+different key, nothing forecast. On that axis RCL yields a manager holding Lamar
+Jackson AND Jayden Daniels in a one-quarterback league while starting a
+replacement-level linebacker, and the deal is worth +32 to me and +56 to him.
+DMWD still yields nothing, which is the honest answer for two balanced rosters.
+
+**A trap that would have been silent.** `as_candidate` marks a player unplayable
+once his game kicks off, which is right for start/sit and wrong for a roster
+question. Read on a Tuesday, when every game has been played, the default would
+drop every bench player out of the season valuation and make every roster look
+as if it had no surplus. `_value` passes `_anyone` on the season axis for
+exactly that reason. It was not what caused the empty first result, but it would
+have caused an empty result every Tuesday, which is when this gets read.
+
+**The search is bounded, not sampled.** Pricing every pair exactly is around
+4,400 assignments a league, which is minutes. Two properties of the assignment
+problem cut it to seconds and neither is an approximation. `V` is monotone, so
+`V(M - P + X) <= V(M + X)`: an incoming player who cannot clear the bar against
+an untouched roster cannot clear it against a smaller one, so he never reaches a
+pair. `V` is submodular, so `V(M - P + X) - V(M) >= add(X) - drop(P)`: that
+lower bound orders the survivors. Everything that survives is then priced
+exactly, on both sides. The bounds choose what to look at and never become the
+answer.
+
+Two more cuts that are free. A player outside the optimal assignment costs
+exactly zero to lose, so only starters need a drop solved, and a test checks the
+shortcut against solving every drop the long way. And the weekly column is
+priced only for the deals actually shown, because it is four assignments a pair
+for a column that decides nothing.
+
+**Ordering by the worse of the two bounds, not mine.** Ranking on my own put the
+best player in the league at the top paired with each of the eight men I could
+send back, which is eight spellings of a deal nobody accepts, and buried the pair
+that works. `_distinct` then refuses to reuse a player on either side, for the
+same reason.
+
+**The opponent preference model was declined, and the observable half kept.**
+League-wide activity is 24 events in RCL and 7 in DMWD, none of them trades, so
+there is nothing to learn preferences from; modelling them would be the
+prediction trap in a trade coat. What IS arithmetic is the shape of a roster, so
+`_shape` reports where a partner is thinnest and where he carries somebody who
+never starts. What a manager wants is visible in what he is forced to field.
+
+### odds.py
+
+Win probability by resampling residuals from the distribution work, per starter,
+per family and projection band. No normal assumption and no fitted variance:
+each starter draws real weeks that comparable players actually had. A player
+with nothing comparable draws zero, which reads as "no spread known" rather than
+"no spread".
+
+**The one honest bias is stated in the module and in every view that prints it.**
+Draws are independent and real weeks are not: a quarterback and his receiver
+boom together. That understates how much a team total moves, which pushes every
+probability further from 50% than it should be. Correcting it needs a
+correlation measured from the same history, which is real work and not a
+constant to guess at.
+
+**A bug worth remembering.** `matchup.their_lineup` is the whole roster, bench
+included. Simulating all twenty against my twelve put my win odds at 13% in a
+matchup ESPN had me favoured in. Filtering to `p.starting` put it at 57%, which
+matches a hand check of the two projected totals.
 
 ## Known soft spots
 

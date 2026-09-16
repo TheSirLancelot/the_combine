@@ -98,8 +98,8 @@ down this file, and restarting is the fix in both directions.
 `launchctl kickstart -k gui/$(id -u)/com.thecombine.bot` restarts just the bot if
 you would rather not re-run the installer.
 
-Commands: `/week`, `/startsit`, `/waivers`, `/scoreboard`, `/compare`,
-`/glossary`, `/health`, `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
+Commands: `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
+`/compare`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`, `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.
@@ -379,6 +379,65 @@ Players on IR are left alone, since they are being kept deliberately, and a
 player already claimed is not offered as the upgrade. Anyone who is currently
 starting, injured, or the only player you have at his position is marked, since
 those are different decisions and the tool does not know which you want.
+
+## Trades
+
+```bash
+uv run combine trades              # every league
+uv run combine trades rcl
+```
+
+One-for-ones where both rosters improve. Also `/trades` in Discord and a Trades
+tab in the app.
+
+**The weekly axis is zero sum, which was measured before anything was built on
+it.** Across 999 priced one-for-ones in DMWD the two sides' weekly lineup gains
+summed to a median of -0.6 points and a best of +2.1, and exactly two pairs had
+both sides positive at all, by four tenths of a point. That is conservation
+rather than a shortage of imagination: the points a trade moves into your
+starting lineup come out of theirs. A waiver claim is positive sum because the
+pool is free. A trade is not.
+
+**Where a trade does create value is unused season projection.** Your fourth
+back carries real points you will never score, because he cannot crack the
+lineup ahead of three better men. Their fourth receiver is in the same
+position. Swap them and both rosters convert dead weight into live weight. So
+the ranking axis is the same `best_lineup` assignment keyed on ESPN's full
+season projection: what a roster is worth if it always starts its best eligible
+men. Same exact solve, same slot eligibility, different key. Nothing is
+forecast.
+
+```
+  GIVE                GET                 FROM              ME/SZN  THEM/SZN  ME/WK     WIN%
+  Demario Davis       Lamar Jackson       Super Lamario 6      +32       +56   +0.6    57→57
+  Jalen Pitre         Jayden Daniels      Super Lamario 6      +28       +47   -1.7    57→58
+
+  Super Lamario 64: thinnest at LB, carrying spare WRs
+```
+
+WIN% is this week's matchup, simulated by resampling what comparable players
+actually did rather than off a fitted curve. Draws are independent and real
+weeks are not, so it reads a little more confident than it should.
+
+Each partner comes with where they are thin and where they carry somebody who
+never starts. That is the whole of the opponent model, and it is deliberate:
+league-wide activity this season is 24 events in RCL and 7 in DMWD, none of
+them trades, which is not a sample to learn preferences from. What a manager
+would want is visible in what he is forced to start.
+
+Four things to read carefully. Season totals include games already played, so
+read the gain and not the totals. The assignment assumes you always start your
+best man: no byes, no injuries, and no price on the depth you give up, which is
+a real cost none of these numbers carry. The weekly column is shown so a deal
+that quietly costs you Sunday is visible, not because it is the thing to
+optimise. And both sides gaining is not the same as them saying yes.
+
+Read-only like everything else: it hands you a deal to go and propose yourself.
+
+Empty is a normal answer. It needs two rosters whose surpluses fit each other's
+holes, and most pairs do not: DMWD finds nothing at all, RCL finds a manager
+sitting on two elite quarterbacks in a one-quarterback league who needs
+linebackers.
 
 ## Look ahead
 

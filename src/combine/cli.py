@@ -634,6 +634,25 @@ def depth() -> int:
     return 0
 
 
+def trades() -> int:
+    """combine trades [league...]
+
+    One-for-ones where both rosters gain over a season. Ranked on the season
+    axis, because the weekly one is close to zero sum: the points a trade moves
+    into my starting lineup come out of theirs.
+    """
+    from .pipeline.trades import for_league, render
+
+    slugs = sys.argv[2:] or list(config.leagues())
+    for slug in slugs:
+        cfg = config.get_league(slug)
+        if cfg.platform != "espn":
+            print(f"{cfg.name}: needs the API to read every roster\n")
+            continue
+        print(render(for_league(slug), cfg.name), "\n")
+    return 0
+
+
 def lookahead() -> int:
     """combine lookahead [league...]
 
@@ -788,6 +807,8 @@ def main() -> int:
         return depth()
     if cmd == "lookahead":
         return lookahead()
+    if cmd == "trades":
+        return trades()
     if cmd == "scorecard":
         return scorecard()
     if cmd == "calibration":

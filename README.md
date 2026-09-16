@@ -219,12 +219,19 @@ process holding live ESPN cookies, a Discord token and a PFF key. Access turns
 strangers away at Cloudflare's own network, before a packet reaches the mini.
 Free for up to 50 users.
 
-1. **Google as a login method.** Zero Trust → Settings → Authentication → Login
-   methods → Add new → Google. It wants a Client ID and secret from a Google
+Menu paths are for the Cloudflare One dashboard as of September 2026. Cloudflare
+moves them: identity providers used to live under Settings → Authentication and
+applications under Access → Applications. If a path below is wrong, the thing
+itself still exists somewhere, so search the sidebar rather than assuming the
+feature is gone.
+
+1. **Google as a login method.** Integrations → Identity providers → Add new
+   identity provider → Google. It wants a Client ID and secret from a Google
    Cloud OAuth 2.0 Web application; the authorised redirect URI is
-   `https://<your-team>.cloudflareaccess.com/cdn-cgi/access/callback`. Test it
-   before moving on.
-2. **An application for the hostname.** Access → Applications → Add an
+   `https://<your-team>.cloudflareaccess.com/cdn-cgi/access/callback` and the
+   JavaScript origin is the same without the path. Your team name is under
+   Settings → Team name. Test the provider before moving on.
+2. **An application for the hostname.** Access controls → Applications → Add an
    application → Self-hosted, domain `combine.example.com`. Under Login methods
    turn OFF everything except Google, so nobody can fall back to one-time PIN.
 3. **A policy naming the accounts.** Action Allow, and Include → *Emails* →

@@ -99,7 +99,7 @@ down this file, and restarting is the fix in both directions.
 you would rather not re-run the installer.
 
 Commands: `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/grade`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
+`/compare`, `/grade`, `/target`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
 `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
@@ -489,6 +489,46 @@ Trades ride along with the 08:30 morning post, because the useful moment for a
 trade finder is the day somebody's roster goes lopsided, which is a day you have
 no reason to go and look. Same dedupe as everything else there: a deal that
 stands for a week is said once.
+
+### Going after somebody
+
+```bash
+uv run combine target rcl "Lamar Jackson"
+```
+
+Also `/target` in Discord and a picker under the Trades tab. The finder asks
+what deal exists and the grader prices one somebody sent; this starts from the
+man you want.
+
+```
+RCL — going after Lamar Jackson (QB), Super Lamario 64
+
+  YOU SEND                                      ME/SZN  THEM/SZN  ME/WK  ASK
+  Brock Purdy                                      +32        -4   +1.3  stretch
+  Tyrique Stevenson Sr.                            +32       +19   +1.3  solid
+  Jalen Pitre                                      +32       +43   -0.3  solid
+  T.J. Edwards, Rico Dowdle                        +30       +62   +1.3  solid
+```
+
+A ladder, cheapest ask first. Every rung down costs you a little more and is
+worth meaningfully more to him, so you start at the top and work down only as
+far as you have to. A rung only earns its place by being better for him than
+every rung above it by more than the noise band, so this is four real options
+rather than twenty spellings of the same price.
+
+The top rung is the SMALLEST package among those worth the same to you, not the
+most generous. A spare back often costs you nothing on the season axis, so
+adding him scores identically and reads as better because it gives the other man
+more. It is not better: handing over a player for nothing costs depth, which
+none of these numbers price.
+
+The search is a lattice with a real bound rather than a sample. For any set of
+your players, the roster without that set is inside the roster without any one
+of them, and the assignment is monotone, so a package can never gain you more
+than its worst member gains you alone. Every single is priced exactly, packages
+are built only from the men who clear your bar on their own, and a three-player
+package is bounded by its own pairs. Nothing is guessed at, and RCL answers in
+about twelve seconds.
 
 ### Grading an offer
 

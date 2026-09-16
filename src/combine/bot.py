@@ -481,10 +481,10 @@ def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
         discord_out.field(e, "What changes this Sunday", "\n".join(
             m.describe() for m in verdict.week_moves))
     if verdict.their_moves:
+        tail = ("Losing a starter usually costs them far less than his "
+                "projection, because the man behind him steps up.")
         discord_out.field(e, f"What changes for {verdict.partner}", "\n".join(
-            [m.describe() for m in verdict.their_moves]
-            + ["Losing a starter usually costs them far less than his "
-               "projection, because the man behind him steps up."]))
+            [m.describe() for m in verdict.their_moves] + [tail]))
     if verdict.odds_after:
         discord_out.field(e, "Your odds this week",
                           f"{verdict.odds_now * 100:.0f}% → "
@@ -496,6 +496,47 @@ def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
                       "before against after. It grades the offer; it does not "
                       "tell you to accept it. The depth you give up and an "
                       "injury in November are not in it.")
+    return [e]
+
+
+def build_target(league: str, player: str) -> list[discord.Embed]:
+    """Packages that would land one named player, cheapest ask first."""
+    from . import discord_out
+    from .pipeline.calibration import load as load_cal
+    from .pipeline.trades import packages
+    from .platforms import client_for
+
+    cfg = config.get_league(league)
+    if cfg.platform != "espn":
+        return [discord_out.message_embed(
+            "Needs the API to read every roster.", cfg.name)]
+    items, err = packages(client_for(league), player, cal=load_cal(league),
+                          dist=_distribution())
+    if err:
+        return [discord_out.message_embed(err, f"Target · {cfg.name}")]
+    if not items:
+        return [discord_out.message_embed(
+            f"Nothing you could send for {player} gains you more than the "
+            f"noise band without clearly costing his owner. Either he is not "
+            f"an upgrade on what you already start, or the price is more than "
+            f"he is worth to you.",
+            f"Target · {cfg.name}", colour=discord_out.INFO)]
+
+    got = items[0].get
+    e = discord.Embed(
+        title=f"Going after {got.name} · {cfg.name}",
+        description=f"{got.pos}, {items[0].partner}. Cheapest ask first.",
+        colour=discord_out.GOOD)
+    for i, p in enumerate(items, 1):
+        note = (f"{p.my_season:+.0f} season for you, {p.their_season:+.0f} for "
+                f"them, {p.my_week:+.1f} to your lineup this week."
+                + (" His side is inside the noise band, so worth asking and "
+                   "not worth expecting." if p.stretch else ""))
+        discord_out.field(e, f"{i}. send {p.names}", note)
+    e.set_footer(text="Every rung down costs you more and is worth more to "
+                      "him, so start at the top. Handing over a player who "
+                      "costs you nothing on paper still costs depth, which "
+                      "none of these numbers price.")
     return [e]
 
 
@@ -841,6 +882,14 @@ async def trades(interaction: discord.Interaction, league: str | None = None):
 async def grade(interaction: discord.Interaction, league: str, give: str,
                 get: str):
     await respond(interaction, build_grade, league, give, get)
+
+
+@client.tree.command(description="Packages that would land one player")
+@app_commands.describe(league="Which league", player="Who you are after")
+@app_commands.choices(league=LEAGUE_CHOICES)
+@owner_only()
+async def target(interaction: discord.Interaction, league: str, player: str):
+    await respond(interaction, build_target, league, player)
 
 
 @client.tree.command(description="Weeks ahead where the roster cannot fill a slot")

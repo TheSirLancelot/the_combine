@@ -969,3 +969,204 @@ def render_verdict(v: Verdict, league_name: str) -> str:
 
     out.append(VERDICT_FOOTER.lstrip("\n"))
     return "\n".join(out)
+
+
+# --- going after one man in particular -------------------------------------
+#
+# The finder asks what deal exists; the grader prices one somebody sent. This
+# is the third question and the one an actual manager asks first: I want HIM,
+# what do I have to send?
+#
+# The search is a lattice with a sound bound, not a sample. For any set S of my
+# players, `M - S + X` is a subset of `M - p + X` for every p in S, and the
+# assignment value is monotone, so:
+#
+#     my_season(S) <= min over p in S of my_season({p})
+#
+# Price every single exactly, and any package containing a man who does not
+# clear my bar on his own cannot clear it either. Packages are then built only
+# from the singles that survived, and a triple is bounded by its own pairs.
+# Nothing is sampled and nothing is guessed at.
+#
+# Their side goes the other way and needs no bound: adding more players to a
+# roster never makes it worse, so `their_season` only rises as a package grows.
+# That is the ladder this returns -- cheapest ask first, then the sweeteners.
+
+MAX_OUT = 3            # most players in a package
+BUDGET = 600           # packages priced exactly, after the bound has cut
+
+
+@dataclass(frozen=True)
+class Package:
+    """One way to get the man you are after."""
+
+    give: tuple
+    get: WeeklyPlayer
+    partner: str
+    my_season: float
+    their_season: float
+    my_week: float = 0.0
+    their_week: float = 0.0
+    their_moves: tuple = ()
+    bar: float = 0.0
+
+    @property
+    def stretch(self) -> bool:
+        return self.their_season <= self.bar
+
+    @property
+    def names(self) -> str:
+        return ", ".join(p.name for p in self.give)
+
+    def describe(self) -> str:
+        return f"give {self.names} for {self.get.name}"
+
+
+def packages(client, target: str, week: int | None = None, cal=None,
+             dist=None, limit: int = 6, max_out: int = MAX_OUT,
+             band: float | None = None,
+             budget: int = BUDGET) -> tuple[list[Package], str]:
+    """Ways to land one named player. (ladder, complaint).
+
+    Cheapest for you first, then the packages that sweeten it. Every rung has
+    to gain you more than the noise band and leave the other side not clearly
+    worse off, the same two tests the finder uses.
+    """
+    from itertools import combinations
+
+    wk = int(week or client.week)
+    bar = noise_band() if band is None else band
+    slots = client.roster_slots()
+    slot_list = [slot for slot, count in slots.items() for _ in range(count)]
+    mine, others = rosters(client, wk)
+    season = season_projections(client)
+
+    owners = {p.name.lower(): (team, p)
+              for team, roster in others.items() for p in roster}
+    found, err = _pick({name: player for name, (_t, player) in owners.items()},
+                       target)
+    if err:
+        return [], err.replace("either roster",
+                               "any other roster in the league")
+    partner = owners[found.name.lower()][0]
+
+    mine = [p for p in mine if season.get(p.player_id, 0.0) > 0]
+    my_cands = [_cand(p, cal, season) for p in mine]
+    my_base = _value(my_cands, slot_list, _season)
+    theirs = [p for p in others[partner] if season.get(p.player_id, 0.0) > 0]
+    their_cands = [_cand(p, cal, season) for p in theirs]
+    their_chosen = _assignment(their_cands, slot_list)
+    their_base = sum(_season(c) for c in their_chosen)
+    incoming = _cand(found, cal, season, incoming=True)
+    by_id = {p.player_id: p for p in mine}
+
+    def price(ids: tuple[str, ...]) -> tuple[float, float, list, list]:
+        out = set(ids)
+        mine_after = ([c for c in my_cands if c["espn_id"] not in out]
+                      + [incoming])
+        theirs_after = ([c for c in their_cands
+                         if c["espn_id"] != found.player_id]
+                        + [_cand(by_id[i], cal, season, incoming=True)
+                           for i in ids])
+        return (_value(mine_after, slot_list, _season) - my_base,
+                _value(theirs_after, slot_list, _season) - their_base,
+                mine_after, theirs_after)
+
+    priced: dict[tuple[str, ...], tuple[float, float]] = {}
+    for c in my_cands:
+        key = (c["espn_id"],)
+        mine_gain, theirs_gain, _a, _b = price(key)
+        priced[key] = (mine_gain, theirs_gain)
+
+    # Only men who clear the bar on their own can appear in a package at all.
+    survivors = [ids[0] for ids, (gain, _t) in priced.items() if gain > bar]
+    for size in range(2, max_out + 1):
+        sets = []
+        for combo in combinations(sorted(survivors), size):
+            bound = min(priced[sub][0]
+                        for sub in combinations(combo, size - 1)
+                        if sub in priced)
+            if bound > bar:
+                sets.append((bound, combo))
+        sets.sort(key=lambda row: -row[0])
+        for _bound, combo in sets[:max(0, budget - len(priced))]:
+            mine_gain, theirs_gain, _a, _b = price(combo)
+            priced[combo] = (mine_gain, theirs_gain)
+
+    good = [(ids, gain, theirs_gain)
+            for ids, (gain, theirs_gain) in priced.items()
+            if gain > bar and theirs_gain > -bar]
+    if not good:
+        return [], ""
+
+    # The ladder: best for me first, then FEWEST players, then least generous.
+    #
+    # The middle term is the one that matters and it was missing at first. Rico
+    # Dowdle costs me nothing on this axis, so Davis plus Dowdle scores the same
+    # +32 as Davis alone and reads as better because it gives the other man
+    # more. It is not better: handing over a player for nothing costs depth,
+    # which none of these numbers price, so among packages worth the same to me
+    # the smaller one is the one to ask for. The extra man is a sweetener and
+    # belongs on a lower rung, not the top one.
+    good.sort(key=lambda row: (-row[1], len(row[0]), row[2]))
+    # A rung earns its place only by being meaningfully better for HIM than
+    # every rung above it. Otherwise this is ten near-identical ways to pay the
+    # same price.
+    rungs, floor = [], None
+    for ids, gain, theirs_gain in good:
+        if floor is not None and theirs_gain <= floor + bar:
+            continue
+        floor = max(theirs_gain, floor if floor is not None else theirs_gain)
+        rungs.append((ids, gain, theirs_gain))
+        if len(rungs) >= limit:
+            break
+
+    out = []
+    for ids, gain, theirs_gain in rungs:
+        _m, _t, mine_after, theirs_after = price(ids)
+        out.append(Package(
+            give=tuple(by_id[i] for i in ids), get=found, partner=partner,
+            my_season=gain, their_season=theirs_gain,
+            my_week=_value(mine_after, slot_list, _week)
+            - _value(my_cands, slot_list, _week),
+            their_week=_value(theirs_after, slot_list, _week)
+            - _value(their_cands, slot_list, _week),
+            their_moves=tuple(_moves(their_chosen,
+                                     _assignment(theirs_after, slot_list),
+                                     _season)),
+            bar=bar))
+    return out, ""
+
+
+def render_packages(items: list[Package], target: str, league_name: str) -> str:
+    if not items:
+        return (f"{league_name} — going after {target}\n"
+                f"Nothing you could send gains you more than the noise band "
+                f"without clearly\ncosting his owner. Either he is not an "
+                f"upgrade on what you already start, or\nthe price is more than "
+                f"he is worth to you.")
+    got = items[0].get
+    title = (f"{league_name} — going after {got.name} ({got.pos}), "
+             f"{items[0].partner}")
+    out = [title, ""]
+    out.append(f"  {'YOU SEND':<44}{'ME/SZN':>8}{'THEM/SZN':>10}"
+               f"{'ME/WK':>7}  ASK")
+    for p in items:
+        out.append(f"  {p.names[:43]:<44}{p.my_season:>+8.0f}"
+                   f"{p.their_season:>+10.0f}{p.my_week:>+7.1f}  "
+                   f"{'stretch' if p.stretch else 'solid'}")
+    out.append("")
+    out.append("Cheapest ask first. Every rung down costs you more and is "
+               "worth more to him,\nso start at the top and work down only as "
+               "far as you have to.")
+    moves = items[-1].their_moves
+    if moves:
+        ins = ", ".join(f"{m.name} {m.value:.0f}" for m in moves if m.joining)
+        outs = ", ".join(f"{m.name} {m.value:.0f}"
+                         for m in moves if not m.joining)
+        out.append("")
+        out.append(f"At the bottom rung {items[0].partner} starts "
+                   f"{ins or 'nobody new'}\nand loses {outs or 'nobody'}.")
+    out.append("")
+    out.append(ASK_NOTE.lstrip("\n"))
+    return "\n".join(out)

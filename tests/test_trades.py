@@ -11,6 +11,7 @@ table must not fill up with eight spellings of one trade.
 from __future__ import annotations
 
 import sys
+from itertools import pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -487,3 +488,119 @@ def test_the_profile_splits_starters_from_the_bench_by_the_assignment():
     worst, best = T._profile(cands, ["RB"], chosen)
     assert worst == {"RB": 300.0}      # the assignment starts the better man
     assert best == {"RB": 250.0}
+
+
+# --- going after one man in particular --------------------------------------
+
+
+def targetable():
+    """The shape that makes a one-for-one work at all: they hold two men at a
+    position that only starts one, so the star is nearly free for them to move.
+
+    My side is deep at back and has exactly one receiver, which matters for the
+    pruning test: losing him empties a starting slot.
+    """
+    mine = [player("My QB", "QB", slot="QB", proj=15.0),
+            player("My RB1", "RB", slot="RB", proj=14.0),
+            player("My RB2", "RB", proj=13.0),
+            player("My RB3", "RB", proj=12.0),
+            player("My WR", "WR", slot="WR", proj=11.0)]
+    theirs = [player("Their QB1", "QB", slot="QB", proj=20.0),
+              player("Their QB2", "QB", proj=19.0),
+              player("Their RB", "RB", slot="RB", proj=5.0),
+              player("Their WR", "WR", slot="WR", proj=8.0)]
+    season = {"My QB": 250.0, "My RB1": 300.0, "My RB2": 280.0,
+              "My RB3": 270.0, "My WR": 200.0,
+              "Their QB1": 340.0, "Their QB2": 330.0,
+              "Their RB": 100.0, "Their WR": 150.0}
+    client = Client({"Mine": mine, "Rival": theirs}, season)
+    client.roster_slots = lambda: {"QB": 1, "RB": 1, "WR": 1}
+    return client
+
+
+def test_it_finds_a_way_to_land_the_man_you_named():
+    items, err = T.packages(targetable(), "Their QB1", band=10.0)
+    assert not err and items
+    assert all(p.get.name == "Their QB1" for p in items)
+    assert all(p.partner == "Rival" for p in items)
+
+
+def test_the_top_rung_is_the_cheapest_ask_not_the_most_generous():
+    """A spare back costs me nothing on this axis, so adding him to the ask
+    scores the same and reads as better because it gives the other man more. It
+    is not better: handing over a player for nothing costs depth that none of
+    these numbers price, so the smaller package is the one to ask for first."""
+    items, _ = T.packages(targetable(), "Their QB1", band=10.0)
+    assert len(items[0].give) == 1
+    assert items[0].my_season == max(p.my_season for p in items)
+
+
+def test_each_rung_costs_more_and_is_worth_more_to_the_other_side():
+    items, _ = T.packages(targetable(), "Their QB1", band=10.0)
+    assert len(items) > 1, "this roster has a real ladder to show"
+    for above, below in pairwise(items):
+        assert below.their_season > above.their_season + 10.0
+        assert below.my_season <= above.my_season
+
+
+def test_a_man_who_fails_on_his_own_never_appears_in_any_package():
+    """The bound that makes this a lattice search rather than a sample. For any
+    set S, `M - S + X` is inside `M - p + X` for every p in S, and the
+    assignment is monotone, so a package can never beat what its worst member
+    scores alone. My only receiver empties a starting slot, so he fails on his
+    own and no package he is in is ever solved."""
+    client = targetable()
+    alone, _ = T.packages(client, "Their QB1", band=10.0, max_out=1, limit=99)
+    assert all("My WR" not in p.names for p in alone)
+    everything, _ = T.packages(client, "Their QB1", band=10.0, max_out=3,
+                               limit=99)
+    assert all("My WR" not in p.names for p in everything)
+
+
+def test_the_bound_actually_cuts_the_search():
+    """Five players and packages of up to three is 25 sets. The bound has to
+    price meaningfully fewer, or it is decoration."""
+    client = targetable()
+    solved = []
+    real = T._value
+
+    def counted(cands, slot_list, key):
+        solved.append(1)
+        return real(cands, slot_list, key)
+
+    T._value = counted
+    try:
+        T.packages(client, "Their QB1", band=10.0, max_out=3, limit=99)
+    finally:
+        T._value = real
+    assert len(solved) < 25 * 2, f"priced {len(solved) // 2} sets of 25"
+
+
+def test_a_player_nobody_owns_is_refused():
+    items, err = T.packages(targetable(), "Nobody At All")
+    assert items == [] and "not on any other roster" in err
+
+
+def test_asking_for_one_of_your_own_is_refused():
+    items, err = T.packages(targetable(), "My RB1")
+    assert items == [] and "not on any other roster" in err
+
+
+def test_a_man_who_would_not_improve_you_produces_nothing():
+    """He is on somebody's roster and he is worse than what you already start.
+    No package makes that a gain, and saying so is the answer."""
+    items, err = T.packages(targetable(), "Their WR", band=10.0)
+    assert not err and items == []
+
+
+def test_render_says_why_it_found_nothing():
+    text = T.render_packages([], "Their WR", "A League")
+    assert "not an upgrade" in text and "price is more than" in text
+
+
+def test_render_leads_with_the_cheapest_ask():
+    items, _ = T.packages(targetable(), "Their QB1", band=10.0)
+    text = T.render_packages(items, "Their QB1", "A League")
+    assert "going after Their QB1" in text
+    assert "Cheapest ask first" in text
+    assert items[0].names in text

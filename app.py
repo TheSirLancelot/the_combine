@@ -1225,6 +1225,74 @@ def load_trade_names(league: str, week: int, _nonce: int, _version: str):
     return dict(sorted(ours.items())), dict(sorted(theirs.items()))
 
 
+def _go_after_someone(league: str):
+    """Pick a man, get the ways to land him, cheapest ask first.
+
+    The question a manager actually asks first. The finder answers "what deal
+    exists" and the grader answers "is this offer any good"; this one starts
+    from who you want.
+    """
+    st.divider()
+    st.markdown("**Go after someone**")
+    st.caption(
+        "Pick a player on somebody else's roster and this works out what you "
+        "would have to send. Cheapest ask first, then the packages that "
+        "sweeten it.")
+
+    _ours, theirs = load_trade_names(league, week_no or client_for(league).week,
+                                     st.session_state.nonce, _code_version())
+    if not theirs:
+        st.info("Needs the API to read every roster.")
+        return
+    pick = st.selectbox("Who do you want", [""] + list(theirs),
+                        key="target_pick",
+                        format_func=lambda k: k or "Pick a player")
+    if not pick:
+        return
+
+    items, err = load_packages(league, theirs[pick], st.session_state.nonce,
+                               _code_version())
+    if err:
+        st.warning(err)
+        return
+    if not items:
+        st.info(f"Nothing you could send for {theirs[pick]} gains you more "
+                f"than the noise band without clearly costing his owner. "
+                f"Either he is not an upgrade on what you already start, or "
+                f"the price is more than he is worth to you.")
+        return
+
+    st.dataframe(pd.DataFrame([{
+        "You send": p.names,
+        "You / season": p.my_season,
+        "Them / season": p.their_season,
+        "You / week": p.my_week,
+        "Ask": "stretch" if p.stretch else "solid",
+    } for p in items]), hide_index=True, use_container_width=True,
+        column_config={
+            "You / season": st.column_config.NumberColumn(
+                "You / season", format="%+.0f"),
+            "Them / season": st.column_config.NumberColumn(
+                "Them / season", format="%+.0f"),
+            "You / week": st.column_config.NumberColumn(
+                "You / week", format="%+.1f"),
+        })
+    st.caption(
+        "Cheapest ask first. Every rung down costs you more and is worth more "
+        "to him, so start at the top and work down only as far as you have to. "
+        "Handing over a player who costs you nothing on paper still costs "
+        "depth, which none of these numbers price.")
+
+
+@st.cache_data(ttl=600, show_spinner="working out what he would cost...")
+def load_packages(league: str, player: str, _nonce: int, _version: str):
+    from combine.pipeline.calibration import load as load_cal
+    from combine.pipeline.trades import packages
+
+    return packages(client_for(league), player, cal=load_cal(league),
+                    dist=outcome_distribution(config.SEASON - 1))
+
+
 def _grade_an_offer(league: str, deals):
     """Price an offer that already exists, which is the other half of this tab.
 
@@ -1408,6 +1476,7 @@ def trades_page():
 
     st.caption(alternatives_note(deals).replace("\n", " "))
 
+    _go_after_someone(league)
     _grade_an_offer(league, deals)
 
     with st.expander("What these numbers are, and are not", expanded=False):

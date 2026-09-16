@@ -728,7 +728,7 @@ inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
 Commands are `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/grade`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
+`/compare`, `/grade`, `/target`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
 `/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
@@ -1852,6 +1852,36 @@ signature is which players are on each side with the numbers left out, the same
 rule the other builders follow: a deal worth +32 today and +29 tomorrow is the
 same deal, and digesting the numbers would repost it every morning until
 somebody acted on it.
+
+### Going after somebody
+
+`packages()` and `render_packages()`, added 2026-09-16. The third question and
+the one a manager asks first: I want HIM, what do I have to send? `combine
+target`, `/target`, and a picker on the Trades tab.
+
+**The search is a lattice with a sound bound.** For any set S of my players,
+`M - S + X` is a subset of `M - p + X` for every p in S, and the assignment
+value is monotone, so `my_season(S) <= min over p in S of my_season({p})`. Price
+every single exactly, and any package containing a man who does not clear my bar
+alone cannot clear it either. Packages are built only from the survivors, and a
+triple is bounded by its own pairs. Their side needs no bound and gets none:
+adding players to a roster never makes it worse, so `their_season` only rises as
+a package grows, which is exactly the ladder this returns.
+
+**The ladder sorts on `(-my_season, len(give), their_season)`, and the middle
+term was missing at first.** Rico Dowdle costs nothing on the season axis, so
+Davis plus Dowdle scored the same +32 as Davis alone and sorted ahead of it for
+being worth more to the other man. The first rung offered was therefore a
+sweetener, before the plain ask. Handing over a player for nothing costs depth
+that none of these numbers price, so among packages worth the same to me the
+smaller one is the ask and the bigger one is a lower rung. A rung then has to
+beat every rung above it on the partner's side by more than the band, which is
+what stops this being twenty spellings of one price.
+
+Live on RCL for Lamar Jackson it returns four rungs: Brock Purdy alone at
++32/-4 (my surplus quarterback once Jackson lands, which is a nice thing for it
+to have noticed), Tyrique Stevenson at +32/+19, Jalen Pitre at +32/+43, and
+Edwards plus Dowdle at +30/+62. About twelve seconds.
 
 ### Grading an offer
 

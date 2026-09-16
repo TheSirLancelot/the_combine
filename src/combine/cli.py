@@ -694,6 +694,42 @@ def grade() -> int:
     return 0
 
 
+def target() -> int:
+    """combine target <league> <player>
+
+    Packages that would land one named player, cheapest ask first.
+    """
+    if len(sys.argv) < 4:
+        print("usage: combine target <league> <player>")
+        return 2
+    from . import db
+    from .pipeline.calibration import load as load_cal
+    from .pipeline.trades import packages, render_packages
+    from .platforms import client_for
+
+    slug, who = sys.argv[2], " ".join(sys.argv[3:])
+    cfg = config.get_league(slug)
+    if cfg.platform != "espn":
+        print(f"{cfg.name}: needs the API to read every roster")
+        return 1
+
+    dist = None
+    try:
+        from .pipeline.distribution import load as load_dist
+        with db.connect(readonly=True) as conn:
+            candidate = load_dist(conn, config.SEASON - 1)
+        dist = None if candidate.empty else candidate
+    except Exception:
+        dist = None
+
+    items, err = packages(client_for(slug), who, cal=load_cal(slug), dist=dist)
+    if err:
+        print(err)
+        return 1
+    print(render_packages(items, who, cfg.name))
+    return 0
+
+
 def lookahead() -> int:
     """combine lookahead [league...]
 
@@ -852,6 +888,8 @@ def main() -> int:
         return trades()
     if cmd == "grade":
         return grade()
+    if cmd == "target":
+        return target()
     if cmd == "scorecard":
         return scorecard()
     if cmd == "calibration":

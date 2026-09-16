@@ -39,12 +39,14 @@ from ..pipeline.trades import claim_note, headline
 
 templates.env.globals.update(claim_note=claim_note, headline=headline)
 
+# slug, tab label, icon path, and the heading its page will show. The last one
+# is what lets the loading outline carry a real title instead of a grey block.
 TABS = (
-    ("week", "Week", "M3 4h18M3 10h18M3 16h18"),
-    ("waivers", "Wire", "M12 3v18M5 10l7-7 7 7"),
-    ("trades", "Trades", "M7 7h14l-4-4M17 17H3l4 4"),
-    ("scores", "Scores", "M4 20V10M10 20V4M16 20v-8M22 20V7"),
-    ("card", "Record", "M4 6h16v12H4zM8 10h8M8 14h5"),
+    ("week", "Week", "M3 4h18M3 10h18M3 16h18", "This week"),
+    ("waivers", "Wire", "M12 3v18M5 10l7-7 7 7", "The wire"),
+    ("trades", "Trades", "M7 7h14l-4-4M17 17H3l4 4", "Trades"),
+    ("scores", "Scores", "M4 20V10M10 20V4M16 20v-8M22 20V7", "Scores"),
+    ("card", "Record", "M4 6h16v12H4zM8 10h8M8 14h5", "Record"),
 )
 
 

@@ -30,8 +30,8 @@
   {% endif %}
 
   <nav class="tabs">
-    {% for slug, label, path in tabs %}
-    <a data-nav href="/{{ slug }}?league={{ league }}"
+    {% for slug, label, path, title in tabs %}
+    <a data-nav data-title="{{ title }}" href="/{{ slug }}?league={{ league }}"
        aria-current="{{ 'page' if slug == page else 'false' }}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ path }}"/></svg>
       <span>{{ label }}</span>

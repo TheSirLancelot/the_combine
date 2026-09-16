@@ -51,14 +51,17 @@
 {% else %}
 <div class="card">
   {% for g in d.depth %}
+  {# The man to ADD is the big name, the same way the list above reads. Putting
+     your own player there next to a big green +32 said "get this guy" about
+     somebody you already own. #}
   <div class="row">
     <div class="slot">{{ g.pos }}</div>
     <div class="who">
-      <div class="name">{{ g.name }}</div>
-      <div class="meta">{{ g.season }} vs {{ g.best }} {{ g.theirs }} free</div>
+      <div class="name">{{ g.best }} <span class="pill good">FREE</span></div>
+      <div class="meta">{{ g.theirs }} over your {{ g.name }} {{ g.season }}</div>
     </div>
     <div class="role"></div>
-    <div class="figure"><div class="v num">+{{ g.gain }}</div>
+    <div class="figure"><div class="v num pos">+{{ g.gain }}</div>
       <div class="band">season</div></div>
   </div>
   {% endfor %}

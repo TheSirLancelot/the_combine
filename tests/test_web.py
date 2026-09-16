@@ -59,7 +59,10 @@ WIRE = {"candidates": [{"name": "A Free Agent", "pos": "WR", "team": "KC",
                         "proj": 9.1, "week": 1.6, "season": -12.0,
                         "drop": "Somebody", "note": "because", "free": False,
                         "stash": False, "corrected": False}],
-        "notes": "", "stash": "", "depth": [], "at": "09:00 PDT"}
+        "notes": "", "stash": "", "at": "09:00 PDT",
+        "depth": [{"name": "My Guy", "pos": "CB", "season": 139,
+                   "best": "Free Guy", "theirs": 172, "gain": 32,
+                   "note": "because"}]}
 SCORES = {"games": [{"league": "RCL", "week": 2, "me": "Mine", "them": "Theirs",
                      "my_score": 88.2, "their_score": 79.4, "my_proj": 120.0,
                      "their_proj": 118.0, "yet_to_play": 3,
@@ -173,3 +176,30 @@ def test_a_zero_ttl_never_serves_a_stale_answer():
     for _ in range(2):
         cache.memo(("k3",), 0, lambda: calls.append(1))
     assert len(calls) == 2
+
+
+def test_the_depth_row_leads_with_the_man_you_would_add(client):
+    """It read backwards: your own player in the big name next to a big green
+    +32 says "get this guy" about somebody you already own. The section above
+    it puts the pickup in the big name, and this has to match."""
+    body = client.get("/waivers?league=rcl").text
+    mine = body.index("My Guy")
+    theirs = body.index("Free Guy")
+    assert theirs < mine, "the free agent comes first"
+    assert '<div class="name">Free Guy' in body
+    assert "over your My Guy" in body
+
+
+def test_the_wire_row_also_leads_with_the_man_you_would_add(client):
+    """The same rule one section up, so the two cannot drift apart again."""
+    body = client.get("/waivers?league=rcl").text
+    assert '<div class="name">A Free Agent' in body
+    assert "drop Somebody" in body
+
+
+def test_every_tab_carries_the_title_its_page_will_show(client):
+    """The loading outline is titled from this. Without it the first thing you
+    see after a tap is a grey block, which is what made the wire feel dead."""
+    body = client.get("/week?league=rcl").text
+    for title in ("This week", "The wire", "Trades", "Scores", "Record"):
+        assert f'data-title="{title}"' in body

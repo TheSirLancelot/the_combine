@@ -2248,6 +2248,22 @@ dictionary and never around the build, because holding it across a fifty second
 trade search would queue every other request behind it, which on a phone reads
 as the app being broken.
 
+**Waiting is a state, not an absence.** The first version dimmed the page you
+were leaving and held it until the next arrived, which on the wire view is a few
+seconds of a screen that looks like it ignored the tap. Now the content is
+replaced immediately with an outline of what is coming, titled from the tab's
+own `data-title`, and a bar runs along the top. An outline rather than a
+spinner: a spinner says something is happening, an outline says a heading and a
+list of rows are happening, which is a smaller step from what was there to what
+arrives. The same treatment is on the trade tools, whose target box is usually
+empty, so dimming it showed nothing at all.
+
+**The depth row read backwards.** Your own player sat in the big name beside a
+big green +32, which says "get this guy" about somebody you already own. The
+waiver list directly above it puts the pickup in the big name, so depth now does
+too: the free agent leads, and the man he beats is in the meta line. Two tests
+hold both sections to the same rule, because the failure was them disagreeing.
+
 Two layout bugs worth remembering, both found by screenshotting the rendered
 pages rather than by reading the CSS. Auto grid placement put the projection
 underneath the player instead of beside him once the role line became its own

@@ -328,6 +328,49 @@ details[open] > :last-child { padding-bottom: 14px; }
 /* Last, so it beats the generic details rules above rather than racing them. */
 details.rowd > summary::after,
 details.rowd[open] > summary::after { content: ""; }
+
+
+/* --- waiting ------------------------------------------------------------
+ *
+ * The old behaviour dimmed the page you were leaving and kept it there until
+ * the new one arrived, which on a slow view is indistinguishable from the tap
+ * not registering. Now the page changes immediately: a bar starts at the top
+ * and the content is replaced with an outline of what is coming.
+ */
+
+#bar {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0;
+  background: var(--accent); z-index: 100; opacity: 0;
+  box-shadow: 0 0 10px var(--accent);
+}
+#bar.on { width: 82%; opacity: 1; transition: width 9s cubic-bezier(.06,.7,.1,1); }
+#bar.done { width: 100%; opacity: 0;
+            transition: width .15s ease-out, opacity .35s .12s; }
+
+.skel { border-radius: 6px; background: var(--surface-2); position: relative;
+        overflow: hidden; }
+.skel::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent,
+              color-mix(in srgb, var(--text) 7%, transparent), transparent);
+  transform: translateX(-100%); animation: sweep 1.25s infinite;
+}
+@keyframes sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .skel::after { animation: none; }
+  #bar.on { transition: none; width: 40%; }
+}
+
+.skel-h { height: 26px; width: 42%; margin: 2px 0 14px; }
+.skel-p { height: 13px; width: 78%; margin-bottom: 22px; }
+.skel-row { display: grid; grid-template-columns: 34px 1fr 64px; gap: 10px;
+            align-items: center; padding: 12px 0;
+            border-bottom: 1px solid var(--line-soft); }
+.skel-row:last-child { border-bottom: 0; }
+.skel-row .a { height: 22px; border-radius: 6px; }
+.skel-row .b { height: 12px; margin-bottom: 7px; }
+.skel-row .c { height: 11px; width: 55%; }
+.skel-row .d { height: 20px; }
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🏈</text></svg>">
 </head>
@@ -360,31 +403,31 @@ details.rowd[open] > summary::after { content: ""; }
 
   <nav class="tabs">
     
-    <a data-nav href="/week?league=rcl"
+    <a data-nav data-title="This week" href="/week?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18M3 10h18M3 16h18"/></svg>
       <span>Week</span>
     </a>
     
-    <a data-nav href="/waivers?league=rcl"
+    <a data-nav data-title="The wire" href="/waivers?league=rcl"
        aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M5 10l7-7 7 7"/></svg>
       <span>Wire</span>
     </a>
     
-    <a data-nav href="/trades?league=rcl"
+    <a data-nav data-title="Trades" href="/trades?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h14l-4-4M17 17H3l4 4"/></svg>
       <span>Trades</span>
     </a>
     
-    <a data-nav href="/scores?league=rcl"
+    <a data-nav data-title="Scores" href="/scores?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20V7"/></svg>
       <span>Scores</span>
     </a>
     
-    <a data-nav href="/card?league=rcl"
+    <a data-nav data-title="Record" href="/card?league=rcl"
        aria-current="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg>
       <span>Record</span>
@@ -500,43 +543,46 @@ details.rowd[open] > summary::after { content: ""; }
 
 <div class="card">
   
+  
   <div class="row">
     <div class="slot">CB</div>
     <div class="who">
-      <div class="name">Tyrique Stevenson Sr.</div>
-      <div class="meta">139 vs Christian Gonzalez 172 free</div>
+      <div class="name">Christian Gonzalez <span class="pill good">FREE</span></div>
+      <div class="meta">172 over your Tyrique Stevenson Sr. 139</div>
     </div>
     <div class="role"></div>
-    <div class="figure"><div class="v num">+32</div>
+    <div class="figure"><div class="v num pos">+32</div>
       <div class="band">season</div></div>
   </div>
+  
   
   <div class="row">
     <div class="slot">DE</div>
     <div class="who">
-      <div class="name">T.J. Watt</div>
-      <div class="meta">126 vs Tuli Tuipulotu 137 free</div>
+      <div class="name">Tuli Tuipulotu <span class="pill good">FREE</span></div>
+      <div class="meta">137 over your T.J. Watt 126</div>
     </div>
     <div class="role"></div>
-    <div class="figure"><div class="v num">+11</div>
+    <div class="figure"><div class="v num pos">+11</div>
       <div class="band">season</div></div>
   </div>
+  
   
   <div class="row">
     <div class="slot">CB</div>
     <div class="who">
-      <div class="name">Jalen Pitre</div>
-      <div class="meta">163 vs Christian Gonzalez 172 free</div>
+      <div class="name">Christian Gonzalez <span class="pill good">FREE</span></div>
+      <div class="meta">172 over your Jalen Pitre 163</div>
     </div>
     <div class="role"></div>
-    <div class="figure"><div class="v num">+9</div>
+    <div class="figure"><div class="v num pos">+9</div>
       <div class="band">season</div></div>
   </div>
   
 </div>
 
 
-<p class="foot">read at 20:23 UTC · <a href="/refresh">refresh</a></p>
+<p class="foot">read at 20:52 UTC · <a href="/refresh">refresh</a></p>
 </main>
 
 

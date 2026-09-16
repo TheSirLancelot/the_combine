@@ -319,3 +319,46 @@ details[open] > :last-child { padding-bottom: 14px; }
 /* Last, so it beats the generic details rules above rather than racing them. */
 details.rowd > summary::after,
 details.rowd[open] > summary::after { content: ""; }
+
+
+/* --- waiting ------------------------------------------------------------
+ *
+ * The old behaviour dimmed the page you were leaving and kept it there until
+ * the new one arrived, which on a slow view is indistinguishable from the tap
+ * not registering. Now the page changes immediately: a bar starts at the top
+ * and the content is replaced with an outline of what is coming.
+ */
+
+#bar {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0;
+  background: var(--accent); z-index: 100; opacity: 0;
+  box-shadow: 0 0 10px var(--accent);
+}
+#bar.on { width: 82%; opacity: 1; transition: width 9s cubic-bezier(.06,.7,.1,1); }
+#bar.done { width: 100%; opacity: 0;
+            transition: width .15s ease-out, opacity .35s .12s; }
+
+.skel { border-radius: 6px; background: var(--surface-2); position: relative;
+        overflow: hidden; }
+.skel::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent,
+              color-mix(in srgb, var(--text) 7%, transparent), transparent);
+  transform: translateX(-100%); animation: sweep 1.25s infinite;
+}
+@keyframes sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .skel::after { animation: none; }
+  #bar.on { transition: none; width: 40%; }
+}
+
+.skel-h { height: 26px; width: 42%; margin: 2px 0 14px; }
+.skel-p { height: 13px; width: 78%; margin-bottom: 22px; }
+.skel-row { display: grid; grid-template-columns: 34px 1fr 64px; gap: 10px;
+            align-items: center; padding: 12px 0;
+            border-bottom: 1px solid var(--line-soft); }
+.skel-row:last-child { border-bottom: 0; }
+.skel-row .a { height: 22px; border-radius: 6px; }
+.skel-row .b { height: 12px; margin-bottom: 7px; }
+.skel-row .c { height: 11px; width: 55%; }
+.skel-row .d { height: 20px; }

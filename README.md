@@ -241,12 +241,16 @@ feature is gone.
 4. **Session duration.** 24 hours or a week is the trade between convenience and
    how long a stolen laptop stays signed in. There is no right answer, only a
    choice.
+5. **The AUD tag.** Access controls → Applications → Configure on the
+   application → Additional settings → Application Audience (AUD) Tag. It used
+   to live on an Overview tab.
 
 Then the second lock, in `.env`:
 
 ```
 COMBINE_ACCESS_TEAM=yourteam.cloudflareaccess.com
-COMBINE_ACCESS_AUD=<Application Audience tag, from the app's Overview tab>
+COMBINE_ACCESS_AUD=<Application Audience tag: Access controls -> Applications ->
+                    Configure -> Additional settings>
 COMBINE_ACCESS_EMAILS=you@gmail.com
 ```
 

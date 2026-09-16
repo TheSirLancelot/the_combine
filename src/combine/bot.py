@@ -492,6 +492,15 @@ def build_grade(league: str, give: str, get: str) -> list[discord.Embed]:
         discord_out.field(e, "Your odds this week",
                           f"{verdict.odds_now * 100:.0f}% → "
                           f"{verdict.odds_after * 100:.0f}%")
+    if verdict.claimed:
+        note = (f"{', '.join(verdict.claimed)} is not yours yet. This is two "
+                f"moves: land the claim, then make the trade, and the first "
+                f"one can fail.")
+        note += (f" Fitting the claim in costs {', '.join(verdict.claim_cuts)},"
+                 f" already inside the numbers above."
+                 if verdict.claim_cuts else
+                 " You have the spot, so the claim itself costs nothing.")
+        discord_out.field(e, "Off the wire first", note)
     if verdict.my_cuts:
         discord_out.field(e, "You would have to cut",
                           ", ".join(verdict.my_cuts))

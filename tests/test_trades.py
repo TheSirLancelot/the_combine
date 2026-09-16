@@ -39,10 +39,25 @@ class Rostered:
         self.projected_total_points = season
 
 
+class Pooled:
+    """What `league.free_agents` hands back."""
+
+    def __init__(self, name, pos, season, proj=0.0):
+        self.name = name
+        self.position = pos
+        self.proTeam = "KC"
+        self.playerId = name
+        self.injuryStatus = "ACTIVE"
+        self.eligibleSlots = [pos, "BE"]
+        self.projected_total_points = season
+        self.stats = {w: {"projected_points": proj} for w in range(1, 19)}
+
+
 class Client:
     week = 2
 
-    def __init__(self, teams: dict[str, list], season: dict[str, float]):
+    def __init__(self, teams: dict[str, list], season: dict[str, float],
+                 wire=()):
         self.teams = teams
         self._season = season
         self.league = type("L", (), {"teams": [
@@ -50,6 +65,7 @@ class Client:
                                                season.get(p.player_id, 0.0))
                                       for p in players]})()
             for players in teams.values()]})()
+        self.league.free_agents = lambda size=350: list(wire)
 
     def roster_slots(self):
         return {"RB": 1, "WR": 1}
@@ -755,3 +771,121 @@ def test_the_render_names_the_team_when_there_is_one():
     assert "trades with Willing" in text
     empty = T.render([], "A League", focus="Willing")
     assert "Nothing with Willing" in empty and "asking for more" in empty
+
+
+# --- sending somebody you have not claimed yet ------------------------------
+#
+# The scenario: a quarterback clears waivers, and you want him as the currency
+# in a trade rather than as a starter. It is two moves, and the first one costs
+# a roster spot before the second gives it back.
+
+
+def with_wire(capacity=4, wire=()):
+    mine = [player("My RB", "RB", slot="RB", proj=15.0),
+            player("My WR", "WR", slot="WR", proj=9.0),
+            player("Spare", "WR", proj=1.0)]
+    theirs = [player("Their WR", "WR", slot="WR", proj=16.0),
+              player("Their RB", "RB", slot="RB", proj=3.0)]
+    season = {"My RB": 300.0, "My WR": 190.0, "Spare": 40.0,
+              "Their WR": 320.0, "Their RB": 60.0}
+    client = Roomy({"Mine": mine, "Rival": theirs}, season, capacity=capacity)
+    client.league.free_agents = lambda size=350: list(wire)
+    return client
+
+
+def test_a_free_agent_can_be_the_thing_you_send():
+    """He is currency, not a starter. Refusing to price him answered a
+    different question from the one being asked."""
+    client = with_wire(capacity=4, wire=[Pooled("Free QB", "QB", 280.0)])
+    v, err = T.grade(client, ["Free QB"], ["Their WR"])
+    assert not err, err
+    assert v.claimed == ["Free QB"]
+    assert [p.name for p in v.give] == ["Free QB"]
+
+
+def test_with_a_spot_open_the_claim_costs_nothing():
+    client = with_wire(capacity=5, wire=[Pooled("Free QB", "QB", 280.0)])
+    v, _ = T.grade(client, ["Free QB"], ["Their WR"])
+    assert v.claim_cuts == []
+
+
+def test_with_no_spot_open_the_claim_costs_a_player_and_it_is_priced():
+    """Three men and three active spots, so landing him means dropping
+    somebody, and that drop is a real loss rather than a footnote."""
+    client = with_wire(capacity=3, wire=[Pooled("Free QB", "QB", 280.0)])
+    v, err = T.grade(client, ["Free QB"], ["Their WR"])
+    assert not err, err
+    assert v.claim_cuts == ["Spare"], v.claim_cuts
+
+
+def test_a_worthless_drop_makes_him_genuinely_free_currency():
+    """Claiming him costs exactly whoever you drop to fit him in. When that is
+    a man contributing nothing, the claim really is free, and sending him is
+    identical to sending the man you dropped."""
+    wire = [Pooled("Free QB", "QB", 280.0)]
+    claimed, _ = T.grade(with_wire(capacity=3, wire=wire),
+                         ["Free QB"], ["Their WR"])
+    owned, _ = T.grade(with_wire(capacity=3), ["Spare"], ["Their WR"])
+    assert claimed.claim_cuts == ["Spare"]
+    assert claimed.my_season == owned.my_season
+
+
+def test_a_claim_that_forces_a_real_drop_is_priced_as_the_loss_it_is():
+    """The trap this exists to catch. Landing a quarterback with no room drops
+    your own, and then you trade the new one away, and the slot is empty. The
+    numbers have to show that rather than calling him free."""
+    def roster(capacity):
+        mine = [player("My RB", "RB", slot="RB", proj=15.0),
+                player("My WR", "WR", slot="WR", proj=9.0),
+                player("My QB", "QB", slot="QB", proj=14.0)]
+        theirs = [player("Their WR", "WR", slot="WR", proj=16.0),
+                  player("Their RB", "RB", slot="RB", proj=3.0)]
+        season = {"My RB": 300.0, "My WR": 190.0, "My QB": 200.0,
+                  "Their WR": 320.0, "Their RB": 60.0}
+        client = Roomy({"Mine": mine, "Rival": theirs}, season,
+                       capacity=capacity)
+        client.roster_slots = lambda: {"QB": 1, "RB": 1, "WR": 1}
+        client.league.free_agents = lambda size=350: [
+            Pooled("Free QB", "QB", 280.0)]
+        return client
+
+    tight, _ = T.grade(roster(3), ["Free QB"], ["Their WR"])
+    roomy, _ = T.grade(roster(4), ["Free QB"], ["Their WR"])
+    assert tight.claim_cuts == ["My QB"]
+    assert roomy.claim_cuts == []
+    assert tight.my_season < roomy.my_season, (
+        "dropping your own quarterback to rent one for a trade is a cost")
+    assert tight.my_season < 0
+
+
+def test_somebody_else_s_player_on_the_give_side_says_whose_he_is():
+    client = with_wire(wire=[Pooled("Free QB", "QB", 280.0)])
+    v, err = T.grade(client, ["Their RB"], ["Their WR"])
+    assert v is None
+    assert "is on Rival's roster" in err and "not yours to send" in err
+
+
+def test_a_name_on_nobody_s_roster_and_not_on_the_wire_is_refused():
+    client = with_wire(wire=[Pooled("Free QB", "QB", 280.0)])
+    v, err = T.grade(client, ["Nobody At All"], ["Their WR"])
+    assert v is None and "your roster or the wire" in err
+
+
+def test_the_pool_does_not_refuse_men_the_waiver_view_would():
+    """`waivers._synthetic` drops a kicker, a man ruled out this week and
+    anyone with no projection today. All correct for Sunday, all wrong for a
+    player being valued as currency."""
+    client = with_wire(wire=[Pooled("Free K", "K", 150.0, proj=0.0)])
+    season = {}
+    found = T.pool(client, 2, season)
+    assert "free k" in found
+    assert season[found["free k"].player_id] == 150.0
+
+
+def test_the_render_says_it_is_two_moves():
+    client = with_wire(capacity=3, wire=[Pooled("Free QB", "QB", 280.0)])
+    v, _ = T.grade(client, ["Free QB"], ["Their WR"])
+    text = " ".join(T.render_verdict(v, "A League").split())
+    assert "not on your roster yet" in text
+    assert "two moves and the first one can fail" in text
+    assert "Spare" in text

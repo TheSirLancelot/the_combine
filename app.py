@@ -1231,12 +1231,14 @@ def load_trade_names(league: str, week: int, _nonce: int, _version: str):
     and typing "Smith" into a league with three of them is a worse experience
     than scrolling.
     """
-    from combine.pipeline.trades import rosters
+    from combine.pipeline.trades import pool, rosters
 
     if config.get_league(league).platform != "espn":
         return {}, {}
     mine, others = rosters(client_for(league), week)
     ours = {f"{p.name} · {p.pos}": p.name for p in mine}
+    for name, free in sorted(pool(client_for(league), week, {}).items()):
+        ours[f"{free.name} · {free.pos} · free agent"] = free.name
     theirs = {f"{p.name} · {p.pos} · {team}": p.name
               for team, roster in others.items() for p in roster}
     return dict(sorted(ours.items())), dict(sorted(theirs.items()))
@@ -1536,6 +1538,16 @@ def _grade_an_offer(league: str):
                        "is why giving up a quarterback can be nearly free to a "
                        "manager carrying two of them.")
 
+    if verdict.claimed:
+        st.info(
+            f"{', '.join(verdict.claimed)} is not on your roster yet. This "
+            f"assumes you land the claim first and then make the trade, so it "
+            f"is two moves and the first one can fail."
+            + (f" Fitting the claim in costs you "
+               f"{', '.join(verdict.claim_cuts)}, and that is already inside "
+               f"the numbers above." if verdict.claim_cuts else
+               " You have the roster spot for it, so the claim itself costs "
+               "nothing."))
     if verdict.my_cuts:
         st.warning(f"You take on {-verdict.spots} more than you send with "
                    f"{verdict.room} spot(s) open, so you would have to cut "

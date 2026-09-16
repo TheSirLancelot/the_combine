@@ -1978,6 +1978,32 @@ week at 11.2 against Edwards at 10.4, and is fourth over a season at 176 against
 explain belongs in the product, so the assignment diff is now printed on both
 axes.
 
+**The give side reads the wire too.** William's case: a quarterback clears
+waivers and he wants him as trade currency rather than as a starter. Gating the
+give side to the current roster answered a different question from the one being
+asked.
+
+A name that is not on my roster is looked up in the free agent pool, and the
+deal is priced as the two moves it is: claim, then trade. The BEFORE stays the
+roster exactly as it stands today, which is the load-bearing choice. Counting
+the claim into the baseline would hide its cost and make every free agent look
+like free trade currency.
+
+It often IS free, and the code says so honestly: the claim costs exactly
+whoever you drop to fit him in, so with a worthless drop it prices identically
+to sending the man you dropped. A test asserts that equality rather than
+pretending there is a penalty. The case that is not free has its own test:
+claiming a quarterback with no room drops your own, then the trade sends the new
+one away, and the slot is empty. That comes out negative, which it should.
+
+`pool()` deliberately does not reuse `waivers._synthetic`, which refuses a
+kicker, a man ruled out this week and anyone with no projection today. All three
+are right for "would he improve my lineup on Sunday" and all three are wrong for
+a player being valued as currency.
+
+A give-side name that belongs to another manager now says whose he is rather
+than "not found", since that is a different mistake with a different fix.
+
 **Uneven packages need the roster size, and two things there were wrong first
 time.** The cut has to be chosen on the roster AS IT WOULD BE after the trade:
 ask beforehand and the man about to become surplus still looks like a starter,

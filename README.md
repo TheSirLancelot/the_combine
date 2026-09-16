@@ -712,6 +712,25 @@ starting linebacker this Sunday and your fourth linebacker over a season, so
 giving him up costs a real 9.8 on Sunday and nothing at all over the year. The
 +32 is entirely Lamar displacing Purdy at quarterback.
 
+**The give side is not limited to your own roster.** A player sitting on the
+wire can be the currency in a deal, which is the case where you claim somebody
+and trade him on rather than starting him. Naming a free agent prices it as the
+two moves it really is:
+
+```
+Matthew Stafford is not on your roster yet. This assumes you land the
+claim first and then make the trade, so it is two moves and the first
+one can fail. Fitting the claim in costs you Tyrique Stevenson Sr.,
+and that is already inside the numbers below.
+```
+
+The before is your roster exactly as it stands today, so the claim's cost shows
+up rather than being quietly absorbed. With a spot open it costs nothing and
+says so. With no spot it names who goes, and that loss is inside the season
+number. The trap it exists to catch is claiming a quarterback with no room,
+dropping your own to fit him, and then trading the new one away, which leaves
+the slot empty.
+
 Uneven packages are handled properly rather than waved at. Take on more than you
 send and it names who you would have to cut, chosen on the roster as it would be
 AFTER the trade, since asking beforehand picks a man who is about to become

@@ -748,6 +748,8 @@ class Verdict:
     room: int = 0                      # spots I have open right now
     my_cuts: list[str] = ()            # who I would have to cut to fit them in
     their_cuts: list[str] = ()
+    claimed: list[str] = ()            # men I would have to add off the wire first
+    claim_cuts: list[str] = ()         # and who that claim would cost me
     odds_now: float = 0.0
     odds_after: float = 0.0
 
@@ -764,6 +766,40 @@ class Verdict:
     @property
     def odds_gain(self) -> float:
         return self.odds_after - self.odds_now
+
+
+def pool(client, week: int, season: dict[str, float],
+         size: int = 350) -> dict[str, WeeklyPlayer]:
+    """{lowercased name: player} for everybody unrostered, and their season
+    projections folded into `season`.
+
+    Deliberately NOT `waivers._synthetic`, which refuses a kicker, a man ruled
+    out this week and anyone with no projection today. Those are all correct
+    for "would he improve my lineup on Sunday" and all wrong here: a player you
+    intend to claim and trade on is currency, and this week's projection is not
+    what he is being valued for.
+    """
+    out: dict[str, WeeklyPlayer] = {}
+    try:
+        raws = client.league.free_agents(size=size)
+    except Exception:
+        return out
+    for raw in raws:
+        name = getattr(raw, "name", "") or ""
+        slots = frozenset(getattr(raw, "eligibleSlots", ()) or ())
+        pid = str(getattr(raw, "playerId", ""))
+        if not name or not slots or not pid:
+            continue
+        stats = (getattr(raw, "stats", {}) or {}).get(week, {}) or {}
+        out[name.lower()] = WeeklyPlayer(
+            player_id=pid, name=name,
+            team=getattr(raw, "proTeam", None),
+            pos=(getattr(raw, "position", "") or "?").upper(),
+            slot="FA", eligible_slots=slots,
+            status=(getattr(raw, "injuryStatus", "") or "OK").upper(),
+            projected=float(stats.get("projected_points") or 0.0))
+        season[pid] = float(getattr(raw, "projected_total_points", 0.0) or 0.0)
+    return out
 
 
 def _pick(index: dict[str, WeeklyPlayer], want: str) -> tuple:
@@ -832,14 +868,30 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
     mine_index = {p.name.lower(): p for p in mine}
     theirs_index = {p.name.lower(): (team, p)
                     for team, roster in others.items() for p in roster}
+    # The pool, so a man you could claim can be part of what you send. Read
+    # lazily: it is a 350 player call and most offers do not need it.
+    free_index: dict[str, WeeklyPlayer] | None = None
 
-    giving, problems = [], []
+    giving, claiming, problems = [], [], []
     for want in give:
         player, err = _pick(mine_index, want)
-        if err:
-            problems.append(err.replace("either roster", "your roster"))
-        else:
+        if not err:
             giving.append(player)
+            continue
+        if free_index is None:
+            free_index = pool(client, wk, season)
+        found_free, free_err = _pick(free_index, want)
+        if found_free is not None:
+            giving.append(found_free)
+            claiming.append(found_free)
+            continue
+        owner = theirs_index.get(want.strip().lower())
+        if owner:
+            problems.append(f"{owner[1].name} is on {owner[0]}'s roster, so "
+                            f"he is not yours to send")
+        else:
+            problems.append(free_err.replace(
+                "either roster", "your roster or the wire"))
 
     getting, partners = [], set()
     for want in get:
@@ -895,8 +947,21 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
         dropped = {c["espn_id"] for c in cuts}
         return cuts, [c for c in cands if c["espn_id"] not in dropped]
 
-    my_cuts, mine_after = make_room(traded(my_cands, gave, getting),
-                                    -spots - room, got)
+    # A man you intend to claim and trade on has to land on the roster first,
+    # and that costs a spot before the trade gives it back. Priced as the two
+    # steps it really is: the claim, then the deal, with the BEFORE still being
+    # the roster exactly as it stands today.
+    claim_ids = {p.player_id for p in claiming}
+    with_claims = my_cands + [_cand(p, cal, season, incoming=True)
+                              for p in claiming]
+    claim_cuts, with_claims = make_room(
+        with_claims, len(claiming) - room, claim_ids)
+    # What the claim leaves behind, which is what the trade then works with.
+    left = room - len(claiming) + len(claim_cuts)
+
+    my_cuts, mine_after = make_room(
+        traded(with_claims, gave, getting),
+        len(getting) - len(giving) - left, got)
     their_cuts, theirs_after = make_room(traded(their_cands, got, giving),
                                          spots, gave)
 
@@ -920,6 +985,8 @@ def grade(client, give: list[str], get: list[str], week: int | None = None,
         spots=spots, room=room,
         my_cuts=[c["name"] for c in my_cuts],
         their_cuts=[c["name"] for c in their_cuts],
+        claimed=[p.name for p in claiming],
+        claim_cuts=[c["name"] for c in claim_cuts],
         **_grade_odds(client, wk, my_cands, mine_after, slot_list, dist),
     ), ""
 
@@ -963,6 +1030,18 @@ def render_verdict(v: Verdict, league_name: str) -> str:
     out = [f"{league_name} — offer from {v.partner}", "",
            f"  you give   {give}",
            f"  you get    {get}", ""]
+
+    if v.claimed:
+        out.append(fill(
+            f"{', '.join(v.claimed)} is not on your roster yet. This assumes "
+            f"you land the claim first and then make the trade, so it is two "
+            f"moves and the first one can fail."
+            + (f" Fitting the claim in costs you {', '.join(v.claim_cuts)}, "
+               f"and that is already inside the numbers below."
+               if v.claim_cuts else
+               " You have the roster spot for it, so the claim itself costs "
+               "nothing.")))
+        out.append("")
 
     verdict = ("the numbers favour you" if v.my_season > 0
                else "the numbers are against you" if v.my_season < 0

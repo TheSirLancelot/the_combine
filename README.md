@@ -98,9 +98,15 @@ down this file, and restarting is the fix in both directions.
 `launchctl kickstart -k gui/$(id -u)/com.thecombine.bot` restarts just the bot if
 you would rather not re-run the installer.
 
-Commands: `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/grade`, `/target`, `/raid`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
-`/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
+`/help` lists every command, grouped, with each one rendered as a clickable
+chip that runs it. A menu underneath swaps the embed for the long version of
+any single command: what it tells you, how to read it, and what it refuses to
+guess at. That third part is most of what is worth knowing here and it does not
+fit in the one-line description Discord shows in the command picker.
+
+Commands: `/help`, `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`,
+`/lookahead`, `/compare`, `/grade`, `/target`, `/raid`, `/scoreboard`,
+`/scorecard`, `/glossary`, `/health`, `/clear`. `/week`, `/startsit` and `/waivers` take an optional league and cover all of them when you leave it
 blank, which is usually what you want on a Sunday. Three leagues takes about
 five seconds. All commands answer to the owner only, because otherwise anyone who can see the bot can read
 your rosters and cause ESPN requests authenticated as you.

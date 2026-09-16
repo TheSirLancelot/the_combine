@@ -430,6 +430,51 @@ def compare_embeds(text: str, title: str = "Head to head") -> list[discord.Embed
             for i, piece in enumerate(pieces)]
 
 
+def help_embeds(mentions: dict[str, str] | None = None) -> list[discord.Embed]:
+    """Every command, grouped, with each one clickable where Discord allows it.
+
+    `mentions` maps a command name to its `</name:id>` form, which Discord
+    renders as a chip you can click to run the command. It comes from the sync
+    at startup, and when it is missing the names fall back to plain `/name`
+    text rather than the raw mention syntax, which would render as literal
+    angle brackets and look broken.
+    """
+    from . import helptext
+
+    mentions = mentions or {}
+    e = discord.Embed(
+        title="The Combine",
+        description=("A read-only fantasy co-owner. It advises; every roster "
+                     "move is yours.\n\nPick a command below to read what it "
+                     "actually tells you, how to read it, and what it refuses "
+                     "to guess at."),
+        colour=INFO)
+    for group in helptext.GROUPS:
+        rows = []
+        for topic in helptext.in_group(group):
+            rows.append(f"{mentions.get(topic.name, topic.slash)} — "
+                        f"{topic.line}")
+        if rows:
+            field(e, group, "\n".join(rows))
+    e.set_footer(text="Most commands take an optional league and cover all of "
+                      "them when you leave it blank.")
+    return [e]
+
+
+def help_detail(topic, mentions: dict[str, str] | None = None
+                ) -> list[discord.Embed]:
+    """One command, at length."""
+    mentions = mentions or {}
+    e = discord.Embed(
+        title=f"{topic.slash} · {topic.line}",
+        description=topic.detail[:DESC], colour=INFO)
+    if topic.usage:
+        field(e, "For example", code(topic.usage))
+    e.set_footer(text=f"{topic.group} · pick another from the menu, or All "
+                      f"commands to go back.")
+    return [e]
+
+
 def message_embed(text: str, title: str = "", colour: int = DEAD) -> discord.Embed:
     """For the one-line answers: a bad player name, a league that cannot answer."""
     return discord.Embed(title=title or None, colour=colour, description=text[:DESC])

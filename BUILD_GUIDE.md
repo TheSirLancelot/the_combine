@@ -727,9 +727,9 @@ hostname, no ingress rule, no Access policy whose correctness matters and no
 inbound surface. It also collapses both wanted behaviours into one process,
 slash commands for asking and a scheduled check for being told.
 
-Commands are `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`, `/lookahead`,
-`/compare`, `/grade`, `/target`, `/raid`, `/scoreboard`, `/scorecard`, `/glossary`, `/health`,
-`/clear`, locked to
+Commands are `/help`, `/week`, `/startsit`, `/waivers`, `/trades`, `/depth`,
+`/lookahead`, `/compare`, `/grade`, `/target`, `/raid`, `/scoreboard`,
+`/scorecard`, `/glossary`, `/health`, `/clear`, locked to
 `DISCORD_OWNER_ID`. Read-only, and more emphatically than anywhere else in the
 repo, because this is the one component that takes instructions from a chat box.
 
@@ -2101,6 +2101,36 @@ Streamlit's docstring for `ip_address` says not to use it for security because
 it can be spoofed. That warning is about the usual direction, trusting a claimed
 client address. Here it is only ever used to RELAX for a private address, and
 the path that must not be relaxed is exactly the one that reports None.
+
+## /help, and the catalogue behind it
+
+`helptext.py` plus `help_embeds` / `help_detail`, added 2026-09-16.
+
+**One catalogue, two views.** The slash descriptions Discord shows in the
+picker are a line each and cannot say what a number means or what a command
+declines to do, which is most of what is worth knowing about this tool. So the
+long version lives in `helptext.CATALOGUE` and both the overview and the detail
+view read from it. Every entry answers three things in order: what it tells
+you, how to read it, and what it will not do.
+
+**Clickable commands come from the sync, not a later fetch.** `tree.sync()`
+returns the registered commands, each carrying the id that makes `</name:id>`
+render as a chip Discord will run on click, so `COMMAND_MENTIONS` is filled at
+the one moment those ids are already in hand. Before the first sync the dict is
+empty and every reader falls back to plain `/name` text, because printing the
+raw mention syntax renders as literal angle brackets and looks broken.
+
+**The menu is a `DynamicItem`, for the same reason `Nav` is.** A plain view
+lives in the process that sent it, so every dropdown in the channel would go
+dead on restart. A dropdown that silently does nothing is worse than no
+dropdown. The owner check is repeated in the callback because anyone who can
+see the message can use the menu and the slash command's check does not carry
+over to a component interaction.
+
+**The test that earns its place is the drift guard.** A help page is worth
+having only while it matches the commands that exist, and the way that stops
+being true is somebody adding a command and forgetting this file. The suite
+asserts the catalogue and the command tree agree in both directions.
 
 ## Known soft spots
 

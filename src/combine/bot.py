@@ -43,7 +43,7 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from . import config
+from . import config, discord_out, helptext
 
 log = logging.getLogger("combine.bot")
 
@@ -66,6 +66,9 @@ def _int_env(key: str) -> int:
 
 OWNER_ID = _int_env("DISCORD_OWNER_ID")
 GUILD_ID = _int_env("DISCORD_GUILD_ID")
+# {command name: "</name:id>"}, filled in at sync. Empty until then, and every
+# reader falls back to plain text rather than printing the raw mention syntax.
+COMMAND_MENTIONS: dict[str, str] = {}
 CHANNEL_ID = _int_env("DISCORD_CHANNEL_ID")
 
 LEAGUE_CHOICES = [
@@ -705,15 +708,20 @@ class Combine(discord.Client):
     async def setup_hook(self) -> None:
         # Without this the buttons on every message already in the channel stop
         # working the moment this process restarts.
-        self.add_dynamic_items(Nav)
+        self.add_dynamic_items(Nav, HelpPick)
         guild = discord.Object(id=GUILD_ID) if GUILD_ID else None
         if guild:
             # Guild-scoped commands appear immediately; global ones can take an
             # hour to propagate, which makes iterating miserable.
             self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
+            synced = await self.tree.sync(guild=guild)
         else:
-            await self.tree.sync()
+            synced = await self.tree.sync()
+        # `sync` hands back the registered commands, each carrying the id that
+        # makes `</name:id>` render as a clickable chip. Taken from here rather
+        # than by fetching later, because this is the one moment the ids are
+        # already in hand.
+        COMMAND_MENTIONS.update({c.name: c.mention for c in synced})
         if CHANNEL_ID:
             daily_check.start(self)
             weekly_score.start(self)
@@ -864,6 +872,56 @@ async def respond(interaction: discord.Interaction, work, *args, nav=None):
         last = i == len(batches) - 1
         view = nav_row(*nav) if (nav and last) else discord.utils.MISSING
         await interaction.followup.send(embeds=batch, view=view)
+
+
+class HelpPick(discord.ui.DynamicItem[discord.ui.Select],
+               template=r"cmb:help"):
+    """The menu under /help. A DynamicItem for the same reason Nav is one: a
+    plain view dies with the process, and a dropdown that silently does nothing
+    is worse than no dropdown."""
+
+    def __init__(self):
+        options = [discord.SelectOption(
+            label="All commands", value=helptext.OVERVIEW,
+            description="Back to the list")]
+        options += [
+            discord.SelectOption(label=t.slash, value=t.name,
+                                 description=t.line[:100])
+            for t in helptext.CATALOGUE]
+        super().__init__(discord.ui.Select(
+            custom_id="cmb:help", placeholder="Read more about a command",
+            options=options[:25]))
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls()
+
+    async def callback(self, interaction: discord.Interaction):
+        # Repeated here on purpose. Anyone who can see the message can use the
+        # menu, and the check on the slash command does not carry over to a
+        # component interaction.
+        if OWNER_ID and interaction.user.id != OWNER_ID:
+            await interaction.response.send_message(
+                "This bot answers to its owner only.", ephemeral=True)
+            return
+        picked = ((interaction.data or {}).get("values") or [None])[0]
+        topic = helptext.find(picked or "")
+        embeds = (discord_out.help_detail(topic, COMMAND_MENTIONS) if topic
+                  else discord_out.help_embeds(COMMAND_MENTIONS))
+        await interaction.response.edit_message(embeds=embeds, view=help_view())
+
+
+def help_view() -> discord.ui.View:
+    view = discord.ui.View(timeout=None)
+    view.add_item(HelpPick())
+    return view
+
+
+@client.tree.command(description="Every command, and what each one is for")
+@owner_only()
+async def help(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        embeds=discord_out.help_embeds(COMMAND_MENTIONS), view=help_view())
 
 
 @client.tree.command(description="This week's lineup, with projections and opponents")

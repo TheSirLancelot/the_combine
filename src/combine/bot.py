@@ -522,17 +522,37 @@ def build_target(league: str, player: str) -> list[discord.Embed]:
             f"he is worth to you.",
             f"Target · {cfg.name}", colour=discord_out.INFO)]
 
-    got = items[0].get
+    got, top = items[0].get, items[0]
+    lead = f"{got.pos}, {items[0].partner}. Cheapest ask first."
+    if all(p.bench for p in items):
+        where = (f"your {top.depth_rank}th {got.pos} and " if top.depth_rank
+                 else "")
+        lead += (f"\n\n{got.name} would be {where}does not crack your "
+                 f"starting lineup, so none of these gain you points on their "
+                 f"own. That is the shape of a buy-low: this prices the bet "
+                 f"rather than making it.")
     e = discord.Embed(
         title=f"Going after {got.name} · {cfg.name}",
-        description=f"{got.pos}, {items[0].partner}. Cheapest ask first.",
-        colour=discord_out.GOOD)
+        description=lead[:discord_out.DESC], colour=discord_out.GOOD)
     for i, p in enumerate(items, 1):
         note = (f"{p.my_season:+.0f} season for you, {p.their_season:+.0f} for "
                 f"them, {p.my_week:+.1f} to your lineup this week."
                 + (" His side is inside the noise band, so worth asking and "
                    "not worth expecting." if p.stretch else ""))
         discord_out.field(e, f"{i}. send {p.names}", note)
+    if top.breakeven > 0:
+        discord_out.field(
+            e, "The bet",
+            f"The cheapest ask costs {top.breakeven:.0f} points of season "
+            f"projection, so {got.name} has to be worth that much more over "
+            f"the rest of the year than ESPN says. Nothing here has a view on "
+            f"whether he is.")
+    if top.cover_name and top.cover_points > top.bar:
+        discord_out.field(
+            e, "As cover",
+            f"If {top.cover_name} misses time, having {got.name} absorbs "
+            f"{top.cover_points:.0f} of the points that absence would "
+            f"otherwise cost you. How likely that is, nothing here knows.")
     e.set_footer(text="Every rung down costs you more and is worth more to "
                       "him, so start at the top. Handing over a player who "
                       "costs you nothing on paper still costs depth, which "

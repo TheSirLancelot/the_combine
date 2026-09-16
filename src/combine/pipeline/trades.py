@@ -64,6 +64,7 @@ bounds choose what to look at. They never become the answer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from textwrap import fill
 
 from ..platforms import WeeklyPlayer
 from .depth import noise_band
@@ -1024,10 +1025,26 @@ class Package:
     their_week: float = 0.0
     their_moves: tuple = ()
     bar: float = 0.0
+    bench: bool = False           # he does not crack my best-eligible lineup
+    cover_name: str = ""          # the starter his absence would hurt least
+    cover_points: float = 0.0     # how much of that absence he absorbs
+    depth_rank: int = 0           # where he would sit at his own position
 
     @property
     def stretch(self) -> bool:
         return self.their_season <= self.bar
+
+    @property
+    def breakeven(self) -> float:
+        """What he has to beat his own projection by, over the season, for this
+        to pay. Zero when the deal already gains you points on its own.
+
+        This is the honest way to price a buy-low, and the only one available.
+        ESPN's number is the only view of him this system has, so it cannot
+        tell you he is undervalued. It can tell you exactly how undervalued he
+        would have to be, and let you decide whether you believe it.
+        """
+        return max(0.0, -self.my_season)
 
     @property
     def names(self) -> str:
@@ -1035,6 +1052,38 @@ class Package:
 
     def describe(self) -> str:
         return f"give {self.names} for {self.get.name}"
+
+
+def cover_value(cands: list[dict], slot_list: list[str],
+                incoming_id: str) -> tuple[str, float]:
+    """(the starter he covers best, how much of that absence he absorbs).
+
+    The handcuff question, and it is arithmetic rather than a forecast. It does
+    NOT say how likely an injury is, because nothing here knows that. It says
+    what having him is worth IF the man ahead of him misses time, which is the
+    part that can be computed honestly and the part a depth chart cannot show
+    you.
+    """
+    inc = next((c for c in cands if c["espn_id"] == incoming_id), None)
+    if inc is None:
+        return "", 0.0
+    without = [c for c in cands if c["espn_id"] != incoming_id]
+    base_with = _value(cands, slot_list, _season)
+    base_without = _value(without, slot_list, _season)
+
+    best_name, best_saved = "", 0.0
+    for s in _assignment(cands, slot_list):
+        if s["espn_id"] == incoming_id or not (inc["eligible"] & s["eligible"]):
+            continue
+        gone = s["espn_id"]
+        hurt_with = base_with - _value(
+            [c for c in cands if c["espn_id"] != gone], slot_list, _season)
+        hurt_without = base_without - _value(
+            [c for c in without if c["espn_id"] != gone], slot_list, _season)
+        saved = hurt_without - hurt_with
+        if saved > best_saved:
+            best_name, best_saved = s["name"], saved
+    return best_name, best_saved
 
 
 def packages(client, target: str, week: int | None = None, cal=None,
@@ -1093,15 +1142,30 @@ def packages(client, target: str, week: int | None = None, cal=None,
         mine_gain, theirs_gain, _a, _b = price(key)
         priced[key] = (mine_gain, theirs_gain)
 
-    # Only men who clear the bar on their own can appear in a package at all.
-    survivors = [ids[0] for ids, (gain, _t) in priced.items() if gain > bar]
+    # The floor is anchored to the cheapest way of getting him rather than to
+    # zero, and that is the whole point of this being a TARGET search.
+    #
+    # Requiring a gain answers the wrong question. A man who does not crack my
+    # starting lineup gains me nothing by definition, so demanding `> bar`
+    # returns "no package exists" for every buy-low and every handcuff, which
+    # is exactly the kind of move somebody goes looking for a named player to
+    # make. The user has already decided he wants him. The job here is to find
+    # what he costs, not to argue.
+    #
+    # So when nothing gains, the floor drops to within a band of the best
+    # single: keep the packages that are competitive with the cheapest ask and
+    # throw away the ones that are far worse. Self-anchored, and it still
+    # prunes the lattice hard.
+    best_single = max((gain for gain, _t in priced.values()), default=0.0)
+    floor = bar if best_single > bar else best_single - bar
+    survivors = [ids[0] for ids, (gain, _t) in priced.items() if gain > floor]
     for size in range(2, max_out + 1):
         sets = []
         for combo in combinations(sorted(survivors), size):
             bound = min(priced[sub][0]
                         for sub in combinations(combo, size - 1)
                         if sub in priced)
-            if bound > bar:
+            if bound > floor:
                 sets.append((bound, combo))
         sets.sort(key=lambda row: -row[0])
         for _bound, combo in sets[:max(0, budget - len(priced))]:
@@ -1110,7 +1174,7 @@ def packages(client, target: str, week: int | None = None, cal=None,
 
     good = [(ids, gain, theirs_gain)
             for ids, (gain, theirs_gain) in priced.items()
-            if gain > bar and theirs_gain > -bar]
+            if gain > floor and theirs_gain > -bar]
     if not good:
         return [], ""
 
@@ -1139,6 +1203,15 @@ def packages(client, target: str, week: int | None = None, cal=None,
     out = []
     for ids, gain, theirs_gain in rungs:
         _m, _t, mine_after, theirs_after = price(ids)
+        starts = any(c["espn_id"] == found.player_id
+                     for c in _assignment(mine_after, slot_list))
+        cover_name, cover_points = cover_value(mine_after, slot_list,
+                                               found.player_id)
+        at_his_spot = sorted(
+            (_season(c) for c in mine_after if c["pos"] == found.pos),
+            reverse=True)
+        rank = (at_his_spot.index(season.get(found.player_id, 0.0)) + 1
+                if season.get(found.player_id, 0.0) in at_his_spot else 0)
         out.append(Package(
             give=tuple(by_id[i] for i in ids), get=found, partner=partner,
             my_season=gain, their_season=theirs_gain,
@@ -1149,8 +1222,14 @@ def packages(client, target: str, week: int | None = None, cal=None,
             their_moves=tuple(_moves(their_chosen,
                                      _assignment(theirs_after, slot_list),
                                      _season)),
-            bar=bar))
+            bar=bar, bench=not starts, cover_name=cover_name,
+            cover_points=cover_points, depth_rank=rank))
     return out, ""
+
+
+def _nth(n: int) -> str:
+    return {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+            6: "sixth", 7: "seventh"}.get(n, f"{n}th")
 
 
 def render_packages(items: list[Package], target: str, league_name: str) -> str:
@@ -1164,6 +1243,16 @@ def render_packages(items: list[Package], target: str, league_name: str) -> str:
     title = (f"{league_name} — going after {got.name} ({got.pos}), "
              f"{items[0].partner}")
     out = [title, ""]
+    if all(p.bench for p in items):
+        where = (f"would be your {_nth(items[0].depth_rank)} {got.pos} and "
+                 if items[0].depth_rank else "")
+        out.append(fill(
+            f"{got.name} {where}does not crack your starting lineup, so none "
+            f"of these gain you points on their own. That is not an argument "
+            f"against the move, it is the shape of a buy-low: what you are "
+            f"paying for is a view of him that ESPN does not share. This "
+            f"prices the bet rather than making it."))
+        out.append("")
     out.append(f"  {'YOU SEND':<44}{'ME/SZN':>8}{'THEM/SZN':>10}"
                f"{'ME/WK':>7}  ASK")
     for p in items:
@@ -1174,6 +1263,24 @@ def render_packages(items: list[Package], target: str, league_name: str) -> str:
     out.append("Cheapest ask first. Every rung down costs you more and is "
                "worth more to him,\nso start at the top and work down only as "
                "far as you have to.")
+
+    top = items[0]
+    if top.breakeven > 0:
+        out.append("")
+        out.append(fill(
+            f"The cheapest ask costs you {top.breakeven:.0f} points of season "
+            f"projection. For it to pay, {got.name} has to be worth that much "
+            f"more over the rest of the year than ESPN currently says. Nothing "
+            f"here has a view on whether he is: ESPN's number is the only one "
+            f"this system has, so it can tell you the size of the bet and not "
+            f"whether to take it."))
+    if top.cover_name and top.cover_points > top.bar:
+        out.append("")
+        out.append(fill(
+            f"As cover he is worth something already: if {top.cover_name} "
+            f"misses time, having {got.name} absorbs "
+            f"{top.cover_points:.0f} of the points that absence would "
+            f"otherwise cost you. How likely that is, nothing here knows."))
     moves = items[-1].their_moves
     if moves:
         ins = ", ".join(f"{m.name} {m.value:.0f}" for m in moves if m.joining)

@@ -529,6 +529,36 @@ adding him scores identically and reads as better because it gives the other man
 more. It is not better: handing over a player for nothing costs depth, which
 none of these numbers price.
 
+**It does not require him to improve your starting lineup.** That was the first
+version and it answered the wrong question: a man who would sit on your bench
+gains you nothing by definition, so every buy-low and every handcuff came back
+as "no package exists", which is exactly the kind of move you go looking for a
+named player to make. You have already decided you want him; the job here is to
+say what he costs.
+
+```
+DK Metcalf would be your fourth WR and does not crack your starting
+lineup, so none of these gain you points on their own. That is not an
+argument against the move, it is the shape of a buy-low: what you are
+paying for is a view of him that ESPN does not share. This prices the
+bet rather than making it.
+
+  YOU SEND                                      ME/SZN  THEM/SZN  ME/WK  ASK
+  Rico Dowdle                                       +0        +0   +0.0  stretch
+  Demario Davis, T.J. Watt                          -8       +23   -7.8  solid
+```
+
+Where the ask costs you points, it says what the bet is: how much he would have
+to beat his own projection by, over the season, for it to pay. That is the only
+honest way to price a buy-low here. ESPN's number is the only view of him this
+system has, so it cannot tell you he is undervalued, only how undervalued he
+would have to be.
+
+It also prices him as cover, which is the handcuff case: if the man ahead of him
+misses time, how much of that absence does having him absorb. Arithmetic, and it
+says nothing about how likely an injury is, because nothing here knows that. It
+stays quiet when the answer is inside the noise band.
+
 The search is a lattice with a real bound rather than a sample. For any set of
 your players, the roster without that set is inside the roster without any one
 of them, and the assignment is monotone, so a package can never gain you more

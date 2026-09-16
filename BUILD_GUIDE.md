@@ -1878,6 +1878,34 @@ and immediately vanishes is worse than no bar.
 the one a manager asks first: I want HIM, what do I have to send? `combine
 target`, `/target`, and a picker on the Trades tab.
 
+**Requiring a gain was wrong, and William found it by looking for DK Metcalf.**
+The first version tested `my_season > bar` like the finder does, so a target who
+would sit on the bench returned nothing at all. He is 170 in RCL behind Smith
+206, Hunter 189 and Burden 175, so his add gain is exactly 0.0 and always will
+be. That answer is useless: a buy-low and a handcuff are BOTH moves where the
+man does not improve your lineup today, and they are most of why somebody goes
+looking for a specific player.
+
+The floor is now anchored to the cheapest ask rather than to zero. When some
+single already clears the bar it behaves as before; when nothing does, the floor
+drops to `best_single - band`, keeping packages competitive with the cheapest
+way of getting him and throwing away the ones far worse. Self-anchored, and the
+lattice still prunes hard.
+
+**The bet is priced, never taken.** `Package.breakeven` is what he has to beat
+his own projection by over the season for the deal to pay. That is the only
+honest handling of a buy-low here: ESPN's number is the only view of him this
+system has, so it cannot say he is undervalued, only by how much he would have
+to be. Same shape as every other refusal in this project, except this time
+there is a real number to hand back with it.
+
+**`cover_value` answers the handcuff question without forecasting.** How much of
+a starter's absence does having him absorb: the roster's loss without him minus
+its loss with him, over starters he shares a slot with. It says nothing about
+how likely the injury is, because nothing here knows that, and it stays quiet
+when the answer is inside the noise band. Metcalf in RCL covers Gibbs by 7
+points, which is correctly not worth printing.
+
 **The search is a lattice with a sound bound.** For any set S of my players,
 `M - S + X` is a subset of `M - p + X` for every p in S, and the assignment
 value is monotone, so `my_season(S) <= min over p in S of my_season({p})`. Price

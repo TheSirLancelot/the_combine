@@ -1302,6 +1302,18 @@ def _go_after_someone(league: str):
                 f"the price is more than he is worth to you.")
         return
 
+    top = items[0]
+    if all(p.bench for p in items):
+        from combine.pipeline.trades import _nth
+
+        where = (f"would be your {_nth(top.depth_rank)} {top.get.pos} and "
+                 if top.depth_rank else "")
+        st.info(f"{top.get.name} {where}does not crack your starting lineup, "
+                f"so none of these gain you points on their own. That is not "
+                f"an argument against the move, it is the shape of a buy-low: "
+                f"what you are paying for is a view of him that ESPN does not "
+                f"share. This prices the bet rather than making it.")
+
     st.dataframe(pd.DataFrame([{
         "You send": p.names,
         "You / season": p.my_season,
@@ -1317,6 +1329,20 @@ def _go_after_someone(league: str):
             "You / week": st.column_config.NumberColumn(
                 "You / week", format="%+.1f"),
         })
+    if top.breakeven > 0:
+        st.warning(
+            f"The cheapest ask costs you {top.breakeven:.0f} points of season "
+            f"projection. For it to pay, {top.get.name} has to be worth that "
+            f"much more over the rest of the year than ESPN currently says. "
+            f"Nothing here has a view on whether he is: ESPN's number is the "
+            f"only one this system has, so it can tell you the size of the bet "
+            f"and not whether to take it.")
+    if top.cover_name and top.cover_points > top.bar:
+        st.caption(
+            f"As cover he is worth something already: if {top.cover_name} "
+            f"misses time, having {top.get.name} absorbs "
+            f"{top.cover_points:.0f} of the points that absence would "
+            f"otherwise cost you. How likely that is, nothing here knows.")
     st.caption(
         "Cheapest ask first. Every rung down costs you more and is worth more "
         "to him, so start at the top and work down only as far as you have to. "

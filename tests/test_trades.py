@@ -557,23 +557,31 @@ def test_a_man_who_fails_on_his_own_never_appears_in_any_package():
     assert all("My WR" not in p.names for p in everything)
 
 
-def test_the_bound_actually_cuts_the_search():
-    """Five players and packages of up to three is 25 sets. The bound has to
-    price meaningfully fewer, or it is decoration."""
-    client = targetable()
-    solved = []
+def solves(client, **kw):
+    """How many assignments a search actually costs."""
+    counted = []
     real = T._value
 
-    def counted(cands, slot_list, key):
-        solved.append(1)
+    def spy(cands, slot_list, key):
+        counted.append(1)
         return real(cands, slot_list, key)
 
-    T._value = counted
+    T._value = spy
     try:
-        T.packages(client, "Their QB1", band=10.0, max_out=3, limit=99)
+        T.packages(client, "Their QB1", band=10.0, **kw)
     finally:
         T._value = real
-    assert len(solved) < 25 * 2, f"priced {len(solved) // 2} sets of 25"
+    return len(counted)
+
+
+def test_the_bound_actually_cuts_the_search():
+    """Five players is 5 singles, 10 pairs and 10 triples. Going from singles
+    to triples must not cost the 20 extra sets in full, or the bound is
+    decoration."""
+    client = targetable()
+    singles_only = solves(client, max_out=1, limit=99)
+    everything = solves(client, max_out=3, limit=99)
+    assert everything - singles_only < 20 * 2
 
 
 def test_a_player_nobody_owns_is_refused():
@@ -586,15 +594,60 @@ def test_asking_for_one_of_your_own_is_refused():
     assert items == [] and "not on any other roster" in err
 
 
-def test_a_man_who_would_not_improve_you_produces_nothing():
-    """He is on somebody's roster and he is worse than what you already start.
-    No package makes that a gain, and saying so is the answer."""
+def test_a_man_who_would_not_start_for_you_is_still_priced():
+    """The buy-low, and the reason this stopped demanding a gain. He is worse
+    than what I already start, so he gains me nothing by definition, and
+    refusing to price him answered a question nobody asked. What he costs is
+    the answer."""
     items, err = T.packages(targetable(), "Their WR", band=10.0)
-    assert not err and items == []
+    assert not err and items, "a man you named should come back with a price"
+    assert all(p.bench for p in items)
+    assert items[0].my_season <= 0
+
+
+def test_the_break_even_is_what_he_has_to_beat_his_projection_by():
+    """The only honest way to price a buy-low. ESPN's number is the only view
+    of him this system has, so it cannot say he is undervalued. It can say by
+    how much he would have to be."""
+    items, _ = T.packages(targetable(), "Their WR", band=10.0)
+    assert items[0].breakeven == -items[0].my_season
+    gaining = T.packages(targetable(), "Their QB1", band=10.0)[0]
+    assert gaining[0].my_season > 0
+    assert gaining[0].breakeven == 0.0, "no bet to price when it already gains"
+
+
+def test_a_man_who_would_start_is_not_flagged_as_bench():
+    items, _ = T.packages(targetable(), "Their QB1", band=10.0)
+    assert not items[0].bench
+
+
+def test_cover_says_what_he_is_worth_if_the_man_ahead_of_him_is_out():
+    """The handcuff question. It does not say how likely an injury is, because
+    nothing here knows that. It says what having him is worth if it happens."""
+    client = targetable()
+    season = T.season_projections(client)
+    slot_list = ["QB", "RB", "WR"]
+    cands = [T._cand(p, None, season) for p in client.teams["Mine"]]
+    # A second receiver behind my only one: worthless while the starter plays,
+    # worth the whole slot the moment he does not.
+    spare = player("Spare WR", "WR", proj=5.0)
+    season["Spare WR"] = 190.0
+    cands.append(T._cand(spare, None, season, incoming=True))
+    name, saved = T.cover_value(cands, slot_list, "Spare WR")
+    assert name == "My WR"
+    assert saved == 190.0
+
+
+def test_cover_is_nothing_when_the_men_ahead_do_not_share_a_slot():
+    client = targetable()
+    season = T.season_projections(client)
+    cands = [T._cand(p, None, season) for p in client.teams["Mine"]]
+    name, saved = T.cover_value(cands, ["QB", "RB", "WR"], "nobody")
+    assert name == "" and saved == 0.0
 
 
 def test_render_says_why_it_found_nothing():
-    text = T.render_packages([], "Their WR", "A League")
+    text = T.render_packages([], "Nobody", "A League")
     assert "not an upgrade" in text and "price is more than" in text
 
 

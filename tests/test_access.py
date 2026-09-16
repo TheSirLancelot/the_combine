@@ -27,7 +27,7 @@ GOOD = {"COMBINE_ACCESS_TEAM": "combine.cloudflareaccess.com",
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     for name in ("COMBINE_ACCESS_TEAM", "COMBINE_ACCESS_AUD",
-                 "COMBINE_ACCESS_EMAILS"):
+                 "COMBINE_ACCESS_EMAILS", "COMBINE_TRUST_LAN"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -138,3 +138,74 @@ def test_the_team_domain_survives_being_pasted_with_a_scheme(monkeypatch):
     configure(monkeypatch,
               COMBINE_ACCESS_TEAM="https://combine.cloudflareaccess.com/")
     assert access.team() == "combine.cloudflareaccess.com"
+
+
+# --- letting the local network in ------------------------------------------
+#
+# The setup this exists for: the app bound to every interface on purpose, the
+# tunnel only for being away from home. The trap underneath it is that
+# cloudflared runs on the same box, so everything arriving from the tunnel
+# looks like loopback.
+
+
+def test_the_lan_is_not_trusted_unless_you_say_so(monkeypatch):
+    configure(monkeypatch)
+    assert not access.check({}, "192.168.0.42").ok
+
+
+def test_a_lan_caller_gets_in_without_signing_in(monkeypatch):
+    configure(monkeypatch, COMBINE_TRUST_LAN="true")
+    verdict = access.check({}, "192.168.0.42")
+    assert verdict.ok and verdict.lan
+    assert "192.168.0.42" in verdict.why
+
+
+def test_loopback_is_never_trusted_because_that_is_where_the_tunnel_lands():
+    """The one that matters. cloudflared runs on the same machine and connects
+    to 127.0.0.1, so trusting loopback would let the entire internet past
+    Cloudflare Access while the LAN exemption took the blame.
+
+    Streamlit reports a loopback peer as None, so None has to fail too.
+    """
+    import os
+
+    os.environ["COMBINE_TRUST_LAN"] = "true"
+    try:
+        assert not access.on_the_lan(None)
+        assert not access.on_the_lan("127.0.0.1")
+        assert not access.on_the_lan("::1")
+    finally:
+        del os.environ["COMBINE_TRUST_LAN"]
+
+
+def test_a_public_address_is_never_trusted(monkeypatch):
+    configure(monkeypatch, COMBINE_TRUST_LAN="true")
+    assert not access.check({}, "8.8.8.8").ok
+
+
+def test_an_unparseable_address_fails_closed(monkeypatch):
+    configure(monkeypatch, COMBINE_TRUST_LAN="true")
+    assert not access.check({}, "not-an-address").ok
+
+
+def test_a_lan_caller_who_does_bring_a_token_is_named(monkeypatch):
+    """Reaching the LAN address while holding an Access cookie is not a thing
+    that happens, but if it did, the exemption answers first and that is fine:
+    both paths end in allowed."""
+    configure(monkeypatch, COMBINE_TRUST_LAN="true")
+    assert access.check({access.HEADER: "t"}, "10.0.0.5", decode=claims()).ok
+
+
+def test_the_tunnel_still_needs_a_token_with_the_lan_trusted(monkeypatch):
+    configure(monkeypatch, COMBINE_TRUST_LAN="true")
+    assert not access.check({}, None).ok
+    assert access.check({access.HEADER: "t"}, None, decode=claims()).ok
+
+
+def test_trust_lan_reads_the_usual_spellings(monkeypatch):
+    for value in ("1", "true", "TRUE", "yes", "on"):
+        monkeypatch.setenv("COMBINE_TRUST_LAN", value)
+        assert access.trust_lan()
+    for value in ("0", "false", "no", ""):
+        monkeypatch.setenv("COMBINE_TRUST_LAN", value)
+        assert not access.trust_lan()

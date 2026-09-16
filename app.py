@@ -44,7 +44,8 @@ st.set_page_config(page_title="The Combine", page_icon="🏈", layout="wide")
 # Before anything else, and before a single ESPN call. This page drives a live
 # ESPN session, so a request that did not come through Cloudflare Access does
 # not get to see any of it. Off until configured, so a laptop checkout runs.
-_ACCESS = access.check(getattr(st.context, "headers", None))
+_ACCESS = access.check(getattr(st.context, "headers", None),
+                       getattr(st.context, "ip_address", None))
 if not _ACCESS.ok:
     st.error(f"Not signed in: {_ACCESS.why}.")
     st.caption("This app is reachable only through Cloudflare Access. Open it "
@@ -446,6 +447,8 @@ with st.sidebar:
     st.title("The Combine")
     if _ACCESS.email:
         st.caption(f"signed in as {_ACCESS.email}")
+    elif _ACCESS.lan:
+        st.caption("on the local network, not signed in")
     elif _ACCESS.off:
         st.caption("⚠︎ no Access policy checked — do not expose this hostname")
 

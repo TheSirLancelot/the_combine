@@ -262,6 +262,22 @@ exotic: the app bound to `0.0.0.0` by mistake, somebody on the LAN hitting port
 widened by a tired hand. A forged signature is not on that list. Neither value
 is a secret.
 
+If you want the LAN to reach the app without signing in, with the tunnel there
+only for when you are out, add `COMBINE_TRUST_LAN=true` and bind the app to
+`0.0.0.0`. Callers on a private address are then let straight in and everybody
+else still needs a valid token.
+
+Loopback is not on the trusted list, which reads backwards and is the point.
+cloudflared runs on the same machine and connects to `127.0.0.1`, so every
+request arriving through the tunnel looks like a loopback connection. Trusting
+loopback would hand the whole internet a free pass while the LAN exemption took
+the blame. The practical consequence is that browsing from the mini itself means
+using its LAN address rather than `localhost`.
+
+The address comes from the TCP peer rather than `X-Forwarded-For`, so it cannot
+be set by the caller. A header would be worthless here, since the entire
+question is whether to trust the caller.
+
 Leave them blank and the check is skipped, so a checkout on a laptop still runs.
 The sidebar says so rather than letting you assume otherwise, and once it is
 working it shows the address you signed in as.

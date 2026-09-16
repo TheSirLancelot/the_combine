@@ -2078,6 +2078,30 @@ is the reasonable default for one user.
 Neither `COMBINE_ACCESS_TEAM` nor `COMBINE_ACCESS_AUD` is a secret; they
 identify, they do not authorise.
 
+**`COMBINE_TRUST_LAN`, and the trap inside it.** William wants the LAN to reach
+the app without signing in and the tunnel for when he is out, with the app bound
+to every interface on purpose. So a caller on a private address skips the token.
+
+Loopback is NOT on the trusted list, and that is the load-bearing line. cloudflared
+runs on the same machine and connects to `127.0.0.1`, so every request arriving
+through the tunnel presents as a loopback connection. Trusting loopback because
+"local is safe" would hand the entire internet a free pass, and the LAN
+exemption would have taken the blame for it. Loopback needs a token like
+anything else; the cost is that browsing from the mini means its LAN address
+rather than `localhost`.
+
+The address is `st.context.ip_address`, which Streamlit derives from the TCP
+peer and reports as None for loopback. Two things make that safe to decide on.
+It is the socket peer rather than `X-Forwarded-For`, so the caller cannot set it
+(Streamlit's own source calls it "the unforgeable TCP peer"). And None fails the
+test, so an unavailable address authenticates rather than trusts, which is the
+fail-closed direction.
+
+Streamlit's docstring for `ip_address` says not to use it for security because
+it can be spoofed. That warning is about the usual direction, trusting a claimed
+client address. Here it is only ever used to RELAX for a private address, and
+the path that must not be relaxed is exactly the one that reports None.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

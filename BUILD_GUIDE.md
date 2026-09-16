@@ -1557,6 +1557,43 @@ exception-guarded, so a test that hit the network did not fail, it just took
 eight seconds and depended on the internet. `conftest.py` stubs both by default;
 a test that cares patches them itself.
 
+## What the PFF API actually exposes
+
+Probed 2026-09-16, because William asked whether we can see PFF's fantasy
+products (Waiver Wire, My Team Dashboard, the draft assistant) through the API.
+
+**No.** Every fantasy-shaped path is a 404: `/v1/fantasy`, `/v1/projections`,
+`/v1/rankings`, `/v1/fantasy/waiver`, `/v1/facet/fantasy/*`. There is no
+discovery endpoint either, and an unknown route just answers "No route for GET
+...", so the surface has to be mapped by trying. The key is `tier: pro,
+entitled: true`, so this is what the product offers rather than what we are
+allowed to see.
+
+The whole facet surface, verified against 2025:
+
+```
+passing      summary, concept, depth, pressure
+rushing      summary
+receiving    summary, scheme, concept, depth
+defense      summary, coverage_matchup
+field_goal   summary
+punting      summary
+kickoff      summary
+offense      summary
+```
+
+So the API is CHARTED STATS, not fantasy output. PFF's fantasy projections stay
+a manual CSV export, which is what `providers/pff_csv.py` already says and is
+still true; the note in that file that the API "is not out yet" should be read
+as "does not carry this", because the API is out and does not.
+
+Four of these we have never used and they are the only untapped PFF data left:
+`passing/pressure`, `receiving/scheme` (man against zone), `receiving/concept`
+and `receiving/depth`. They are usage context of the same kind the Role line
+already carries, which is worth remembering before getting excited: the measured
+lesson in this project is that usage context helps as CONTEXT beside a
+projection, and every attempt to turn it into a better projection has failed.
+
 ## Known soft spots
 
 **Streamlit caches survive code changes, and that bit us.** Streamlit

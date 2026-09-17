@@ -67,17 +67,39 @@
     window.scrollTo({ top: 0 });
   }
 
-  // Keep the tab bar and the league chips showing where you actually are.
+  // Keep the tab bar and the league chips pointing where you actually are.
+  //
+  // The header is outside `main`, so a partial swap never re-renders it and
+  // every link in it still carries whatever the URL said at the last full page
+  // load. Highlighting alone was not enough: pick a league on the week page and
+  // the tabs went on quietly linking to the old one, so the next tab you
+  // touched threw the choice away. The links have to be rewritten, not just
+  // lit up.
   function mark(url) {
     const at = new URL(url, location.origin);
+    const league = at.searchParams.get("league") || "";
+    const week = at.searchParams.get("week") || "";
+
+    // A tab keeps its own page and takes the current league.
     document.querySelectorAll("nav.tabs a").forEach((a) => {
       const to = new URL(a.getAttribute("href"), location.origin);
+      if (league) to.searchParams.set("league", league);
+      else to.searchParams.delete("league");
+      a.setAttribute("href", to.pathname + to.search);
       a.setAttribute("aria-current",
         to.pathname === at.pathname ? "page" : "false");
     });
+
+    // A chip keeps its own league and takes the current page, which is the
+    // same bug the other way round: on the trades page they were still
+    // offering to send you back to the week view.
     document.querySelectorAll(".chip[data-league]").forEach((a) => {
-      a.setAttribute("aria-current",
-        String(a.dataset.league === (at.searchParams.get("league") || "")));
+      const to = new URL(a.getAttribute("href"), location.origin);
+      to.pathname = at.pathname;
+      if (week) to.searchParams.set("week", week);
+      else to.searchParams.delete("week");
+      a.setAttribute("href", to.pathname + to.search);
+      a.setAttribute("aria-current", String(a.dataset.league === league));
     });
   }
 

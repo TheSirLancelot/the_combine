@@ -503,3 +503,35 @@ def test_the_league_chips_are_present_on_the_pages_that_take_a_league(client):
         body = client.get(f"{path}?league=rcl").text
         assert 'class="chips"' in body, path
         assert 'data-league="rcl"' in body, path
+
+
+@pytest.mark.parametrize("path", ("/week", "/waivers", "/trades"))
+def test_the_tabs_carry_the_league_you_are_looking_at(client, path):
+    """Every tab has to hand the current league on. The header sits outside
+    `main`, so a partial swap never re-renders it — which is how these links
+    came to be quietly stuck on whatever the URL said at the last full page
+    load, throwing the choice away on the next tab you touched."""
+    body = client.get(f"{path}?league=work").text
+    nav = body[body.index('<nav class="tabs">'):body.index("</nav>")]
+    assert "league=work" in nav
+    assert "league=rcl" not in nav
+
+
+def test_the_chips_stay_on_the_page_you_are_on(client):
+    """The same bug the other way round: on the trades page the league chips
+    were offering to send you back to the week view."""
+    for path in ("/week", "/waivers", "/trades"):
+        body = client.get(f"{path}?league=rcl").text
+        chips = body[body.index('<div class="chips"'):]
+        chips = chips[:chips.index("</div>")]
+        for slug in ("rcl", "dmwd", "work"):
+            if f'data-league="{slug}"' in chips:
+                assert f'href="{path}?league={slug}' in chips, (path, slug)
+
+
+def test_the_header_is_outside_main_so_a_partial_cannot_refresh_it(client):
+    """The fact the two tests above exist because of. If this ever stops being
+    true the links fix themselves on every swap and those tests are belt and
+    braces; while it is true, the script has to rewrite them."""
+    body = client.get("/week?league=rcl").text
+    assert body.index("</header>") < body.index("<main>")

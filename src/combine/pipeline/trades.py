@@ -71,7 +71,8 @@ from .depth import noise_band
 from .lineup import as_candidate
 from .optimize import best_lineup
 
-SHORTLIST = 60         # pairs per partner priced exactly, after the bounds cut
+SHORTLIST = 60   # pairs per partner priced exactly, after the bounds cut
+LEAST = 3        # target rungs to show even when the tests bless fewer
 LIMIT = 8
 MINE_TEAM = "yours"    # my own squad's key in the league-wide pool
 
@@ -1325,6 +1326,14 @@ class Package:
         return self.their_season <= self.bar
 
     @property
+    def ask(self) -> str:
+        """How hard a sell this rung is, in the finder's own words, so a ladder
+        that now shows options the tests did not bless says which is which."""
+        if self.their_season > self.bar:
+            return "solid"
+        return "stretch" if self.their_season > -self.bar else "longshot"
+
+    @property
     def breakeven(self) -> float:
         """What he has to beat his own projection by, over the season, for this
         to pay. Zero when the deal already gains you points on its own.
@@ -1378,13 +1387,20 @@ def cover_value(cands: list[dict], slot_list: list[str],
 
 def packages(client, target: str, week: int | None = None, cal=None,
              dist=None, limit: int = 6, max_out: int = MAX_OUT,
-             band: float | None = None,
+             band: float | None = None, least: int = LEAST,
              budget: int = BUDGET) -> tuple[list[Package], str]:
     """Ways to land one named player. (ladder, complaint).
 
-    Cheapest for you first, then the packages that sweeten it. Every rung has
-    to gain you more than the noise band and leave the other side not clearly
-    worse off, the same two tests the finder uses.
+    Cheapest for you first, then the packages that sweeten it. A rung earns its
+    place by clearing the same two tests the finder uses — gains you more than
+    the noise band, does not leave the other side clearly worse off — and by
+    being meaningfully better for him than every rung above it.
+
+    Those tests are right as a default and wrong as a wall. Naming a player is
+    already a decision; what is wanted after that is the shape of the market,
+    and one surviving rung does not show it. So `least` rungs come back
+    whatever the tests say, the ones below the line labelled by `ask` rather
+    than quietly mixed in with the ones above it.
     """
     from itertools import combinations
 
@@ -1462,10 +1478,13 @@ def packages(client, target: str, week: int | None = None, cal=None,
             mine_gain, theirs_gain, _a, _b = price(combo)
             priced[combo] = (mine_gain, theirs_gain)
 
-    good = [(ids, gain, theirs_gain)
-            for ids, (gain, theirs_gain) in priced.items()
-            if gain > floor and theirs_gain > -bar]
-    if not good:
+    # Every package priced, in ladder order, tests or no tests. `good` is the
+    # subset that passes both; `ranked` is what the top-up draws on.
+    ranked = sorted(((ids, gain, theirs_gain)
+                     for ids, (gain, theirs_gain) in priced.items()),
+                    key=lambda row: (-row[1], len(row[0]), row[2]))
+    good = [row for row in ranked if row[1] > floor and row[2] > -bar]
+    if not ranked:
         return [], ""
 
     # The ladder: best for me first, then FEWEST players, then least generous.
@@ -1477,18 +1496,32 @@ def packages(client, target: str, week: int | None = None, cal=None,
     # which none of these numbers price, so among packages worth the same to me
     # the smaller one is the one to ask for. The extra man is a sweetener and
     # belongs on a lower rung, not the top one.
-    good.sort(key=lambda row: (-row[1], len(row[0]), row[2]))
     # A rung earns its place only by being meaningfully better for HIM than
     # every rung above it. Otherwise this is ten near-identical ways to pay the
     # same price.
-    rungs, floor = [], None
+    rungs, sill = [], None
     for ids, gain, theirs_gain in good:
-        if floor is not None and theirs_gain <= floor + bar:
+        if sill is not None and theirs_gain <= sill + bar:
             continue
-        floor = max(theirs_gain, floor if floor is not None else theirs_gain)
+        sill = theirs_gain if sill is None else max(theirs_gain, sill)
         rungs.append((ids, gain, theirs_gain))
         if len(rungs) >= limit:
             break
+
+    # Top up to `least`. Both filters above can leave one rung standing, or
+    # none, and "here is the single thing that passes" is not an answer to
+    # "what would it take". These are the next best for me in the same order,
+    # and they carry the same `ask` label as everything else, so a rung he
+    # would refuse is visibly a rung he would refuse.
+    held = {ids for ids, _g, _t in rungs}
+    for row in ranked:
+        if len(rungs) >= min(least, limit):
+            break
+        if row[0] in held:
+            continue
+        rungs.append(row)
+        held.add(row[0])
+    rungs.sort(key=lambda row: (-row[1], len(row[0]), row[2]))
 
     out = []
     for ids, gain, theirs_gain in rungs:
@@ -1548,11 +1581,13 @@ def render_packages(items: list[Package], target: str, league_name: str) -> str:
     for p in items:
         out.append(f"  {p.names[:43]:<44}{p.my_season:>+8.0f}"
                    f"{p.their_season:>+10.0f}{p.my_week:>+7.1f}  "
-                   f"{'stretch' if p.stretch else 'solid'}")
+                   f"{p.ask}")
     out.append("")
     out.append("Cheapest ask first. Every rung down costs you more and is "
                "worth more to him,\nso start at the top and work down only as "
                "far as you have to.")
+    if any(p.ask == "longshot" for p in items):
+        out.append(ASK_NOTE.strip())
 
     top = items[0]
     if top.breakeven > 0:

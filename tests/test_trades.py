@@ -1127,3 +1127,53 @@ def test_a_pickup_who_never_starts_is_called_cover_rather_than_points():
 def test_a_pickup_who_is_not_on_the_wire_is_refused():
     v, err = T.grade(with_wire(), ["Spare"], ["Their WR"], fill=["Nobody"])
     assert v is None and "the wire" in err
+
+
+# --- the ladder always has rungs on it --------------------------------------
+
+def test_a_ladder_collapsed_by_the_spacing_rule_is_topped_back_up():
+    """A wide band makes every rung look alike to the spacing rule, which used
+    to leave exactly one. Naming a player is already a decision; what is wanted
+    after it is the shape of the market, and one rung does not show it."""
+    thin, _ = T.packages(targetable(), "Their QB1", band=1000.0)
+    assert len(thin) >= 3
+
+
+def test_the_top_up_never_repeats_a_package():
+    got, _ = T.packages(targetable(), "Their QB1", band=1000.0)
+    names = [p.names for p in got]
+    assert len(names) == len(set(names))
+
+
+def test_the_top_up_respects_a_smaller_limit():
+    """`least` is a floor under the ladder, not a licence to ignore the ceiling
+    somebody asked for."""
+    got, _ = T.packages(targetable(), "Their QB1", band=1000.0, limit=2)
+    assert len(got) == 2
+
+
+def test_asking_for_none_gives_back_only_what_passes():
+    """The old behaviour is still reachable, which is what makes this a default
+    rather than a rule."""
+    strict, _ = T.packages(targetable(), "Their QB1", band=10.0, least=0)
+    spaced, _ = T.packages(targetable(), "Their QB1", band=10.0)
+    assert len(strict) <= len(spaced)
+
+
+def test_every_rung_says_how_hard_a_sell_it_is():
+    """Including the topped-up ones. A rung shown because he asked to see it
+    has to be visibly different from a rung that earned its place, or the top-up
+    is just a way of dressing up deals nobody would accept."""
+    got, _ = T.packages(targetable(), "Their QB1", band=1000.0)
+    assert all(p.ask in ("solid", "stretch", "longshot") for p in got)
+
+
+def test_the_label_follows_the_band_and_not_a_flag():
+    """It is computed from his side against the band, the same way the finder
+    does it, so the two views cannot say different things about one deal."""
+    assert T.Package(give=(), get=None, partner="T", my_season=0.0,
+                     their_season=40.0, bar=17.0).ask == "solid"
+    assert T.Package(give=(), get=None, partner="T", my_season=0.0,
+                     their_season=5.0, bar=17.0).ask == "stretch"
+    assert T.Package(give=(), get=None, partner="T", my_season=0.0,
+                     their_season=-40.0, bar=17.0).ask == "longshot"

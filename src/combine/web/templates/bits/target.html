@@ -20,7 +20,7 @@
           <div class="name">{{ p.names }}</div>
           <div class="meta">them {{ "%+.0f"|format(p.their_season) }} ·
             week {{ "%+.1f"|format(p.my_week) }} ·
-            <span class="pill {{ 'good' if not p.stretch else 'warn' }}">{{ 'solid' if not p.stretch else 'stretch' }}</span></div>
+            <span class="pill {{ 'good' if p.ask == 'solid' else ('warn' if p.ask == 'stretch' else 'bad') }}">{{ p.ask }}</span></div>
         </div>
         <div class="figure"><div class="v">{{ m.signed(p.my_season, 0) }}</div>
           <div class="band">season</div></div>
@@ -53,13 +53,17 @@
         <div><span class="k">Them, this week</span><span class="v">{{ m.signed(p.their_week, 1) }}</span></div>
       </div>
 
-      <p class="note {{ 'info' if p.stretch else 'good' }}">
-        {% if p.stretch %}His side lands inside the {{ "%.0f"|format(p.bar) }}
-          point band, where these numbers cannot tell a gain from a loss. Worth
-          asking, not worth expecting.
-        {% else %}The numbers say {{ p.partner }} gains too:
+      <p class="note {{ 'good' if p.ask == 'solid' else ('info' if p.ask == 'stretch' else 'bad') }}">
+        {% if p.ask == 'solid' %}The numbers say {{ p.partner }} gains too:
           {{ "%+.0f"|format(p.their_season) }} clears the
-          {{ "%.0f"|format(p.bar) }} point band.{% endif %}
+          {{ "%.0f"|format(p.bar) }} point band.
+        {% elif p.ask == 'stretch' %}His side lands inside the
+          {{ "%.0f"|format(p.bar) }} point band, where these numbers cannot
+          tell a gain from a loss. Worth asking, not worth expecting.
+        {% else %}The numbers do say {{ p.partner }} loses
+          {{ "%.0f"|format(-p.their_season) }}. Shown because you asked for
+          him, not because it passes. Only somebody who likes trading is going
+          to listen.{% endif %}
       </p>
 
       {% if p.breakeven > 0 %}
@@ -100,5 +104,8 @@
   {% endfor %}
 </div>
 <p class="foot">Cheapest ask first. Tap one for the reasoning. Every rung down
-  costs you more and is worth more to him.</p>
+  costs you more and is worth more to him.
+  {%- if items|selectattr("ask", "equalto", "longshot")|list %} Rungs marked
+  longshot are below the line and shown anyway, so you can see the shape of the
+  market rather than the one thing that passed.{% endif %}</p>
 {% endif %}

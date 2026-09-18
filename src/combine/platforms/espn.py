@@ -213,12 +213,16 @@ class EspnClient:
             scores rather than team.roster.
           * pro_opponent is the string "None" because ESPN sends opponent id 0
             here. Opponent comes from pro_schedule() instead.
-          * game_played is 0 before kickoff and 100 when final.
+          * game_played is 0 before kickoff and 100 when FINAL, and still 0
+            through the whole of a live game. It answers "is his game over",
+            not "has he played", and it cannot gate anything that has to work
+            on a Sunday afternoon: James Cook was sat on 2.0 points with 5
+            carries for 28 yards against game_played 0.
           * stats[wk]["breakdown"] is what he actually did: real counts under
             readable names, alongside numeric stat ids we have no vocabulary
-            for. Before kickoff it is the projection's breakdown, all
-            fractional, which is why the stat line is only built once his game
-            has started.
+            for. It is the presence of that key that says he has played — a man
+            who has not gets only the `projected_*` entries — so the payload
+            gates itself and nothing else needs to.
         A player whose NFL team has no game this week is on bye, which is a
         stronger signal than ESPN's own on_bye flag because it is derived from
         the schedule rather than reported.
@@ -237,15 +241,18 @@ class EspnClient:
             actual=float(getattr(p, "points", 0.0) or 0.0),
             played=bool(getattr(p, "game_played", 0)),
             on_bye=game is None or bool(getattr(p, "on_bye", False)),
-            stat_line=statline.line(self._breakdown(p, wk))
-                      if getattr(p, "game_played", 0) else "",
-            stats=statline.pairs(self._breakdown(p, wk))
-                  if getattr(p, "game_played", 0) else (),
+            stat_line=statline.line(self._breakdown(p, wk)),
+            stats=statline.pairs(self._breakdown(p, wk)),
         )
 
     @staticmethod
     def _breakdown(p, wk: int) -> dict:
-        """The raw counts for one week, or {} when ESPN sent none."""
+        """The raw counts for one week, or {} when ESPN sent none.
+
+        Empty is the whole gate. Before kickoff the week's entry carries only
+        `projected_*` keys, so there is no breakdown to mistake for actuals and
+        no flag needed to tell them apart.
+        """
         try:
             return (getattr(p, "stats", {}) or {}).get(wk, {}).get("breakdown") or {}
         except (AttributeError, TypeError):

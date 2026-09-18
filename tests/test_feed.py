@@ -161,3 +161,40 @@ def test_an_empty_feed_says_why_rather_than_nothing():
     """A blank panel reads as a quiet afternoon. It is not: it means this has
     only just started watching."""
     assert "difference between reads" in render([])
+
+
+def test_a_stored_read_with_points_but_no_counts_re_baselines(conn):
+    """The shape a snapshot takes when it was written by code that could not
+    read the breakdown. Subtracting from it would report a man's whole
+    afternoon as having happened in the last thirty seconds, so it says nothing
+    once and the next read is honest."""
+    rows = [Row("RB", cell("1", "Cook", 2.8, ()), None)]     # points, no counts
+    observe(conn, [game(rows)], SEASON, "2026-09-18T18:00:00+00:00")
+
+    full = {"rushingAttempts": 5.0, "rushingYards": 28.0}
+    out = observe(conn, [game([Row("RB", cell("1", "Cook", 2.8 + 1.0,
+                                              full.items()), None)])],
+                  SEASON, "2026-09-18T18:00:30+00:00")
+    assert out == []
+
+    # and from there it reports normally
+    more = {"rushingAttempts": 6.0, "rushingYards": 40.0}
+    again = observe(conn, [game([Row("RB", cell("1", "Cook", 5.0,
+                                                more.items()), None)])],
+                    SEASON, "2026-09-18T18:01:00+00:00")
+    assert len(again) == 1
+    assert again[0].what == "1 car, 12 yd"
+
+
+def test_a_genuine_first_touch_is_still_reported(conn):
+    """The guard must not swallow the normal case: no counts AND no points is a
+    man who had not played, and everything he then does is news."""
+    observe(conn, [game([Row("RB", cell("1", "X", 0.0, ()), None)])],
+            SEASON, "2026-09-18T18:00:00+00:00")
+    out = observe(conn, [game([Row("RB", cell("1", "X", 6.0,
+                                   {"rushingAttempts": 1.0,
+                                    "rushingYards": 12.0,
+                                    "rushingTouchdowns": 1.0}.items()), None)])],
+                  SEASON, "2026-09-18T18:00:30+00:00")
+    assert len(out) == 1
+    assert out[0].what == "1 car, 12 yd, 1 TD"

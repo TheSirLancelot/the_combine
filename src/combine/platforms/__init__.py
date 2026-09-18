@@ -95,6 +95,19 @@ class WeeklyPlayer:
         """His game has kicked off, so the start/sit decision is already made."""
         return bool(self.game and self.game.started())
 
+    @property
+    def underway(self) -> bool:
+        """He is playing or has played, as against waiting to.
+
+        `played` is ESPN's `game_played`, which is 0 right through a live game
+        and only turns over when it is FINAL. That answers a different
+        question, and a scoreboard that used it showed a dash next to a man who
+        was three carries into the afternoon. Kickoff comes from the pro
+        schedule; the stat line is the belt to that braces, since ESPN will not
+        send counts for a man who has not taken the field.
+        """
+        return self.locked or bool(self.stats)
+
 
 @dataclass(frozen=True)
 class Matchup:

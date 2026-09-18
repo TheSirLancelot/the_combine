@@ -46,7 +46,7 @@ class Cell:
     line: str               # '15/25, 155 yd, 1 INT', or '' before he plays
     points: float
     projected: float
-    played: bool            # his game has finished or is under way
+    played: bool            # he is playing or has played, as against waiting
     locked: bool            # kickoff has passed, so the lineup call is spent
     counts: tuple = ()      # the same stats, unworded, for the feed to subtract
 
@@ -181,7 +181,7 @@ def _cell(p: WeeklyPlayer) -> Cell:
         line=p.stat_line,
         points=p.actual,
         projected=p.projected,
-        played=p.played,
+        played=p.underway,
         locked=p.locked,
         counts=p.stats,
     )

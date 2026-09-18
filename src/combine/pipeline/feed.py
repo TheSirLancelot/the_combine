@@ -115,6 +115,18 @@ def observe(conn, games, season: int, at: str) -> list[Event]:
                 if abs(moved) < EPSILON:
                     continue
                 before = tuple(sorted(json.loads(was["stats"]).items()))
+                # A stored read that had points but no counts, against a read
+                # that has both, is a snapshot written before the counts could
+                # be read at all. Subtracting from it would report his whole
+                # afternoon as having happened in the last thirty seconds, so
+                # it re-baselines: nothing this once, honest from the next read.
+                #
+                # All three conditions matter. A man whose points come only
+                # from stat ids we cannot name has no counts either side and
+                # must keep reporting, which is why the new counts are part of
+                # the test rather than just the old ones.
+                if not before and cell.counts and float(was["points"]):
+                    continue
                 found.append(Event(
                     league=game.league, week=game.week, espn_id=cell.espn_id,
                     name=cell.name, short=cell.short, pos=cell.pos,

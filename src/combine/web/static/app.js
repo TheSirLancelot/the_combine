@@ -90,6 +90,15 @@
         to.pathname === at.pathname ? "page" : "false");
     });
 
+    // The row itself only belongs on the pages that take a league. It is in
+    // the document either way so that a swap can bring it back, which it could
+    // not when the server rendered it conditionally.
+    const chips = document.querySelector(".chips");
+    const page = at.pathname.replace(/^\//, "");
+    const takes = chips && (chips.dataset.for || "").split(" ").includes(page);
+    if (chips) chips.hidden = !takes;
+    if (!takes) return;
+
     // A chip keeps its own league and takes the current page, which is the
     // same bug the other way round: on the trades page they were still
     // offering to send you back to the week view.

@@ -102,6 +102,9 @@ header.top {
 
 .chips { display: flex; gap: 6px; margin-top: 10px; overflow-x: auto;
          scrollbar-width: none; }
+/* `display: flex` beats the user agent's rule for [hidden], so the attribute
+   does nothing here unless it is said again. */
+.chips[hidden] { display: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
   flex: 0 0 auto; padding: 6px 12px; border-radius: 999px;

@@ -555,3 +555,36 @@ def test_the_projection_is_still_there_next_to_the_standing_facts(client):
     body = client.get("/scores").text
     sub = body[body.index('<div class="sub">'):]
     assert "proj 24.0" in sub[:sub.index("</div>") + 400]
+
+
+def test_the_chips_are_in_the_document_on_every_page(client):
+    """Even the ones that ignore a league. The header lives outside `main`, so
+    a partial swap never re-renders it: rendering the row conditionally meant
+    that landing on Scores left it absent from the document entirely, and no
+    later swap to Wire could bring it back. Present and hidden is the only
+    version a swap can undo."""
+    for path in ("/week", "/waivers", "/trades", "/scores", "/card"):
+        body = client.get(f"{path}?league=rcl").text
+        assert 'class="chips"' in body, path
+        # every configured league, so a swap has the full row to reveal
+        assert 'data-league="rcl"' in body, path
+        assert 'data-league="work"' in body, path
+
+
+@pytest.mark.parametrize("path,shown", [("/week", True), ("/waivers", True),
+                                        ("/trades", True), ("/scores", False),
+                                        ("/card", False)])
+def test_the_chips_are_hidden_exactly_where_a_league_means_nothing(client,
+                                                                   path, shown):
+    body = client.get(f"{path}?league=rcl").text
+    row = body[body.index('<div class="chips"'):]
+    row = row[:row.index(">") + 1]
+    assert ("hidden" in row) is not shown, path
+
+
+def test_the_script_is_told_the_same_list_the_template_uses(client):
+    """Both sides decide whether to show the row, so neither gets to hold its
+    own copy of when."""
+    body = client.get("/scores").text
+    row = body[body.index('<div class="chips"'):]
+    assert 'data-for="week waivers trades"' in row[:row.index(">") + 1]

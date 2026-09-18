@@ -19,15 +19,22 @@
     <small>{% if who %}{{ who }}{% elif request.state.gate_off %}⚠︎ open{% endif %}</small>
   </div>
 
-  {% if page in ("week", "waivers", "trades") %}
-  <div class="chips" role="tablist" aria-label="League">
+  {# Always rendered, hidden when the page in view does not take a league.
+     Rendering it conditionally looked tidier and was a trap: the header lives
+     outside `main`, so a partial swap never re-renders it, and landing on
+     Scores meant the chips were simply absent from the document with no way
+     for a later swap to Wire to bring them back. `data-for` is the same list,
+     handed to the script so both sides agree. #}
+  {% set league_pages = ("week", "waivers", "trades") %}
+  <div class="chips" role="tablist" aria-label="League"
+       data-for="{{ league_pages|join(' ') }}"
+       {% if page not in league_pages %}hidden{% endif %}>
     {% for lg in leagues %}
     <a class="chip" data-nav data-league="{{ lg.slug }}"
        aria-current="{{ 'true' if lg.slug == league else 'false' }}"
-       href="/{{ page }}?league={{ lg.slug }}{% if week %}&week={{ week }}{% endif %}">{{ lg.slug }}</a>
+       href="/{{ page if page in league_pages else 'week' }}?league={{ lg.slug }}{% if week %}&week={{ week }}{% endif %}">{{ lg.slug }}</a>
     {% endfor %}
   </div>
-  {% endif %}
 
 </header>
 

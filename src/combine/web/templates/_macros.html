@@ -32,8 +32,16 @@
 {% macro odds(mine, theirs) %}
 {% if mine is defined and mine is not none
       and theirs is defined and theirs is not none %}
-<div class="odds" title="ESPN's chance to win">
-  <span class="pct left">{{ (mine * 100) | round | int }}%</span>
+{# Coloured off the rounded share rather than the raw one, so the number you
+   read and the colour you see can never disagree: 49.6 shown as 50% and
+   painted red is a rounding artefact that looks like a bug. #}
+{# Two states, not three. An even split stays green: red is for the matchup
+   slipping away, and a third colour for a dead heat is one nobody asked for
+   and would read as a fault. #}
+{% set share = (mine * 100) | round | int %}
+<div class="odds {{ 'behind' if share < 50 else 'ahead' }}"
+     title="ESPN's chance to win">
+  <span class="pct left">{{ share }}%</span>
   <div class="track">
     <div class="mine" style="width: {{ (mine * 100) | round(1) }}%"></div>
   </div>

@@ -464,12 +464,18 @@ details.deal > summary .who .name {
 }
 /* One bar, two shares: what is not mine is his, so his half needs no element
    of its own and the two can never disagree about the total. */
-.odds .mine { height: 100%; background: var(--good); border-radius: 999px; }
+.odds .mine { height: 100%; background: var(--good); border-radius: 999px;
+              transition: background .2s; }
 .odds .pct {
   font-size: 12px; font-weight: 650; color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.odds .pct.left { color: var(--good); }
+/* Only your own share carries the colour. His staying grey keeps one signal on
+   the row rather than two saying the same thing in opposite directions. */
+.odds.ahead .pct.left { color: var(--good); }
+.odds.behind .pct.left { color: var(--bad); }
+.odds.behind .mine { background: var(--bad); }
+.odds.ahead .mine { background: var(--good); }
 .odds small {
   grid-column: 1 / -1; text-align: center; color: var(--faint);
   font-size: 10.5px; letter-spacing: .02em; margin-top: -2px;

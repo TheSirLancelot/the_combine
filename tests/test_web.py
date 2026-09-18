@@ -588,3 +588,35 @@ def test_the_script_is_told_the_same_list_the_template_uses(client):
     body = client.get("/scores").text
     row = body[body.index('<div class="chips"'):]
     assert 'data-for="week waivers trades"' in row[:row.index(">") + 1]
+
+
+@pytest.mark.parametrize("mine,theirs,expect", [
+    (0.61, 0.39, "ahead"),
+    (0.39, 0.61, "behind"),
+    (0.50, 0.50, "ahead"),      # an even split is not the matchup slipping away
+    (0.496, 0.504, "ahead"),    # reads 50% on screen, so it is not under 50
+    (0.49, 0.51, "behind"),
+])
+def test_the_odds_bar_says_which_side_of_even_you_are(client, monkeypatch,
+                                                      mine, theirs, expect):
+    """It was green at every value, so a matchup slipping away looked the same
+    as one being won."""
+    game = {**SCORES["games"][0], "my_odds": mine, "their_odds": theirs}
+    monkeypatch.setattr(data, "scores",
+                        lambda wk=None: {**SCORES, "games": [game]})
+    body = client.get("/scores").text
+    row = body[body.index('<div class="odds '):]
+    assert expect in row[:row.index(">")]
+
+
+def test_the_number_and_the_colour_cannot_disagree(client, monkeypatch):
+    """49.6% rounds to 50 on screen. Painting that red off the raw value is a
+    rounding artefact that reads as a bug, so both come off the same figure:
+    what turns it red is the number you can see dropping under 50."""
+    game = {**SCORES["games"][0], "my_odds": 0.496, "their_odds": 0.504}
+    monkeypatch.setattr(data, "scores",
+                        lambda wk=None: {**SCORES, "games": [game]})
+    body = client.get("/scores").text
+    row = body[body.index('<div class="odds '):]
+    assert "behind" not in row[:row.index(">")]
+    assert '<span class="pct left">50%</span>' in row

@@ -7,12 +7,16 @@
   <div class="who" title="{{ c.name }}">
     <div class="nm"><span class="full">{{ c.name }}</span><span
       class="abbr">{{ c.short }}</span>{% if c.status %}<em>{{ c.status }}</em>{% endif %}</div>
+    {# The projection belongs up here with the rest of the standing facts about
+       him. It led the line below for a while, which put the word "proj" in
+       front of a list of things he had actually done and made the whole line
+       read as a forecast. #}
     <div class="sub"><span class="nb">{{ c.pos }}{% if c.opponent %} {{ c.opponent }}{% endif %}</span>
-      {%- if not c.played and c.kickoff %} <span class="nb">· {{ c.kickoff }}</span>{% endif %}</div>
-    {# Once he is playing, what he was projected for sits directly in front of
-       what he has done, because the only reading of one is against the other. #}
-    {% if c.played %}<div class="did"><span class="nb">proj {{ "%.1f"|format(c.projected) }}</span>{%
-      if c.line %} · {{ c.line }}{% endif %}</div>{% endif %}
+      {%- if c.played %} <span class="nb">· proj {{ "%.1f"|format(c.projected) }}</span>
+      {%- elif c.kickoff %} <span class="nb">· {{ c.kickoff }}</span>{% endif %}</div>
+    {# What he has actually done, alone on its line and unlabelled, because the
+       only thing that could make it clearer is a word that could be misread. #}
+    {% if c.line %}<div class="did">{{ c.line }}</div>{% endif %}
   </div>
   {% else %}
   <div class="who"><div class="nm dim">Empty</div></div>

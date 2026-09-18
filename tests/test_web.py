@@ -535,3 +535,23 @@ def test_the_header_is_outside_main_so_a_partial_cannot_refresh_it(client):
     braces; while it is true, the script has to rewrite them."""
     body = client.get("/week?league=rcl").text
     assert body.index("</header>") < body.index("<main>")
+
+
+def test_the_stat_line_is_never_labelled_as_a_projection(client):
+    """It led with 'proj 16.4 · 5 car, 28 yd', which put the word proj in front
+    of a list of things the man had actually done and made the whole line read
+    as a forecast. The counts now stand alone and the projection sits up with
+    his position and opponent."""
+    body = client.get("/scores").text
+    did = body[body.index('<div class="did">'):]
+    did = did[:did.index("</div>")]
+    assert "proj" not in did
+    assert "18/25, 220 yd, 2 TD" in did          # the fixture's played player
+
+
+def test_the_projection_is_still_there_next_to_the_standing_facts(client):
+    """Comparing what he was projected for against what he has done is the
+    point of showing both; it just cannot share a line with the counts."""
+    body = client.get("/scores").text
+    sub = body[body.index('<div class="sub">'):]
+    assert "proj 24.0" in sub[:sub.index("</div>") + 400]

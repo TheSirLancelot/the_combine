@@ -25,7 +25,6 @@ from ..config import get_league
 from ..config import leagues as configured
 from ..platforms import Matchup, WeeklyPlayer, client_for
 
-
 # The order ESPN prints a lineup in.
 #
 # Not the order it hands one back in, which is roster order, and not its slot

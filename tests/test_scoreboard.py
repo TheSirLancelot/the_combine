@@ -279,3 +279,48 @@ def test_an_ir_slot_does_not_shift_the_bench_pairing():
     _, bench = _cast(m, flip=False)
     assert [(r.mine.name, r.theirs.name) for r in bench] == [
         ("h1", "a1"), ("h2", "a2")]
+
+
+def test_the_cast_is_ordered_the_way_espn_prints_a_lineup():
+    """Not the order ESPN hands one back in, which is roster order — roughly
+    the order players were acquired — so the cast used to open with whoever was
+    signed first rather than with the quarterback."""
+    from combine.pipeline.scoreboard import display_order
+
+    idp = {"QB": 1, "RB": 2, "RB/WR": 1, "WR": 2, "TE": 1,
+           "LB": 2, "DL": 1, "DB": 1, "DP": 1}
+    assert display_order(idp) == ["QB", "RB", "RB", "RB/WR", "WR", "WR", "TE",
+                                  "LB", "LB", "DL", "DB", "DP"]
+
+
+def test_the_flex_sits_after_the_tight_end_and_not_after_the_kicker():
+    """Sorting by ESPN's slot ids nearly works and fails exactly here: the
+    combination slots were added to the product later and carry high ids."""
+    from combine.pipeline.scoreboard import display_order
+
+    standard = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "D/ST": 1, "K": 1,
+                "RB/WR/TE": 1}
+    assert display_order(standard) == ["QB", "RB", "RB", "WR", "WR", "TE",
+                                       "RB/WR/TE", "D/ST", "K"]
+
+
+def test_a_slot_nobody_has_heard_of_lands_at_the_end_rather_than_vanishing():
+    from combine.pipeline.scoreboard import display_order
+
+    out = display_order({"QB": 1, "ROVER": 1, "RB": 1})
+    assert out == ["QB", "RB", "ROVER"]
+
+
+def test_the_lineup_is_laid_into_that_order_not_the_order_it_arrived_in():
+    order = ["QB", "RB", "RB", "TE"]
+    rows = _pair([wp("tight", "TE"), wp("back1", "RB"), wp("passer", "QB"),
+                  wp("back2", "RB")], [], order)
+    assert [r.slot for r in rows] == order
+    assert [r.mine.name for r in rows] == ["passer", "back1", "back2", "tight"]
+
+
+def test_a_slot_the_settings_do_not_cover_is_still_given_a_row():
+    """A missing row is a lie; a row with one side empty is information."""
+    rows = _pair([wp("a", "QB")], [wp("x", "QB"), wp("y", "K")], ["QB"])
+    assert [r.slot for r in rows] == ["QB", "K"]
+    assert rows[1].mine is None and rows[1].theirs.name == "y"

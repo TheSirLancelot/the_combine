@@ -26,6 +26,31 @@ from ..config import leagues as configured
 from ..platforms import Matchup, WeeklyPlayer, client_for
 
 
+# The order ESPN prints a lineup in.
+#
+# Not the order it hands one back in, which is roster order, and not its slot
+# ids either. Ids nearly work — they reproduce the IDP league exactly — but the
+# combination slots were added to the product later and carry high ids, so
+# sorting by them puts the flex after the kicker where the site puts it after
+# the tight end. This is the site's layout, written down.
+#
+# A slot missing from here keeps its position from the league's own settings
+# and lands at the end, so an unfamiliar one is placed oddly rather than lost.
+SLOT_ORDER: tuple[str, ...] = (
+    "QB", "TQB", "RB", "RB/WR", "WR", "WR/TE", "TE", "OP", "RB/WR/TE",
+    "D/ST", "K", "P", "HC",
+    "DT", "DE", "LB", "DL", "CB", "S", "DB", "DP",
+)
+
+
+def display_order(slots: dict[str, int]) -> list[str]:
+    """The league's startable slots, in ESPN's order, one entry per seat."""
+    rank = {slot: i for i, slot in enumerate(SLOT_ORDER)}
+    ordered = sorted(slots.items(),
+                     key=lambda kv: (rank.get(kv[0], len(SLOT_ORDER)), kv[0]))
+    return [slot for slot, n in ordered for _ in range(n)]
+
+
 @dataclass(frozen=True)
 class Cell:
     """One player as a scoreboard shows him, which is not how a roster does.
@@ -187,19 +212,28 @@ def _cell(p: WeeklyPlayer) -> Cell:
     )
 
 
-def _pair(mine: list[WeeklyPlayer], theirs: list[WeeklyPlayer]) -> list[Row]:
+def _pair(mine: list[WeeklyPlayer], theirs: list[WeeklyPlayer],
+          order: list[str] | None = None) -> list[Row]:
     """Line the two lineups up slot against slot, the way a cast reads.
 
-    The slot order comes from my lineup rather than from a table of our own,
-    because ESPN already returns it in the order the site prints it and a second
-    opinion about where the flex goes would only ever disagree. Where his lineup
-    holds a slot mine does not, the extra is appended rather than dropped: a row
-    with one side empty is information, and a missing row is a lie.
+    The order comes from the league's own slot settings, which ESPN hands back
+    keyed by its internal slot id and therefore in the order its site prints
+    them. An earlier version took the order from the box-score lineup on the
+    assumption it was the same thing. It is not: that arrives in roster order,
+    which is roughly the order players were acquired, so the cast opened with
+    whoever happened to be first rather than with the quarterback.
+
+    Where a lineup holds a slot the settings do not cover, the extra is
+    appended rather than dropped: a row with one side empty is information, and
+    a missing row is a lie.
     """
-    order = [p.slot for p in mine]
-    short = Counter(p.slot for p in theirs) - Counter(order)
-    for slot, extra in short.items():
-        order += [slot] * extra
+    order = list(order or [])
+    have = Counter(order)
+    for lineup in (mine, theirs):
+        short = Counter(p.slot for p in lineup) - have
+        for slot, extra in short.items():
+            order += [slot] * extra
+            have[slot] += extra
 
     left: dict[str, list[WeeklyPlayer]] = {}
     right: dict[str, list[WeeklyPlayer]] = {}
@@ -228,11 +262,13 @@ def _sittable(p: WeeklyPlayer) -> bool:
     return not p.starting and p.slot not in STASH
 
 
-def _cast(m: Matchup, flip: bool) -> tuple[tuple[Row, ...], tuple[Row, ...]]:
+def _cast(m: Matchup, flip: bool, order: list[str] | None = None
+          ) -> tuple[tuple[Row, ...], tuple[Row, ...]]:
     """(starters, bench). `flip` when the away side is the one to show on the
     left, which is the case exactly when the away team is mine."""
     a, b = (m.away_lineup, m.home_lineup) if flip else (m.home_lineup, m.away_lineup)
-    starters = _pair([p for p in a if p.starting], [p for p in b if p.starting])
+    starters = _pair([p for p in a if p.starting], [p for p in b if p.starting],
+                     order)
     # The bench pairs by position in the list, not by slot: every bench player
     # sits in the same slot, so pairing by slot would be pairing by nothing.
     #
@@ -268,10 +304,17 @@ def build(week: int | None = None, slugs: list[str] | None = None
                     "approved."))
                 continue
             my_team = client.my_team_name()
+            # The slots come from the league's own settings, so an IDP league
+            # and a K/DST league each get their own; the order they are printed
+            # in comes from SLOT_ORDER.
+            try:
+                order = display_order(client.roster_slots())
+            except Exception:
+                order = []
             for m in client.all_matchups(week):
                 home = _side(m, "home", my_team)
                 away = _side(m, "away", my_team)
-                starters, bench = _cast(m, flip=away.mine)
+                starters, bench = _cast(m, flip=away.mine, order=order)
                 games.append(Game(
                     league=slug, league_name=cfg.name, week=m.week,
                     home=home, away=away, starters=starters, bench=bench,

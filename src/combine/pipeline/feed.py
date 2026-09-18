@@ -71,6 +71,18 @@ class Event:
     def scored(self) -> bool:
         return self.points > 0
 
+    @property
+    def helps(self) -> bool:
+        """Whether this moved the matchup your way.
+
+        Not the same question as whether somebody scored, which is what the
+        feed used to colour by, so an opponent's touchdown arrived in the same
+        green as your own. On a head to head the sign that matters is the one
+        on the margin: his man scoring is a loss to you, and his man losing
+        points to a stat correction is a gain.
+        """
+        return self.scored == self.mine
+
 
 def _row(conn, league: str, season: int, week: int, espn_id: str):
     return conn.execute(
@@ -167,10 +179,10 @@ def render(events: list[Event]) -> str:
                 "difference between reads, so it fills as the games go.")
     out = []
     for e in events:
-        who = "*" if e.mine else " "
-        head = (f"{who}{e.clock:>8}  {e.short[:18]:<18} {e.points:>+5.1f} "
+        who = "YOU " if e.mine else "THEM"
+        head = (f"{who} {e.clock:>8}  {e.short[:18]:<18} {e.points:>+5.1f} "
                 f"-> {e.total:>5.1f}")
         out.append(head + (f"   {e.what}" if e.what else ""))
-    out.append("\n* your player. times are when this looked, not when the play "
-               "happened.")
+    out.append("\nYOU is your player, THEM your opponent's. Times are when this "
+               "looked,\nnot when the play happened.")
     return "\n".join(out)

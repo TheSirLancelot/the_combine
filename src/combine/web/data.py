@@ -220,7 +220,8 @@ def _feed(games, week: int) -> list[dict]:
     return [{"clock": e.clock, "name": e.name, "short": e.short, "pos": e.pos,
              "team": e.team, "slot": e.slot, "side": e.side, "mine": e.mine,
              "league": e.league, "points": e.points, "total": e.total,
-             "what": e.what, "scored": e.scored} for e in events]
+             "what": e.what, "scored": e.scored, "helps": e.helps}
+            for e in events]
 
 
 def scores(wk: int | None = None) -> dict:

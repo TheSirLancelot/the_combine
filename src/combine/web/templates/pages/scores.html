@@ -92,22 +92,27 @@
 <div class="card feed">
   <div class="casthead">Since you started watching</div>
   {% for e in data.feed %}
+  {# Three cues saying the same thing, because one was not enough: a stripe you
+     can see at arm's length, a word you can read, and a colour. The colour is
+     the one that had it wrong — it followed whether somebody scored, so an
+     opponent's touchdown arrived in the same green as your own. On a head to
+     head the sign that matters is the one on the margin. #}
   <div class="tickrow {{ 'ours' if e.mine else 'theirs' }}">
     <div class="when">{{ e.clock }}</div>
     <div class="who">
       <div class="nm">{{ e.short }}<span class="slotlet">{{ e.slot }}</span></div>
       <div class="sub">{% if e.what %}{{ e.what }}{% else %}points moved, nothing
         ESPN named{% endif %}</div>
-      <div class="whose">{{ e.side }}</div>
+      <div class="whose"><span class="side">{{ 'you' if e.mine else 'them' }}</span>{{ e.side }}</div>
     </div>
     <div class="pts">
-      <div class="d {{ 'up' if e.scored else 'down' }}">{{ "%+.1f"|format(e.points) }}</div>
+      <div class="d {{ 'up' if e.helps else 'down' }}">{{ "%+.1f"|format(e.points) }}</div>
       <div class="run">{{ "%.1f"|format(e.total) }}</div>
     </div>
   </div>
   {% endfor %}
-  <p class="foot left">Times are when this looked, not when the play happened.
-    Starters only, both sides. The feed is the difference between reads, so it
+  <p class="foot left">Green moved your way, red moved his. Times are when this
+    looked, not when the play happened. Starters only, both sides. The feed is the difference between reads, so it
     fills while auto-refresh is on and starts fresh when it has not been
     watching.</p>
 </div>

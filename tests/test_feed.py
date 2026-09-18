@@ -198,3 +198,40 @@ def test_a_genuine_first_touch_is_still_reported(conn):
                   SEASON, "2026-09-18T18:00:30+00:00")
     assert len(out) == 1
     assert out[0].what == "1 car, 12 yd, 1 TD"
+
+
+def test_an_opponent_scoring_does_not_read_as_good_news():
+    """The feed coloured by whether somebody scored, so his touchdown arrived
+    in the same green as yours. On a head to head the sign that matters is the
+    one on the margin."""
+    def made(mine, points):
+        return Event(league="rcl", week=2, espn_id="1", name="X", short="X",
+                     pos="RB", team="DET", slot="RB", side="T", mine=mine,
+                     points=points, total=points, what="", at="2026-09-20T18:00:00+00:00")
+
+    assert made(True, 6.0).helps            # my man scores
+    assert not made(False, 6.0).helps       # his man scores
+    assert not made(True, -6.0).helps       # mine loses points to a correction
+    assert made(False, -6.0).helps          # his does
+
+
+def test_scored_still_means_what_it_says():
+    """`helps` is about the matchup; `scored` is about the player. Both are
+    wanted and conflating them is how this went wrong."""
+    e = Event(league="rcl", week=2, espn_id="1", name="X", short="X", pos="RB",
+              team="DET", slot="RB", side="T", mine=False, points=6.0,
+              total=6.0, what="", at="2026-09-20T18:00:00+00:00")
+    assert e.scored and not e.helps
+
+
+def test_the_terminal_view_says_whose_player_it_was_in_words():
+    events = [Event(league="rcl", week=2, espn_id="1", name="Mine", short="Mine",
+                    pos="RB", team="DET", slot="RB", side="Me", mine=True,
+                    points=6.0, total=6.0, what="1 car, 3 yd",
+                    at="2026-09-20T18:00:00+00:00"),
+              Event(league="rcl", week=2, espn_id="2", name="His", short="His",
+                    pos="RB", team="KC", slot="RB", side="Him", mine=False,
+                    points=9.0, total=9.0, what="",
+                    at="2026-09-20T18:00:00+00:00")]
+    out = render(events)
+    assert "YOU " in out and "THEM" in out
